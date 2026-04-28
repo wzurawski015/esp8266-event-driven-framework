@@ -9,6 +9,12 @@ docs/generated
 # Local transfer artifacts
 *.zip
 *.patch
+!tools/patches/
+!tools/patches/.gitkeep
+!tools/patches/*.patch
 
 # Large local reference material
 *.pdf
+!tools/patches/
+!tools/patches/.gitkeep
+!tools/patches/*.patch

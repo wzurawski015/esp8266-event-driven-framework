@@ -1,0 +1,8 @@
+// Wemos ESP-WROOM-02 18650 board pin map.
+// Format: EV_BSP_PIN(LOGICAL_NAME, GPIO_NUM, "summary")
+EV_BSP_PIN(PIN_UART0_TX, 1U, "UART0 TX via CP2102/CH340")
+EV_BSP_PIN(PIN_UART0_RX, 3U, "UART0 RX via CP2102/CH340")
+EV_BSP_PIN(PIN_STATUS_LED, 16U, "On-board blue user LED; active low; tie to RST for deep sleep")
+EV_BSP_PIN(PIN_OPTIONAL_I2C0_SDA, 4U, "Typical I2C SDA mapping")
+EV_BSP_PIN(PIN_OPTIONAL_I2C0_SCL, 5U, "Typical I2C SCL mapping")
+EV_BSP_PIN_ANALOG(PIN_ADC0_INPUT, "ADC0 / A0 raw 0-1V input (verify external divider!)")

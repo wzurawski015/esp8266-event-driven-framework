@@ -1,0 +1,4 @@
+#ifndef MODULES_INCLUDE_EV_FAULT_ACTOR_MODULE_H
+#define MODULES_INCLUDE_EV_FAULT_ACTOR_MODULE_H
+#include "ev/fault_bus.h"
+#endif

@@ -1,0 +1,12 @@
+// ATNEL AIR ESP mounted on ATB WIFI ESP Motherboard.
+// Format:
+// EV_BSP_PIN(LOGICAL_NAME, GPIO_NUM, "summary")
+EV_BSP_PIN(PIN_UART0_TX, 1U, "UART0 TX via FT231X USB-UART")
+EV_BSP_PIN(PIN_UART0_RX, 3U, "UART0 RX via FT231X USB-UART")
+EV_BSP_PIN(PIN_I2C0_SCL, 4U, "Primary I2C SCL shared with module OLED and motherboard I2C devices")
+EV_BSP_PIN(PIN_I2C0_SDA, 5U, "Primary I2C SDA shared with module OLED and motherboard I2C devices")
+EV_BSP_PIN(PIN_ONEWIRE0_DQ, 12U, "Primary 1-Wire DQ via JP1 and DS18B20 headers; kept distinct from RTC/INT0")
+EV_BSP_PIN(PIN_OPTIONAL_IR0_DATA, 13U, "Optional IR receiver output via JP4")
+EV_BSP_PIN(PIN_OPTIONAL_INT0, 14U, "Optional MCP23008 INT via JP2 or RTC SQW/INT via JP19; kept distinct from 1-Wire on GPIO12")
+EV_BSP_PIN(PIN_BOOTSTRAP0, 15U, "Bootstrap pin; optional Magic Hercules SCK coupling via JP14")
+EV_BSP_PIN(PIN_OPTIONAL_MAGIC_DIN, 16U, "Optional Magic Hercules / WS2812 DIN coupling via JP16")

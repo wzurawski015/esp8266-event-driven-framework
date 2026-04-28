@@ -1,0 +1,105 @@
+FROM ubuntu:24.04@sha256:d1e2e92c075e5ca139d51a140fff46f84315c0fdce203eab2807c7e495eff4f9
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG ESP8266_RTOS_SDK_REF=v3.4
+ARG LX106_TOOLCHAIN_URL=https://dl.espressif.com/dl/xtensa-lx106-elf-gcc8_4_0-esp-2020r3-linux-amd64.tar.gz
+ARG TINYDTLS_MIRROR_URL=https://github.com/eclipse-tinydtls/tinydtls.git
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
+    build-essential \
+    ca-certificates \
+    ccache \
+    cmake \
+    file \
+    flex \
+    bison \
+    gawk \
+    git \
+    gperf \
+    libffi-dev \
+    libncurses-dev \
+    libssl-dev \
+    make \
+    ninja-build \
+    patch \
+    python-is-python3 \
+    python3 \
+    python3-pip \
+    python3-serial \
+    python3-venv \
+    tar \
+    unzip \
+    wget \
+    xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /opt/esp /tmp/toolchain \
+    && wget -O /tmp/toolchain/lx106.tar.gz "$LX106_TOOLCHAIN_URL" \
+    && tar -xzf /tmp/toolchain/lx106.tar.gz -C /opt/esp \
+    && rm -rf /tmp/toolchain
+
+COPY tools/patches/ /tmp/ev-sdk-patches/
+
+# Upstream ESP8266_RTOS_SDK v3.4 still references the retired Eclipse tinydtls
+# URL inside a nested libcoap submodule. Rewrite that exact URL to the active
+# GitHub mirror before recursive submodule checkout so sdk-image remains
+# reproducible.
+RUN git config --global advice.detachedHead false \
+    && git config --global \
+       url."$TINYDTLS_MIRROR_URL".insteadOf \
+       "https://git.eclipse.org/r/tinydtls/org.eclipse.tinydtls" \
+    && git clone --depth 1 --branch "$ESP8266_RTOS_SDK_REF" \
+       https://github.com/espressif/ESP8266_RTOS_SDK.git /opt/esp/ESP8266_RTOS_SDK \
+    && cd /opt/esp/ESP8266_RTOS_SDK \
+    && git submodule update --init --recursive \
+    && for p in /tmp/ev-sdk-patches/*.patch; do \
+           [ -f "$p" ] || continue; \
+           case "$(basename "$p")" in \
+             *freertos-static-task-hooks*.patch) \
+               echo "note: skipping obsolete FreeRTOSConfig patch file; tools/fw sdk-check now performs idempotent injection"; \
+               continue; \
+               ;; \
+           esac; \
+           patch --batch -p1 < "$p"; \
+       done \
+    && freertos_config=/opt/esp/ESP8266_RTOS_SDK/components/freertos/port/esp8266/include/freertos/FreeRTOSConfig.h \
+    && tmp_file="${freertos_config}.ev-static" \
+    && sed '/EV_FREERTOS_STATIC_ALLOC_CONFIG_BEGIN/,/EV_FREERTOS_STATIC_ALLOC_CONFIG_END/d' "$freertos_config" \
+       | sed \
+           -e '/^[[:space:]]*#[[:space:]]*define[[:space:]][[:space:]]*configSUPPORT_STATIC_ALLOCATION[[:space:]]/d' \
+           -e '/^[[:space:]]*#[[:space:]]*define[[:space:]][[:space:]]*configSUPPORT_DYNAMIC_ALLOCATION[[:space:]]/d' \
+         > "$tmp_file" \
+    && cat "$tmp_file" > "$freertos_config" \
+    && rm -f "$tmp_file" \
+    && { \
+         printf '\n/* EV_FREERTOS_STATIC_ALLOC_CONFIG_BEGIN\n'; \
+         printf ' * Project environment hardening: static Idle/Timer task hooks are enabled.\n'; \
+         printf ' * Dynamic allocation remains enabled only as an ESP8266 vendor SDK bootstrap bridge.\n'; \
+         printf ' * Runtime actor/event/I2C/IRQ hot paths remain zero-heap by project policy.\n'; \
+         printf ' */\n'; \
+         printf '#ifndef configSUPPORT_STATIC_ALLOCATION\n'; \
+         printf '#define configSUPPORT_STATIC_ALLOCATION 1\n'; \
+         printf '#endif\n'; \
+         printf '#ifndef configSUPPORT_DYNAMIC_ALLOCATION\n'; \
+         printf '#define configSUPPORT_DYNAMIC_ALLOCATION 1\n'; \
+         printf '#endif\n'; \
+         printf '/* EV_FREERTOS_STATIC_ALLOC_CONFIG_END */\n'; \
+       } >> "$freertos_config" \
+    && grep -Eq '^[[:space:]]*#define[[:space:]]+configSUPPORT_STATIC_ALLOCATION[[:space:]]+1([[:space:]]|$)' "$freertos_config" \
+    && grep -Eq '^[[:space:]]*#define[[:space:]]+configSUPPORT_DYNAMIC_ALLOCATION[[:space:]]+1([[:space:]]|$)' "$freertos_config" \
+    && rm -rf /tmp/ev-sdk-patches \
+    && git config --system --add safe.directory /opt/esp/ESP8266_RTOS_SDK
+
+RUN python3 -m venv /opt/esp/python-env \
+    && /opt/esp/python-env/bin/pip install --upgrade pip wheel \
+    && /opt/esp/python-env/bin/pip install "setuptools<82" \
+    && /opt/esp/python-env/bin/pip install -r /opt/esp/ESP8266_RTOS_SDK/requirements.txt \
+    && /opt/esp/python-env/bin/pip install --upgrade "setuptools<82" \
+    && /opt/esp/python-env/bin/python3 -c "import pip, serial, setuptools"
+
+ENV IDF_PATH=/opt/esp/ESP8266_RTOS_SDK
+ENV PATH=/opt/esp/python-env/bin:/opt/esp/xtensa-lx106-elf/bin:$PATH
+
+WORKDIR /work
+CMD ["bash"]

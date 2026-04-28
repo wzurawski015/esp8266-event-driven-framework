@@ -1,0 +1,1209 @@
+#!/usr/bin/env sh
+set -eu
+
+ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+DOCKER_BIN="${DOCKER_BIN:-docker}"
+
+sdk_default_monitor_baud() {
+  case "$1" in
+    adapters/esp8266_rtos_sdk/targets/esp8266_generic_dev|\
+    adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard|\
+    adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_i2c_hil|\
+    adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_onewire_hil|\
+    adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_wifi_hil)
+      printf '%s\n' '115200'
+      ;;
+    *)
+      printf '%s\n' '74880'
+      ;;
+  esac
+}
+
+HOST_IMAGE="${FW_HOST_IMAGE:-esp8266-event-driven-host:local}"
+DOCS_IMAGE="${FW_DOCS_IMAGE:-esp8266-event-driven-docs:local}"
+SDK_IMAGE="${FW_SDK_IMAGE:-esp8266-event-driven-sdk:local}"
+
+RUN_USER="${FW_RUN_USER:-$(id -u):$(id -g)}"
+SDK_PROJECT_DIR_REL="${FW_SDK_PROJECT_DIR:-adapters/esp8266_rtos_sdk/targets/esp8266_generic_dev}"
+HIL_I2C_PROJECT_DIR_REL="${FW_HIL_I2C_PROJECT_DIR:-adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_i2c_hil}"
+HIL_I2C_MONITOR_TIMEOUT_S="${FW_HIL_I2C_TIMEOUT_S:-180}"
+HIL_ONEWIRE_PROJECT_DIR_REL="${FW_HIL_ONEWIRE_PROJECT_DIR:-adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_onewire_hil}"
+HIL_ONEWIRE_MONITOR_TIMEOUT_S="${FW_HIL_ONEWIRE_TIMEOUT_S:-240}"
+HIL_WIFI_PROJECT_DIR_REL="${FW_HIL_WIFI_PROJECT_DIR:-adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_wifi_hil}"
+HIL_WIFI_MONITOR_TIMEOUT_S="${FW_HIL_WIFI_TIMEOUT_S:-300}"
+SDK_SERIAL_PORT="${FW_ESPPORT:-${ESPPORT:-}}"
+SDK_MONITOR_BAUD="${FW_MONITOR_BAUD:-${MONITORBAUD:-$(sdk_default_monitor_baud "$SDK_PROJECT_DIR_REL")}}"
+SDK_FLASH_BEFORE="${FW_FLASH_BEFORE:-default_reset}"
+SDK_FLASH_AFTER="${FW_FLASH_AFTER:-hard_reset}"
+SDK_FLASH_RETRIES="${FW_FLASH_RETRIES:-3}"
+SDK_FLASH_RETRY_DELAY_S="${FW_FLASH_RETRY_DELAY_S:-1}"
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  ./tools/fw host-image
+  ./tools/fw docs-image
+  ./tools/fw sdk-image
+
+  ./tools/fw host-test
+  ./tools/fw routegen
+  ./tools/fw docgen
+  ./tools/fw docs
+  ./tools/fw clean
+
+  ./tools/fw shell-host
+  ./tools/fw shell-docs
+  ./tools/fw shell-sdk
+
+  ./tools/fw sdk-ports
+  ./tools/fw sdk-port-resolve
+  ./tools/fw target-usb-profile-check
+  ./tools/fw sdk-port-resolve-test
+
+  ./tools/fw sdk-check
+  ./tools/fw sdk-defconfig
+  ./tools/fw sdk-menuconfig
+  ./tools/fw sdk-build
+  ./tools/fw sdk-memory-report
+  ./tools/fw sdk-build-report
+  ./tools/fw sdk-network-build-gate
+  ./tools/fw sdk-clean-target
+  ./tools/fw sdk-distclean
+  ./tools/fw sdk-flash
+  ./tools/fw sdk-flash-manual
+  ./tools/fw sdk-monitor
+  ./tools/fw sdk-simple-monitor
+
+  ./tools/fw hil-i2c-build
+  ./tools/fw hil-i2c-flash
+  ./tools/fw hil-i2c-monitor
+  ./tools/fw hil-i2c-run
+
+  ./tools/fw hil-onewire-build
+  ./tools/fw hil-onewire-flash
+  ./tools/fw hil-onewire-monitor
+  ./tools/fw hil-onewire-run
+
+  ./tools/fw hil-wifi-build
+  ./tools/fw hil-wifi-flash
+  ./tools/fw hil-wifi-monitor
+  ./tools/fw hil-wifi-run
+
+Notes:
+  - All developer-facing validation runs inside Docker by default.
+  - Containers write back to the bind mount using the caller UID:GID.
+  - Set DOCKER_BIN, FW_HOST_IMAGE, FW_DOCS_IMAGE, FW_SDK_IMAGE, FW_RUN_USER,
+    FW_SDK_PROJECT_DIR, FW_ESPPORT, FW_MONITOR_BAUD, FW_FLASH_BEFORE,
+    FW_FLASH_AFTER, FW_FLASH_RETRIES, FW_FLASH_RETRY_DELAY_S,
+    EV_ESP8266_NET_ENABLE_MQTT, EV_SDK_IRAM_LIMIT_BYTES,
+    EV_SDK_DRAM_LIMIT_BYTES, EV_SDK_MAX_BSS_BYTES, or
+    EV_SDK_MAX_DATA_BYTES to override defaults.
+  - FW_ESPPORT/ESPPORT manual overrides always win. If unset, the wrapper
+    resolves the serial port from the selected target USB-UART profile, preferring
+    /dev/serial/by-id and VID/PID matches. Ambiguous matches fail safely.
+USAGE
+}
+
+require_docker() {
+  command -v "$DOCKER_BIN" >/dev/null 2>&1 || {
+    echo "error: docker binary not found: $DOCKER_BIN" >&2
+    exit 1
+  }
+}
+
+require_sdk_project() {
+  if [ ! -f "$ROOT_DIR/$SDK_PROJECT_DIR_REL/Makefile" ]; then
+    echo "error: SDK project not found at $ROOT_DIR/$SDK_PROJECT_DIR_REL" >&2
+    echo "set FW_SDK_PROJECT_DIR to a valid relative project path" >&2
+    exit 1
+  fi
+}
+
+require_sdkconfig_file() {
+  require_sdk_project
+  if [ ! -f "$ROOT_DIR/$SDK_PROJECT_DIR_REL/sdkconfig" ]; then
+    echo "error: sdkconfig missing for $SDK_PROJECT_DIR_REL" >&2
+    echo "run ./tools/fw sdk-defconfig or ./tools/fw sdk-build first" >&2
+    exit 1
+  fi
+}
+
+serial_port_candidates() {
+  found=0
+  for path in /dev/ttyUSB* /dev/ttyACM*; do
+    if [ -e "$path" ]; then
+      printf '%s\n' "$path"
+      found=1
+    fi
+  done
+  [ "$found" -eq 1 ]
+}
+
+serial_by_id_candidates() {
+  found=0
+  for path in /dev/serial/by-id/*; do
+    if [ -e "$path" ]; then
+      printf '%s\n' "$path"
+      found=1
+    fi
+  done
+  [ "$found" -eq 1 ]
+}
+
+candidate_count() {
+  printf '%s\n' "$1" | sed '/^$/d' | wc -l | tr -d '[:space:]'
+}
+
+candidate_first() {
+  printf '%s\n' "$1" | sed '/^$/d' | sed -n '1p'
+}
+
+resolve_serial_symlink() {
+  if command -v readlink >/dev/null 2>&1; then
+    readlink -f "$1" 2>/dev/null || printf '%s\n' "$1"
+  else
+    printf '%s\n' "$1"
+  fi
+}
+
+sdk_target_name_from_project_dir() {
+  basename "$SDK_PROJECT_DIR_REL"
+}
+
+sdk_target_profile_path() {
+  printf '%s/%s/target_usb_uart.profile\n' "$ROOT_DIR" "$SDK_PROJECT_DIR_REL"
+}
+
+sdk_target_local_profile_path() {
+  printf '%s/%s/target_usb_uart.local.profile\n' "$ROOT_DIR" "$SDK_PROJECT_DIR_REL"
+}
+
+sdk_clear_target_usb_uart_profile() {
+  EV_TARGET_NAME="$(sdk_target_name_from_project_dir)"
+  EV_TARGET_USB_UART_BRIDGE="unknown"
+  EV_TARGET_USB_VID=""
+  EV_TARGET_USB_PID=""
+  EV_TARGET_USB_SERIAL=""
+  EV_TARGET_SERIAL_BY_ID_PATTERN=""
+  EV_TARGET_FLASH_BAUD=""
+  EV_TARGET_MONITOR_BAUD=""
+  EV_TARGET_RESET_MODE=""
+  EV_TARGET_FLASH_BEFORE=""
+  EV_TARGET_FLASH_AFTER=""
+  EV_TARGET_PORT_HINT=""
+}
+
+sdk_load_target_usb_uart_profile() {
+  sdk_clear_target_usb_uart_profile
+  profile_path=$(sdk_target_profile_path)
+  local_profile_path=$(sdk_target_local_profile_path)
+
+  if [ -f "$profile_path" ]; then
+    . "$profile_path"
+  fi
+
+  if [ -f "$local_profile_path" ]; then
+    . "$local_profile_path"
+  fi
+}
+
+sdk_apply_target_usb_uart_profile_defaults() {
+  sdk_load_target_usb_uart_profile
+
+  if [ -n "${EV_TARGET_MONITOR_BAUD:-}" ] && [ -z "${FW_MONITOR_BAUD+x}" ] && [ -z "${MONITORBAUD+x}" ]; then
+    SDK_MONITOR_BAUD="$EV_TARGET_MONITOR_BAUD"
+  fi
+  if [ -n "${EV_TARGET_FLASH_BEFORE:-}" ] && [ -z "${FW_FLASH_BEFORE+x}" ]; then
+    SDK_FLASH_BEFORE="$EV_TARGET_FLASH_BEFORE"
+  fi
+  if [ -n "${EV_TARGET_FLASH_AFTER:-}" ] && [ -z "${FW_FLASH_AFTER+x}" ]; then
+    SDK_FLASH_AFTER="$EV_TARGET_FLASH_AFTER"
+  fi
+}
+
+sdk_select_single_serial_candidate() {
+  reason="$1"
+  candidates="$2"
+  count=$(candidate_count "$candidates")
+  case "$count" in
+    0)
+      return 1
+      ;;
+    1)
+      SDK_SERIAL_PORT=$(resolve_serial_symlink "$(candidate_first "$candidates")")
+      return 0
+      ;;
+    *)
+      echo "error: multiple serial devices matched $reason for target $EV_TARGET_NAME" >&2
+      printf '%s\n' "$candidates" | sed '/^$/d' >&2
+      echo "set FW_ESPPORT explicitly or add target_usb_uart.local.profile with EV_TARGET_USB_SERIAL, EV_TARGET_SERIAL_BY_ID_PATTERN, or EV_TARGET_PORT_HINT" >&2
+      return 2
+      ;;
+  esac
+}
+
+sdk_match_serial_by_port_hint() {
+  if [ -n "${EV_TARGET_PORT_HINT:-}" ] && [ -e "$EV_TARGET_PORT_HINT" ]; then
+    SDK_SERIAL_PORT=$(resolve_serial_symlink "$EV_TARGET_PORT_HINT")
+    return 0
+  fi
+  return 1
+}
+
+sdk_match_serial_by_id() {
+  by_id=$(serial_by_id_candidates || true)
+  matches=""
+
+  if [ -n "${EV_TARGET_USB_SERIAL:-}" ]; then
+    for path in $by_id; do
+      base=$(basename "$path")
+      if printf '%s\n' "$base" | grep -F "$EV_TARGET_USB_SERIAL" >/dev/null 2>&1; then
+        matches="${matches}${path}
+"
+      fi
+    done
+    if sdk_select_single_serial_candidate "USB serial $EV_TARGET_USB_SERIAL" "$matches"; then
+      return 0
+    else
+      rc=$?
+      [ "$rc" -eq 2 ] && return 2
+    fi
+  fi
+
+  matches=""
+  if [ -n "${EV_TARGET_SERIAL_BY_ID_PATTERN:-}" ]; then
+    for path in $by_id; do
+      case "$path" in
+        $EV_TARGET_SERIAL_BY_ID_PATTERN)
+          matches="${matches}${path}
+"
+          ;;
+      esac
+    done
+    if sdk_select_single_serial_candidate "by-id pattern $EV_TARGET_SERIAL_BY_ID_PATTERN" "$matches"; then
+      return 0
+    else
+      rc=$?
+      [ "$rc" -eq 2 ] && return 2
+    fi
+  fi
+
+  return 1
+}
+
+sdk_match_serial_by_vid_pid() {
+  if [ -z "${EV_TARGET_USB_VID:-}" ] || [ -z "${EV_TARGET_USB_PID:-}" ]; then
+    return 1
+  fi
+  if ! command -v udevadm >/dev/null 2>&1; then
+    return 1
+  fi
+
+  want_vid=$(printf '%s\n' "$EV_TARGET_USB_VID" | tr '[:upper:]' '[:lower:]')
+  want_pid=$(printf '%s\n' "$EV_TARGET_USB_PID" | tr '[:upper:]' '[:lower:]')
+  matches=""
+  for path in $(serial_port_candidates || true); do
+    props=$(udevadm info -q property -n "$path" 2>/dev/null || true)
+    got_vid=$(printf '%s\n' "$props" | sed -n 's/^ID_VENDOR_ID=//p' | head -n 1 | tr '[:upper:]' '[:lower:]')
+    got_pid=$(printf '%s\n' "$props" | sed -n 's/^ID_MODEL_ID=//p' | head -n 1 | tr '[:upper:]' '[:lower:]')
+    if [ "$got_vid" = "$want_vid" ] && [ "$got_pid" = "$want_pid" ]; then
+      matches="${matches}${path}
+"
+    fi
+  done
+
+  if sdk_select_single_serial_candidate "VID:PID ${EV_TARGET_USB_VID}:${EV_TARGET_USB_PID}" "$matches"; then
+    return 0
+  else
+    rc=$?
+    [ "$rc" -eq 2 ] && return 2
+  fi
+
+  return 1
+}
+
+resolve_serial_port() {
+  if [ -n "$SDK_SERIAL_PORT" ]; then
+    return 0
+  fi
+
+  sdk_apply_target_usb_uart_profile_defaults
+
+  if sdk_match_serial_by_port_hint; then
+    return 0
+  fi
+  if sdk_match_serial_by_id; then
+    return 0
+  else
+    rc=$?
+    [ "$rc" -eq 2 ] && return 1
+  fi
+  if sdk_match_serial_by_vid_pid; then
+    return 0
+  else
+    rc=$?
+    [ "$rc" -eq 2 ] && return 1
+  fi
+
+  candidates=$(serial_port_candidates || true)
+  count=$(candidate_count "$candidates")
+
+  case "$count" in
+    1)
+      SDK_SERIAL_PORT=$(candidate_first "$candidates")
+      echo "note: target profile did not produce a unique match; using the only visible serial device: $SDK_SERIAL_PORT" >&2
+      return 0
+      ;;
+    0)
+      echo "error: no serial device found for target $EV_TARGET_NAME under /dev/serial/by-id, /dev/ttyUSB*, or /dev/ttyACM*" >&2
+      echo "target profile: $(sdk_target_profile_path)" >&2
+      echo "use ./tools/fw sdk-ports to inspect visible serial devices" >&2
+      echo "or set FW_ESPPORT explicitly" >&2
+      return 1
+      ;;
+    *)
+      echo "error: multiple serial devices are visible and target profile did not resolve one unique port" >&2
+      printf '%s\n' "$candidates" >&2
+      echo "target profile: $(sdk_target_profile_path)" >&2
+      echo "use /dev/serial/by-id, set FW_ESPPORT, or add target_usb_uart.local.profile" >&2
+      return 1
+      ;;
+  esac
+}
+
+sdk_ports() {
+  echo "serial device nodes:" >&2
+  if serial_port_candidates; then
+    :
+  else
+    echo "  (none under /dev/ttyUSB* or /dev/ttyACM*)" >&2
+  fi
+  echo "serial by-id links:" >&2
+  if serial_by_id_candidates; then
+    :
+  else
+    echo "  (none under /dev/serial/by-id)" >&2
+  fi
+}
+
+sdk_port_resolve() {
+  require_serial_port
+  printf '%s\n' "$SDK_SERIAL_PORT"
+}
+
+require_serial_port() {
+  resolve_serial_port || exit 1
+  if [ ! -e "$SDK_SERIAL_PORT" ]; then
+    echo "error: serial device not found: $SDK_SERIAL_PORT" >&2
+    echo "use ./tools/fw sdk-ports to inspect visible serial devices" >&2
+    echo "or set FW_ESPPORT explicitly" >&2
+    exit 1
+  fi
+}
+
+target_usb_profile_check() {
+  failures=0
+  for target_dir in "$ROOT_DIR"/adapters/esp8266_rtos_sdk/targets/*; do
+    [ -d "$target_dir" ] || continue
+    target_name=$(basename "$target_dir")
+    profile="$target_dir/target_usb_uart.profile"
+    if [ ! -f "$profile" ]; then
+      echo "error: missing USB-UART profile for target: $target_name" >&2
+      failures=$((failures + 1))
+      continue
+    fi
+    (
+      EV_TARGET_NAME=
+      EV_TARGET_USB_UART_BRIDGE=
+      EV_TARGET_FLASH_BAUD=
+      EV_TARGET_MONITOR_BAUD=
+      . "$profile"
+      test -n "$EV_TARGET_NAME"
+      test -n "$EV_TARGET_USB_UART_BRIDGE"
+      test -n "$EV_TARGET_FLASH_BAUD"
+      test -n "$EV_TARGET_MONITOR_BAUD"
+    ) || {
+      echo "error: invalid USB-UART profile: $profile" >&2
+      failures=$((failures + 1))
+    }
+  done
+
+  tracked_local=$(git -C "$ROOT_DIR" ls-files 'adapters/esp8266_rtos_sdk/targets/*/target_usb_uart.local.profile' 2>/dev/null || true)
+  if [ -n "$tracked_local" ]; then
+    echo "error: local USB-UART override profile is tracked by Git:" >&2
+    printf '%s\n' "$tracked_local" >&2
+    failures=$((failures + 1))
+  fi
+
+  if FW_ESPPORT=/dev/null ESPPORT= FW_SDK_PROJECT_DIR="$SDK_PROJECT_DIR_REL" "$0" sdk-port-resolve 2>/dev/null | grep -qx '/dev/null'; then
+    :
+  else
+    echo "error: FW_ESPPORT override did not win in sdk-port-resolve" >&2
+    failures=$((failures + 1))
+  fi
+
+  if [ "$failures" -ne 0 ]; then
+    echo "EV_TARGET_USB_PROFILE_CHECK FAIL failures=$failures" >&2
+    return 1
+  fi
+  echo "EV_TARGET_USB_PROFILE_CHECK PASS failures=0"
+}
+
+sdk_port_resolve_test() {
+  FW_ESPPORT=/dev/null ESPPORT= FW_SDK_PROJECT_DIR="$SDK_PROJECT_DIR_REL" "$0" sdk-port-resolve | grep -qx '/dev/null'
+  echo "EV_SDK_PORT_RESOLVE_TEST PASS"
+}
+
+build_host_image() {
+  require_docker
+  "$DOCKER_BIN" build \
+    -f "$ROOT_DIR/docker/Dockerfile.host" \
+    -t "$HOST_IMAGE" \
+    "$ROOT_DIR"
+}
+
+build_docs_image() {
+  require_docker
+  "$DOCKER_BIN" build \
+    -f "$ROOT_DIR/docker/Dockerfile.docs" \
+    -t "$DOCS_IMAGE" \
+    "$ROOT_DIR"
+}
+
+build_sdk_image() {
+  require_docker
+  "$DOCKER_BIN" build \
+    -f "$ROOT_DIR/docker/Dockerfile.sdk" \
+    -t "$SDK_IMAGE" \
+    "$ROOT_DIR"
+}
+freertos_static_allocation_config_is_valid() {
+  freertos_config="$1"
+
+  static_count=$(grep -Ec '^[[:space:]]*#define[[:space:]]+configSUPPORT_STATIC_ALLOCATION[[:space:]]+1([[:space:]]|$)' "$freertos_config" || true)
+  dynamic_count=$(grep -Ec '^[[:space:]]*#define[[:space:]]+configSUPPORT_DYNAMIC_ALLOCATION[[:space:]]+1([[:space:]]|$)' "$freertos_config" || true)
+
+  [ "$static_count" -eq 1 ] && [ "$dynamic_count" -eq 1 ]
+}
+
+sdk_static_config_wrapper_script() {
+  cat <<'SDK_STATIC_CONFIG_WRAPPER'
+set -eu
+freertos_static_allocation_config_is_valid() {
+  freertos_config="$1"
+  static_count=$(grep -Ec '^[[:space:]]*#define[[:space:]]+configSUPPORT_STATIC_ALLOCATION[[:space:]]+1([[:space:]]|$)' "$freertos_config" || true)
+  dynamic_count=$(grep -Ec '^[[:space:]]*#define[[:space:]]+configSUPPORT_DYNAMIC_ALLOCATION[[:space:]]+1([[:space:]]|$)' "$freertos_config" || true)
+  [ "$static_count" -eq 1 ] && [ "$dynamic_count" -eq 1 ]
+}
+ensure_freertos_static_allocation_config() {
+  freertos_config="${IDF_PATH:?IDF_PATH is not set}/components/freertos/port/esp8266/include/freertos/FreeRTOSConfig.h"
+  if [ ! -f "$freertos_config" ]; then
+    echo "error: FreeRTOSConfig.h not found: $freertos_config" >&2
+    return 1
+  fi
+  if freertos_static_allocation_config_is_valid "$freertos_config"; then
+    return 0
+  fi
+  if [ ! -w "$freertos_config" ]; then
+    echo "error: FreeRTOSConfig.h requires static-allocation injection but is not writable: $freertos_config" >&2
+    echo "error: rebuild the SDK image or run sdk-check with permissions to update the SDK header" >&2
+    return 1
+  fi
+  tmp_file="${freertos_config}.ev-static.$$"
+  trap 'rm -f "$tmp_file"' HUP INT TERM EXIT
+  sed '/EV_FREERTOS_STATIC_ALLOC_CONFIG_BEGIN/,/EV_FREERTOS_STATIC_ALLOC_CONFIG_END/d' "$freertos_config" \
+    | sed \
+        -e '/^[[:space:]]*#[[:space:]]*define[[:space:]][[:space:]]*configSUPPORT_STATIC_ALLOCATION[[:space:]]/d' \
+        -e '/^[[:space:]]*#[[:space:]]*define[[:space:]][[:space:]]*configSUPPORT_DYNAMIC_ALLOCATION[[:space:]]/d' \
+      > "$tmp_file"
+  cat "$tmp_file" > "$freertos_config"
+  cat >> "$freertos_config" <<'FREERTOS_STATIC_ALLOC_CONFIG'
+
+/* EV_FREERTOS_STATIC_ALLOC_CONFIG_BEGIN
+ * Project environment hardening:
+ *   - configSUPPORT_STATIC_ALLOCATION enables application-provided
+ *     Idle/Timer task memory hooks.
+ *   - configSUPPORT_DYNAMIC_ALLOCATION remains enabled only as an ESP8266
+ *     vendor SDK bootstrap compatibility bridge.
+ *   - This block does not claim full vendor SDK heap elimination; runtime
+ *     actor/event/I2C/IRQ hot paths remain zero-heap by project policy.
+ */
+#ifndef configSUPPORT_STATIC_ALLOCATION
+#define configSUPPORT_STATIC_ALLOCATION 1
+#endif
+#ifndef configSUPPORT_DYNAMIC_ALLOCATION
+#define configSUPPORT_DYNAMIC_ALLOCATION 1
+#endif
+/* EV_FREERTOS_STATIC_ALLOC_CONFIG_END */
+FREERTOS_STATIC_ALLOC_CONFIG
+  rm -f "$tmp_file"
+  trap - HUP INT TERM EXIT
+  if ! freertos_static_allocation_config_is_valid "$freertos_config"; then
+    echo "error: failed to verify FreeRTOS static allocation config in $freertos_config" >&2
+    return 1
+  fi
+}
+ensure_freertos_static_allocation_config
+exec "$@"
+SDK_STATIC_CONFIG_WRAPPER
+}
+
+run_in_image() {
+  image="$1"
+  shift
+  "$DOCKER_BIN" run --rm \
+    --user "$RUN_USER" \
+    -v "$ROOT_DIR:/work" \
+    -w /work \
+    "$image" \
+    "$@"
+}
+
+run_in_image_it() {
+  image="$1"
+  shift
+  "$DOCKER_BIN" run --rm -it \
+    --user "$RUN_USER" \
+    -v "$ROOT_DIR:/work" \
+    -w /work \
+    "$image" \
+    "$@"
+}
+
+run_in_sdk() {
+  require_sdk_project
+  build_sdk_image
+  run_in_image \
+    "$SDK_IMAGE" \
+    env \
+    EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
+    ESPPORT="$SDK_SERIAL_PORT" \
+    MONITORBAUD="$SDK_MONITOR_BAUD" \
+    EV_ESP8266_NET_ENABLE_MQTT="${EV_ESP8266_NET_ENABLE_MQTT:-0}" \
+    EV_SDK_IRAM_LIMIT_BYTES="${EV_SDK_IRAM_LIMIT_BYTES:-}" \
+    EV_SDK_DRAM_LIMIT_BYTES="${EV_SDK_DRAM_LIMIT_BYTES:-}" \
+    EV_SDK_MAX_BSS_BYTES="${EV_SDK_MAX_BSS_BYTES:-}" \
+    EV_SDK_MAX_DATA_BYTES="${EV_SDK_MAX_DATA_BYTES:-}" \
+    sh -lc "$(sdk_static_config_wrapper_script)" sh "$@"
+}
+
+run_in_sdk_it() {
+  require_sdk_project
+  build_sdk_image
+  run_in_image_it \
+    "$SDK_IMAGE" \
+    env \
+    EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
+    ESPPORT="$SDK_SERIAL_PORT" \
+    MONITORBAUD="$SDK_MONITOR_BAUD" \
+    EV_ESP8266_NET_ENABLE_MQTT="${EV_ESP8266_NET_ENABLE_MQTT:-0}" \
+    EV_SDK_IRAM_LIMIT_BYTES="${EV_SDK_IRAM_LIMIT_BYTES:-}" \
+    EV_SDK_DRAM_LIMIT_BYTES="${EV_SDK_DRAM_LIMIT_BYTES:-}" \
+    EV_SDK_MAX_BSS_BYTES="${EV_SDK_MAX_BSS_BYTES:-}" \
+    EV_SDK_MAX_DATA_BYTES="${EV_SDK_MAX_DATA_BYTES:-}" \
+    sh -lc "$(sdk_static_config_wrapper_script)" sh "$@"
+}
+
+run_in_sdk_with_device() {
+  require_sdk_project
+  require_serial_port
+  build_sdk_image
+
+  serial_gid=$(stat -c '%g' "$SDK_SERIAL_PORT" 2>/dev/null || true)
+
+  if [ -n "$serial_gid" ]; then
+    "$DOCKER_BIN" run --rm \
+      --user "$RUN_USER" \
+      --group-add "$serial_gid" \
+      --device "$SDK_SERIAL_PORT:$SDK_SERIAL_PORT" \
+      -v "$ROOT_DIR:/work" \
+      -w /work \
+      "$SDK_IMAGE" \
+      env \
+      EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
+      ESPPORT="$SDK_SERIAL_PORT" \
+      MONITORBAUD="$SDK_MONITOR_BAUD" \
+      FLASH_BEFORE="${FLASH_BEFORE:-$SDK_FLASH_BEFORE}" \
+      FLASH_AFTER="${FLASH_AFTER:-$SDK_FLASH_AFTER}" \
+      FLASH_RETRIES="${FLASH_RETRIES:-$SDK_FLASH_RETRIES}" \
+      FLASH_RETRY_DELAY_S="${FLASH_RETRY_DELAY_S:-$SDK_FLASH_RETRY_DELAY_S}" \
+      sh -lc "$(sdk_static_config_wrapper_script)" sh "$@"
+  else
+    "$DOCKER_BIN" run --rm \
+      --user "$RUN_USER" \
+      --device "$SDK_SERIAL_PORT:$SDK_SERIAL_PORT" \
+      -v "$ROOT_DIR:/work" \
+      -w /work \
+      "$SDK_IMAGE" \
+      env \
+      EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
+      ESPPORT="$SDK_SERIAL_PORT" \
+      MONITORBAUD="$SDK_MONITOR_BAUD" \
+      FLASH_BEFORE="${FLASH_BEFORE:-$SDK_FLASH_BEFORE}" \
+      FLASH_AFTER="${FLASH_AFTER:-$SDK_FLASH_AFTER}" \
+      FLASH_RETRIES="${FLASH_RETRIES:-$SDK_FLASH_RETRIES}" \
+      FLASH_RETRY_DELAY_S="${FLASH_RETRY_DELAY_S:-$SDK_FLASH_RETRY_DELAY_S}" \
+      sh -lc "$(sdk_static_config_wrapper_script)" sh "$@"
+  fi
+}
+
+run_in_sdk_with_device_it() {
+  require_sdk_project
+  require_serial_port
+  build_sdk_image
+
+  serial_gid=$(stat -c '%g' "$SDK_SERIAL_PORT" 2>/dev/null || true)
+
+  if [ -n "$serial_gid" ]; then
+    "$DOCKER_BIN" run --rm -it \
+      --user "$RUN_USER" \
+      --group-add "$serial_gid" \
+      --device "$SDK_SERIAL_PORT:$SDK_SERIAL_PORT" \
+      -v "$ROOT_DIR:/work" \
+      -w /work \
+      "$SDK_IMAGE" \
+      env \
+      EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
+      ESPPORT="$SDK_SERIAL_PORT" \
+      MONITORBAUD="$SDK_MONITOR_BAUD" \
+      FLASH_BEFORE="${FLASH_BEFORE:-$SDK_FLASH_BEFORE}" \
+      FLASH_AFTER="${FLASH_AFTER:-$SDK_FLASH_AFTER}" \
+      FLASH_RETRIES="${FLASH_RETRIES:-$SDK_FLASH_RETRIES}" \
+      FLASH_RETRY_DELAY_S="${FLASH_RETRY_DELAY_S:-$SDK_FLASH_RETRY_DELAY_S}" \
+      sh -lc "$(sdk_static_config_wrapper_script)" sh "$@"
+  else
+    "$DOCKER_BIN" run --rm -it \
+      --user "$RUN_USER" \
+      --device "$SDK_SERIAL_PORT:$SDK_SERIAL_PORT" \
+      -v "$ROOT_DIR:/work" \
+      -w /work \
+      "$SDK_IMAGE" \
+      env \
+      EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
+      ESPPORT="$SDK_SERIAL_PORT" \
+      MONITORBAUD="$SDK_MONITOR_BAUD" \
+      FLASH_BEFORE="${FLASH_BEFORE:-$SDK_FLASH_BEFORE}" \
+      FLASH_AFTER="${FLASH_AFTER:-$SDK_FLASH_AFTER}" \
+      FLASH_RETRIES="${FLASH_RETRIES:-$SDK_FLASH_RETRIES}" \
+      FLASH_RETRY_DELAY_S="${FLASH_RETRY_DELAY_S:-$SDK_FLASH_RETRY_DELAY_S}" \
+      sh -lc "$(sdk_static_config_wrapper_script)" sh "$@"
+  fi
+}
+
+run_in_sdk_with_device_i() {
+  require_sdk_project
+  require_serial_port
+  build_sdk_image
+
+  serial_gid=$(stat -c '%g' "$SDK_SERIAL_PORT" 2>/dev/null || true)
+
+  if [ -n "$serial_gid" ]; then
+    "$DOCKER_BIN" run --rm -i \
+      --user "$RUN_USER" \
+      --group-add "$serial_gid" \
+      --device "$SDK_SERIAL_PORT:$SDK_SERIAL_PORT" \
+      -v "$ROOT_DIR:/work" \
+      -w /work \
+      "$SDK_IMAGE" \
+      env \
+      EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
+      ESPPORT="$SDK_SERIAL_PORT" \
+      MONITORBAUD="$SDK_MONITOR_BAUD" \
+      FLASH_BEFORE="${FLASH_BEFORE:-$SDK_FLASH_BEFORE}" \
+      FLASH_AFTER="${FLASH_AFTER:-$SDK_FLASH_AFTER}" \
+      FLASH_RETRIES="${FLASH_RETRIES:-$SDK_FLASH_RETRIES}" \
+      FLASH_RETRY_DELAY_S="${FLASH_RETRY_DELAY_S:-$SDK_FLASH_RETRY_DELAY_S}" \
+      sh -lc "$(sdk_static_config_wrapper_script)" sh "$@"
+  else
+    "$DOCKER_BIN" run --rm -i \
+      --user "$RUN_USER" \
+      --device "$SDK_SERIAL_PORT:$SDK_SERIAL_PORT" \
+      -v "$ROOT_DIR:/work" \
+      -w /work \
+      "$SDK_IMAGE" \
+      env \
+      EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
+      ESPPORT="$SDK_SERIAL_PORT" \
+      MONITORBAUD="$SDK_MONITOR_BAUD" \
+      FLASH_BEFORE="${FLASH_BEFORE:-$SDK_FLASH_BEFORE}" \
+      FLASH_AFTER="${FLASH_AFTER:-$SDK_FLASH_AFTER}" \
+      FLASH_RETRIES="${FLASH_RETRIES:-$SDK_FLASH_RETRIES}" \
+      FLASH_RETRY_DELAY_S="${FLASH_RETRY_DELAY_S:-$SDK_FLASH_RETRY_DELAY_S}" \
+      sh -lc "$(sdk_static_config_wrapper_script)" sh "$@"
+  fi
+}
+
+routegen() {
+  python_bin="${FW_PYTHON:-}"
+  if [ -z "$python_bin" ]; then
+    if [ -x /usr/bin/python3 ]; then
+      python_bin=/usr/bin/python3
+    else
+      python_bin=python3
+    fi
+  fi
+  "$python_bin" "$ROOT_DIR/tools/routegen/routegen.py"
+}
+
+sdk_check() {
+  build_sdk_image
+  run_in_image \
+    "$SDK_IMAGE" \
+    sh -lc "$(sdk_static_config_wrapper_script)" sh sh -lc '
+      set -eu
+      xtensa-lx106-elf-gcc --version | head -n 1
+      python3 --version
+      python3 -c "import pip, serial, setuptools; print(\"python_env=ok pip=%s pyserial=%s setuptools=%s\" % (pip.__version__, getattr(serial, \"VERSION\", getattr(serial, \"__version__\", \"unknown\")), setuptools.__version__))"
+      make --version | head -n 1
+      printf "IDF_PATH=%s\n" "$IDF_PATH"
+      test -f "$IDF_PATH/make/project.mk"
+      test -f "$IDF_PATH/export.sh"
+      freertos_config="$IDF_PATH/components/freertos/port/esp8266/include/freertos/FreeRTOSConfig.h"
+      test -f "$freertos_config"
+      grep -Eq "^[[:space:]]*#define[[:space:]]+configSUPPORT_STATIC_ALLOCATION[[:space:]]+1([[:space:]]|$)" "$freertos_config"
+      grep -Eq "^[[:space:]]*#define[[:space:]]+configSUPPORT_DYNAMIC_ALLOCATION[[:space:]]+1([[:space:]]|$)" "$freertos_config"
+      grep -q "ev_freertos_static_hooks.c" /work/adapters/esp8266_rtos_sdk/components/ev_platform/component.mk
+      git -C "$IDF_PATH" rev-parse --is-inside-work-tree >/dev/null
+    '
+}
+
+sdk_defconfig() {
+  run_in_sdk \
+    sh -lc '
+      set -eu
+      make -C "$EV_SDK_PROJECT" SDKCONFIG_DEFAULTS=sdkconfig.defaults defconfig
+    '
+}
+
+sdk_build() {
+  run_in_sdk \
+    sh -lc '
+      set -eu
+      if [ ! -f "$EV_SDK_PROJECT/sdkconfig" ]; then
+        make -C "$EV_SDK_PROJECT" SDKCONFIG_DEFAULTS=sdkconfig.defaults defconfig
+      fi
+      jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
+      make -C "$EV_SDK_PROJECT" -j"$jobs"
+    '
+}
+
+sdk_memory_report() {
+  run_in_sdk \
+    sh -lc '
+      set -eu
+      python3 /work/tools/sdk_memory_report.py --project-dir "$EV_SDK_PROJECT"
+    '
+}
+
+sdk_build_report() {
+  sdk_build
+  sdk_memory_report
+}
+
+sdk_network_build_gate() {
+  mqtt_enable="${EV_SDK_BUILD_ENABLE_MQTT:-${EV_ESP8266_NET_ENABLE_MQTT:-0}}"
+  case "$mqtt_enable" in
+    0|1)
+      ;;
+    *)
+      echo "error: EV_SDK_BUILD_ENABLE_MQTT/EV_ESP8266_NET_ENABLE_MQTT must be 0 or 1" >&2
+      exit 1
+      ;;
+  esac
+  export EV_ESP8266_NET_ENABLE_MQTT="$mqtt_enable"
+  echo "note: sdk-network-build-gate uses EV_ESP8266_NET_ENABLE_MQTT=$EV_ESP8266_NET_ENABLE_MQTT" >&2
+  sdk_build
+  sdk_memory_report
+}
+
+sdk_clean_target() {
+  run_in_sdk \
+    sh -lc '
+      set -eu
+      make -C "$EV_SDK_PROJECT" clean
+    '
+}
+
+sdk_distclean() {
+  run_in_sdk \
+    sh -lc '
+      set -eu
+      make -C "$EV_SDK_PROJECT" clean || true
+      rm -rf \
+        "$EV_SDK_PROJECT/build" \
+        "$EV_SDK_PROJECT/sdkconfig" \
+        "$EV_SDK_PROJECT/sdkconfig.old" \
+        "$EV_SDK_PROJECT/sdkconfig.bak"
+    '
+}
+
+sdk_menuconfig() {
+  run_in_sdk_it \
+    sh -lc '
+      set -eu
+      if [ ! -f "$EV_SDK_PROJECT/sdkconfig" ]; then
+        make -C "$EV_SDK_PROJECT" SDKCONFIG_DEFAULTS=sdkconfig.defaults defconfig
+      fi
+      make -C "$EV_SDK_PROJECT" menuconfig
+    '
+}
+
+sdk_flash_common() {
+  run_in_sdk_with_device \
+    sh -lc '
+      set -eu
+      if [ ! -f "$EV_SDK_PROJECT/sdkconfig" ]; then
+        make -C "$EV_SDK_PROJECT" SDKCONFIG_DEFAULTS=sdkconfig.defaults defconfig
+      fi
+
+      attempt=1
+
+      while [ "$attempt" -le "$FLASH_RETRIES" ]; do
+        log_file=$(mktemp)
+        stream_dir=$(mktemp -d)
+        stream_fifo="$stream_dir/flash.out"
+        status=0
+        retryable=0
+        stream_pid=
+
+        mkfifo "$stream_fifo"
+
+        echo "note: flash attempt $attempt/$FLASH_RETRIES on $ESPPORT ..." >&2
+        echo "note: live flash output is mirrored below; if the line stalls at Connecting...., the current esptool handshake is genuinely still in progress." >&2
+
+        tee "$log_file" <"$stream_fifo" >&2 &
+        stream_pid=$!
+
+        PYTHONUNBUFFERED=1 make -C "$EV_SDK_PROJECT" \
+          ESPPORT="$ESPPORT" \
+          ESPTOOLPY_BEFORE="$FLASH_BEFORE" \
+          ESPTOOLPY_AFTER="$FLASH_AFTER" \
+          flash >"$stream_fifo" 2>&1 || status=$?
+
+        wait "$stream_pid" 2>/dev/null || true
+        rm -rf "$stream_dir"
+
+        if grep -Eiq "setDTR|setRTS|TIOCMBIC|TIOCMBIS|Input/output error|Errno 5|Failed to connect|Timed out waiting for packet header|Invalid head of packet" "$log_file"; then
+          retryable=1
+          echo "note: serial auto-reset or bootloader handshake failed on $ESPPORT (attempt $attempt/$FLASH_RETRIES)." >&2
+          echo "note: this is a known Docker/WSL2 USB-serial edge case." >&2
+          echo "note: if retries do not help, use ./tools/fw sdk-flash-manual" >&2
+          echo "note: after putting the board into ROM bootloader mode manually." >&2
+        fi
+
+        rm -f "$log_file"
+
+        if [ "$status" -eq 0 ]; then
+          exit 0
+        fi
+
+        if [ "$retryable" -ne 1 ] || [ "$attempt" -ge "$FLASH_RETRIES" ]; then
+          exit "$status"
+        fi
+
+        echo "note: retrying flash in ${FLASH_RETRY_DELAY_S}s..." >&2
+        sleep "$FLASH_RETRY_DELAY_S"
+        attempt=$((attempt + 1))
+      done
+
+      exit 1
+    '
+}
+
+sdk_flash() {
+  sdk_flash_common
+}
+
+sdk_flash_manual() {
+  echo "note: sdk-flash-manual skips esptool-managed auto-reset before and after flashing." >&2
+  echo "note: put the board into ROM bootloader mode manually before flashing." >&2
+  run_in_sdk_with_device \
+    sh -lc '
+      set -eu
+      if [ ! -f "$EV_SDK_PROJECT/sdkconfig" ]; then
+        make -C "$EV_SDK_PROJECT" SDKCONFIG_DEFAULTS=sdkconfig.defaults defconfig
+      fi
+
+      jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
+      make -C "$EV_SDK_PROJECT" -j"$jobs"
+
+      project_name=$(sed -n "s/^PROJECT_NAME[[:space:]]*:=[[:space:]]*//p" "$EV_SDK_PROJECT/Makefile" | head -n 1 | sed "s/[[:space:]]*$//")
+
+      if [ -z "$project_name" ]; then
+        echo "error: could not derive PROJECT_NAME from $EV_SDK_PROJECT/Makefile" >&2
+        exit 1
+      fi
+
+      build_dir="$EV_SDK_PROJECT/build"
+      boot_bin="$build_dir/bootloader/bootloader.bin"
+      part_bin="$build_dir/partitions_singleapp.bin"
+      app_bin="$build_dir/${project_name}.bin"
+
+      for artifact in "$boot_bin" "$part_bin" "$app_bin"; do
+        if [ ! -f "$artifact" ]; then
+          echo "error: missing flash artifact: $artifact" >&2
+          exit 1
+        fi
+      done
+
+      python3 "$IDF_PATH/components/esptool_py/esptool/esptool.py" \
+        --chip esp8266 \
+        --port "$ESPPORT" \
+        --baud 115200 \
+        --before no_reset \
+        --after no_reset \
+        write_flash -z --flash_mode dio --flash_freq 40m --flash_size 2MB \
+        0x0 "$boot_bin" \
+        0x10000 "$app_bin" \
+        0x8000 "$part_bin"
+    '
+  echo "note: flashing finished without automatic reset; press RESET to boot the new app." >&2
+}
+
+
+sdk_monitor() {
+  run_in_sdk_with_device_it \
+    sh -lc '
+      set -eu
+      test -f "$EV_SDK_PROJECT/sdkconfig" || {
+        echo "error: sdkconfig missing, run ./tools/fw sdk-defconfig or ./tools/fw sdk-build first" >&2
+        exit 1
+      }
+      echo "note: if interactive monitor fails under Docker/WSL2, use ./tools/fw sdk-simple-monitor" >&2
+      make -C "$EV_SDK_PROJECT" ESPPORT="$ESPPORT" MONITORBAUD="$MONITORBAUD" monitor
+    '
+}
+
+sdk_simple_monitor() {
+  require_sdkconfig_file
+  require_serial_port
+  printf "simple serial monitor: %s @ %s\n" "$SDK_SERIAL_PORT" "$SDK_MONITOR_BAUD" >&2
+  printf "quit with Ctrl+C\n" >&2
+  printf "note: runtime logs are expected at %s; earliest ESP8266 ROM boot text may still appear at 74880 baud.\n" "$SDK_MONITOR_BAUD" >&2
+  run_in_sdk_with_device_i \
+    python3 -u /work/tools/serial_monitor.py "$SDK_SERIAL_PORT" "$SDK_MONITOR_BAUD"
+}
+
+hil_i2c_select_project() {
+  SDK_PROJECT_DIR_REL="$HIL_I2C_PROJECT_DIR_REL"
+  SDK_MONITOR_BAUD="${FW_MONITOR_BAUD:-${MONITORBAUD:-115200}}"
+}
+
+hil_i2c_build() {
+  hil_i2c_select_project
+  sdk_build
+}
+
+hil_i2c_flash() {
+  hil_i2c_select_project
+  sdk_flash
+}
+
+hil_i2c_monitor() {
+  hil_i2c_select_project
+  require_serial_port
+  run_in_sdk_with_device_i \
+    python3 -u /work/tools/hil/i2c_zero_heap_monitor.py "$SDK_SERIAL_PORT" "$SDK_MONITOR_BAUD" "$HIL_I2C_MONITOR_TIMEOUT_S"
+}
+
+hil_i2c_run() {
+  hil_i2c_select_project
+  sdk_build
+  sdk_flash
+  hil_i2c_monitor
+}
+
+hil_onewire_select_project() {
+  SDK_PROJECT_DIR_REL="$HIL_ONEWIRE_PROJECT_DIR_REL"
+  SDK_MONITOR_BAUD="${FW_MONITOR_BAUD:-${MONITORBAUD:-115200}}"
+}
+
+hil_onewire_build() {
+  hil_onewire_select_project
+  sdk_build
+}
+
+hil_onewire_flash() {
+  hil_onewire_select_project
+  sdk_flash
+}
+
+hil_onewire_monitor() {
+  hil_onewire_select_project
+  require_serial_port
+  run_in_sdk_with_device_i \
+    python3 -u /work/tools/hil/onewire_irq_monitor.py "$SDK_SERIAL_PORT" "$SDK_MONITOR_BAUD" "$HIL_ONEWIRE_MONITOR_TIMEOUT_S"
+}
+
+hil_onewire_run() {
+  hil_onewire_select_project
+  sdk_build
+  sdk_flash
+  hil_onewire_monitor
+}
+
+hil_wifi_select_project() {
+  SDK_PROJECT_DIR_REL="$HIL_WIFI_PROJECT_DIR_REL"
+  SDK_MONITOR_BAUD="${FW_MONITOR_BAUD:-${MONITORBAUD:-115200}}"
+}
+
+hil_wifi_build() {
+  hil_wifi_select_project
+  sdk_build
+}
+
+hil_wifi_flash() {
+  hil_wifi_select_project
+  sdk_flash
+}
+
+hil_wifi_monitor() {
+  hil_wifi_select_project
+  require_serial_port
+  run_in_sdk_with_device_i \
+    python3 -u /work/tools/hil/wifi_reconnect_monitor.py "$SDK_SERIAL_PORT" "$SDK_MONITOR_BAUD" "$HIL_WIFI_MONITOR_TIMEOUT_S"
+}
+
+hil_wifi_run() {
+  hil_wifi_select_project
+  sdk_build
+  sdk_flash
+  hil_wifi_monitor
+}
+
+cmd="${1:-}"
+
+case "$cmd" in
+  host-image)
+    build_host_image
+    ;;
+  docs-image)
+    build_docs_image
+    ;;
+  sdk-image)
+    build_sdk_image
+    ;;
+  host-test)
+    build_host_image
+    run_in_image "$HOST_IMAGE" make host-test
+    ;;
+  routegen)
+    routegen
+    ;;
+  docgen)
+    build_host_image
+    run_in_image "$HOST_IMAGE" make docgen
+    ;;
+  docs)
+    build_docs_image
+    run_in_image "$DOCS_IMAGE" make docs
+    ;;
+  clean)
+    build_host_image
+    run_in_image "$HOST_IMAGE" make clean
+    ;;
+  shell-host)
+    build_host_image
+    run_in_image_it "$HOST_IMAGE" sh
+    ;;
+  shell-docs)
+    build_docs_image
+    run_in_image_it "$DOCS_IMAGE" sh
+    ;;
+  shell-sdk)
+    require_sdk_project
+    build_sdk_image
+    run_in_sdk_it sh
+    ;;
+  sdk-ports)
+    sdk_ports
+    ;;
+  sdk-port-resolve)
+    sdk_port_resolve
+    ;;
+  target-usb-profile-check)
+    target_usb_profile_check
+    ;;
+  sdk-port-resolve-test)
+    sdk_port_resolve_test
+    ;;
+  sdk-check)
+    sdk_check
+    ;;
+  sdk-defconfig)
+    sdk_defconfig
+    ;;
+  sdk-menuconfig)
+    sdk_menuconfig
+    ;;
+  sdk-build)
+    sdk_build
+    ;;
+  sdk-memory-report)
+    sdk_memory_report
+    ;;
+  sdk-build-report)
+    sdk_build_report
+    ;;
+  sdk-network-build-gate)
+    sdk_network_build_gate
+    ;;
+  sdk-clean-target)
+    sdk_clean_target
+    ;;
+  sdk-distclean)
+    sdk_distclean
+    ;;
+  sdk-flash)
+    sdk_flash
+    ;;
+  sdk-flash-manual)
+    sdk_flash_manual
+    ;;
+  sdk-monitor)
+    sdk_monitor
+    ;;
+  sdk-simple-monitor)
+    sdk_simple_monitor
+    ;;
+  hil-i2c-build)
+    hil_i2c_build
+    ;;
+  hil-i2c-flash)
+    hil_i2c_flash
+    ;;
+  hil-i2c-monitor)
+    hil_i2c_monitor
+    ;;
+  hil-i2c-run)
+    hil_i2c_run
+    ;;
+  hil-onewire-build)
+    hil_onewire_build
+    ;;
+  hil-onewire-flash)
+    hil_onewire_flash
+    ;;
+  hil-onewire-monitor)
+    hil_onewire_monitor
+    ;;
+  hil-onewire-run)
+    hil_onewire_run
+    ;;
+  hil-wifi-build)
+    hil_wifi_build
+    ;;
+  hil-wifi-flash)
+    hil_wifi_flash
+    ;;
+  hil-wifi-monitor)
+    hil_wifi_monitor
+    ;;
+  hil-wifi-run)
+    hil_wifi_run
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac

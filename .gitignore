@@ -1,55 +1,88 @@
-# Prerequisites
-*.d
+# Project-generated outputs
+/build/
+/out/
+/coverage/
+/dist/
+/htmlcov/
 
-# Object files
+# ESP8266 RTOS SDK target-local generated state
+/adapters/esp8266_rtos_sdk/targets/*/build/
+/adapters/esp8266_rtos_sdk/targets/*/sdkconfig
+/adapters/esp8266_rtos_sdk/targets/*/sdkconfig.old
+
+# Developer-local board secrets
+/bsp/*/board_secrets.local.h
+
+# Generated documentation
+/docs/generated/*
+!/docs/generated/.gitkeep
+
+# Runtime logs and captures
+/log/
+/logs/
+
+# Native / embedded build artifacts
 *.o
-*.ko
 *.obj
-*.elf
-
-# Linker output
-*.ilk
-*.map
-*.exp
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Libraries
-*.lib
-*.a
-*.la
 *.lo
-
-# Shared objects (inc. Windows DLLs)
-*.dll
+*.la
+*.a
 *.so
 *.so.*
 *.dylib
-
-# Executables
+*.dll
 *.exe
 *.out
-*.app
-*.i*86
-*.x86_64
-*.hex
 
-# Debug files
-*.dSYM/
-*.su
-*.idb
-*.pdb
+# Coverage / profiling / sanitizer outputs
+*.gcda
+*.gcno
+*.gcov
+*.profraw
+*.profdata
+.coverage
+.coverage.*
 
-# Kernel Module Compile Results
-*.mod*
-*.cmd
-.tmp_versions/
-modules.order
-Module.symvers
-Mkfile.old
-dkms.conf
+# Tooling and local developer environment
+/compile_commands.json
+/.cache/
+/.clangd/
+/.vscode/
+/.idea/
+/.vs/
+/.direnv/
 
-# debug information files
-*.dwo
+# Python / tooling caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.venv/
+venv/
+env/
+
+# C / C++ navigation databases
+/tags
+/TAGS
+cscope.*
+
+# Editor / OS noise
+*~
+*.swp
+*.swo
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+Desktop.ini
+
+# Patch files and system artifacts
+*.patch
+*.diff
+*:Zone.Identifier
+
+# Developer-local USB-UART profile overrides
+/adapters/esp8266_rtos_sdk/targets/*/target_usb_uart.local.profile

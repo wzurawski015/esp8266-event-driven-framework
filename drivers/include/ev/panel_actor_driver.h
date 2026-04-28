@@ -1,0 +1,4 @@
+#ifndef DRIVERS_INCLUDE_EV_PANEL_ACTOR_DRIVER_H
+#define DRIVERS_INCLUDE_EV_PANEL_ACTOR_DRIVER_H
+#include "ev/panel_actor.h"
+#endif

@@ -1,0 +1,16 @@
+// Fault catalog single source of truth.
+//
+// Format:
+// EV_FAULT(FAULT_ID, CODE_HEX, "summary")
+
+EV_FAULT(EV_FAULT_NONE, 0x0000, "No fault")
+EV_FAULT(EV_FAULT_POOL_EXHAUSTED, 0x0101, "Memory pool exhausted")
+EV_FAULT(EV_FAULT_MAILBOX_OVERFLOW, 0x0102, "Mailbox overflow")
+EV_FAULT(EV_FAULT_I2C_BUS_STUCK, 0x0201, "I2C bus stuck")
+EV_FAULT(EV_FAULT_ACTOR_HANDLER_FAILURE, 0x0103, "Actor handler failed")
+EV_FAULT(EV_FAULT_INVALID_ROUTE_QOS, 0x0104, "Invalid route QoS behavior")
+EV_FAULT(EV_FAULT_COMMAND_AUTH_FAILED, 0x0301, "Command authentication failed")
+EV_FAULT(EV_FAULT_COMMAND_AUTHZ_FAILED, 0x0302, "Command authorization failed")
+EV_FAULT(EV_FAULT_SLEEP_REJECTED, 0x0401, "Sleep rejected by framework policy")
+EV_FAULT(EV_FAULT_NETWORK_BACKPRESSURE, 0x0501, "Network outbox backpressure")
+

@@ -1,0 +1,4 @@
+#ifndef DRIVERS_INCLUDE_EV_DS18B20_ACTOR_DRIVER_H
+#define DRIVERS_INCLUDE_EV_DS18B20_ACTOR_DRIVER_H
+#include "ev/ds18b20_actor.h"
+#endif

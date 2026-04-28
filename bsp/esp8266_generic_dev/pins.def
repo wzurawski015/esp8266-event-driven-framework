@@ -1,0 +1,6 @@
+// Generic ESP8266 development board pin map (placeholder)
+// Format:
+// EV_BSP_PIN(LOGICAL_NAME, GPIO_NUM, "summary")
+EV_BSP_PIN(PIN_STATUS_LED, 2U, "On-board status LED")
+EV_BSP_PIN(PIN_UART0_TX, 1U, "Primary UART TX")
+EV_BSP_PIN(PIN_UART0_RX, 3U, "Primary UART RX")

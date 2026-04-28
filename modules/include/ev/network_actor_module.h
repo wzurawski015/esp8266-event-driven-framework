@@ -1,0 +1,4 @@
+#ifndef MODULES_INCLUDE_EV_NETWORK_ACTOR_MODULE_H
+#define MODULES_INCLUDE_EV_NETWORK_ACTOR_MODULE_H
+#include "ev/network_actor.h"
+#endif

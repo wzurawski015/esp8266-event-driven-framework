@@ -1,0 +1,23 @@
+digraph layers {
+    rankdir=TB;
+    graph [label="Layer boundaries", labelloc=t, fontsize=20];
+    node [shape=box, style="rounded"];
+
+    "app";
+    "domain";
+    "core";
+    "ports";
+    "adapters";
+    "bsp";
+    "diag";
+
+    "app" -> "domain";
+    "app" -> "ports";
+    "domain" -> "core";
+    "ports" -> "core";
+    "adapters" -> "ports";
+    "bsp" -> "adapters";
+    "diag" -> "core";
+    "diag" -> "domain";
+    "diag" -> "ports";
+}

@@ -1,0 +1,23 @@
+// Actor single source of truth.
+//
+// Format:
+// EV_ACTOR(ACTOR_ID, EXECUTION_DOMAIN, MAILBOX_KIND, DRAIN_BUDGET, "summary")
+
+EV_ACTOR(ACT_BOOT, EV_DOMAIN_FAST_LOOP, EV_MAILBOX_FIFO_8, 4U, "Bootstrap orchestrator")
+EV_ACTOR(ACT_RUNTIME, EV_DOMAIN_FAST_LOOP, EV_MAILBOX_FIFO_8, 1U, "Runtime ingress and system-event publisher")
+EV_ACTOR(ACT_STREAM, EV_DOMAIN_FAST_LOOP, EV_MAILBOX_FIFO_16, 8U, "Streaming pipeline coordinator")
+EV_ACTOR(ACT_DIAG, EV_DOMAIN_SLOW_IO, EV_MAILBOX_FIFO_8, 2U, "Diagnostics and observability actor")
+EV_ACTOR(ACT_APP, EV_DOMAIN_FAST_LOOP, EV_MAILBOX_FIFO_8, 4U, "Application composition actor")
+EV_ACTOR(ACT_OLED, EV_DOMAIN_SLOW_IO, EV_MAILBOX_FIFO_8, 1U, "OLED display actor")
+EV_ACTOR(ACT_RTC, EV_DOMAIN_SLOW_IO, EV_MAILBOX_FIFO_8, 1U, "RTC time-source actor")
+EV_ACTOR(ACT_DS18B20, EV_DOMAIN_SLOW_IO, EV_MAILBOX_FIFO_8, 1U, "DS18B20 temperature actor")
+EV_ACTOR(ACT_PANEL, EV_DOMAIN_FAST_LOOP, EV_MAILBOX_FIFO_8, 4U, "Logical user panel actor")
+EV_ACTOR(ACT_MCP23008, EV_DOMAIN_SLOW_IO, EV_MAILBOX_FIFO_8, 1U, "MCP23008 button and LED actor")
+EV_ACTOR(ACT_SUPERVISOR, EV_DOMAIN_FAST_LOOP, EV_MAILBOX_FIFO_8, 2U, "Board startup supervisor actor")
+EV_ACTOR(ACT_POWER, EV_DOMAIN_FAST_LOOP, EV_MAILBOX_FIFO_8, 1U, "System power-state actor")
+EV_ACTOR(ACT_WATCHDOG, EV_DOMAIN_FAST_LOOP, EV_MAILBOX_FIFO_8, 1U, "Health-gated hardware watchdog actor")
+EV_ACTOR(ACT_NETWORK, EV_DOMAIN_SLOW_IO, EV_MAILBOX_FIFO_8, 2U, "Bounded network isolation actor")
+EV_ACTOR(ACT_COMMAND, EV_DOMAIN_SLOW_IO, EV_MAILBOX_FIFO_8, 2U, "Authenticated remote command dispatcher")
+EV_ACTOR(ACT_FAULT, EV_DOMAIN_FAST_LOOP, EV_MAILBOX_FIFO_8, 4U, "Framework fault-bus actor")
+EV_ACTOR(ACT_METRICS, EV_DOMAIN_FAST_LOOP, EV_MAILBOX_FIFO_8, 4U, "Framework metrics actor")
+

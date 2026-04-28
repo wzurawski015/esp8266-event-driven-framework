@@ -1,0 +1,4 @@
+#ifndef MODULES_INCLUDE_EV_COMMAND_ACTOR_MODULE_H
+#define MODULES_INCLUDE_EV_COMMAND_ACTOR_MODULE_H
+#include "ev/command_actor.h"
+#endif

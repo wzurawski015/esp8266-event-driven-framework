@@ -1,0 +1,14 @@
+# Git metadata
+.git
+
+# CI and local artifacts not needed in image build context
+.github
+build
+docs/generated
+
+# Local transfer artifacts
+*.zip
+*.patch
+
+# Large local reference material
+*.pdf

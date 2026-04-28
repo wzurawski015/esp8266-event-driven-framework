@@ -1,0 +1,83 @@
+name: ci
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  host-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Generate static route table artifacts
+        run: ./tools/fw routegen
+
+      - name: Generate living documentation artifacts
+        run: ./tools/fw docgen
+
+      - name: Verify generated artifacts are checked in
+        run: git diff --exit-code
+
+      - name: Build and run host smoke tests
+        run: ./tools/fw host-test
+
+      - name: Build strict documentation site
+        run: ./tools/fw docs
+
+  sdk-target-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Validate pinned SDK toolchain contract
+        run: ./tools/fw sdk-check
+
+      - name: Materialize generic target sdkconfig from defaults
+        run: ./tools/fw sdk-defconfig
+
+      - name: Build generic ESP8266 golden-reference target
+        run: ./tools/fw sdk-build
+
+      - name: Clean generic target build outputs
+        run: ./tools/fw sdk-clean-target
+
+      - name: Distclean generic target wrapper state
+        run: ./tools/fw sdk-distclean
+
+      - name: Rebuild generic target after distclean
+        run: ./tools/fw sdk-build
+
+  sdk-atnel-target-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Materialize ATNEL target sdkconfig from defaults
+        env:
+          FW_SDK_PROJECT_DIR: adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard
+        run: ./tools/fw sdk-defconfig
+
+      - name: Build ATNEL target
+        env:
+          FW_SDK_PROJECT_DIR: adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard
+        run: ./tools/fw sdk-build
+
+      - name: Clean ATNEL target build outputs
+        env:
+          FW_SDK_PROJECT_DIR: adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard
+        run: ./tools/fw sdk-clean-target
+
+      - name: Distclean ATNEL target wrapper state
+        env:
+          FW_SDK_PROJECT_DIR: adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard
+        run: ./tools/fw sdk-distclean
+
+      - name: Rebuild ATNEL target after distclean
+        env:
+          FW_SDK_PROJECT_DIR: adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard
+        run: ./tools/fw sdk-build

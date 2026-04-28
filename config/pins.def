@@ -1,0 +1,10 @@
+// Board-level pin catalog placeholder.
+//
+// Format:
+// EV_PIN(PIN_ID, GPIO_NUM, "summary")
+//
+// Replace these placeholders when the first supported board profile is selected.
+
+EV_PIN(PIN_STATUS_LED, 2, "Status LED placeholder")
+EV_PIN(PIN_I2C_SCL, 4, "Software I2C SCL placeholder")
+EV_PIN(PIN_I2C_SDA, 5, "Software I2C SDA placeholder")

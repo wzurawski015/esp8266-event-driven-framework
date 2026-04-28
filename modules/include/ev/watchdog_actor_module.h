@@ -1,0 +1,4 @@
+#ifndef MODULES_INCLUDE_EV_WATCHDOG_ACTOR_MODULE_H
+#define MODULES_INCLUDE_EV_WATCHDOG_ACTOR_MODULE_H
+#include "ev/watchdog_actor.h"
+#endif

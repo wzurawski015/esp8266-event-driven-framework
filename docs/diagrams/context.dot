@@ -1,0 +1,20 @@
+digraph context {
+    rankdir=LR;
+    graph [label="System context", labelloc=t, fontsize=20];
+    node [shape=box, style="rounded"];
+
+    "Application";
+    "Framework core";
+    "Ports";
+    "Adapters";
+    "ESP8266 RTOS SDK";
+    "Board support package";
+    "Diagnostics";
+
+    "Application" -> "Framework core";
+    "Application" -> "Ports";
+    "Adapters" -> "Ports";
+    "Board support package" -> "Adapters";
+    "Adapters" -> "ESP8266 RTOS SDK";
+    "Diagnostics" -> "Framework core";
+}

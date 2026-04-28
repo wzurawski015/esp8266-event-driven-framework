@@ -1,0 +1,35 @@
+#ifndef EV_ESP8266_GENERIC_DEV_BOARD_PROFILE_H
+#define EV_ESP8266_GENERIC_DEV_BOARD_PROFILE_H
+
+#include "ev/compiler.h"
+#include "ev/oled_actor.h"
+#include "ev/supervisor_actor.h"
+
+#define EV_BOARD_PROFILE_TAG "ev_generic"
+#define EV_BOARD_PROFILE_NAME "esp8266_generic_dev"
+#define EV_BOARD_HAS_I2C0 0U
+#define EV_BOARD_HAS_ONEWIRE0 0U
+#define EV_BOARD_HAS_GPIO_IRQ 0U
+#define EV_BOARD_HAS_DEEP_SLEEP_WAKE_GPIO16 0U
+#define EV_BOARD_HAS_WDT 0U
+#define EV_BOARD_HAS_NET 0U
+#define EV_BOARD_WDT_TIMEOUT_MS 3000U
+
+enum {
+#define EV_BSP_PIN(name, gpio, desc) EV_BOARD_##name = (gpio),
+#define EV_BSP_PIN_ANALOG(name, desc)
+#include "pins.def"
+#undef EV_BSP_PIN
+#undef EV_BSP_PIN_ANALOG
+};
+
+#define EV_BOARD_RTC_ADDR_7BIT 0U
+#define EV_BOARD_MCP23008_ADDR_7BIT 0U
+#define EV_BOARD_OLED_ADDR_7BIT 0U
+#define EV_BOARD_OLED_CONTROLLER EV_OLED_CONTROLLER_SSD1306
+#define EV_BOARD_RTC_SQW_LINE_ID 0U
+#define EV_BOARD_RUNTIME_HARDWARE_PRESENT_MASK 0U
+#define EV_BOARD_SUPERVISOR_REQUIRED_MASK 0U
+#define EV_BOARD_SUPERVISOR_OPTIONAL_MASK 0U
+
+#endif /* EV_ESP8266_GENERIC_DEV_BOARD_PROFILE_H */

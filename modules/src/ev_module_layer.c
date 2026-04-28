@@ -1,0 +1,7 @@
+#include "ev/power_actor_module.h"
+#include "ev/watchdog_actor_module.h"
+#include "ev/supervisor_actor_module.h"
+#include "ev/network_actor_module.h"
+#include "ev/command_actor_module.h"
+#include "ev/fault_actor_module.h"
+#include "ev/metrics_actor_module.h"

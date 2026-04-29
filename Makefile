@@ -107,6 +107,7 @@ HOST_TESTS := \
     test_runtime_builder_framework \
     test_timer_quiescence_framework \
     test_runtime_quiescence_time_aware \
+    test_runtime_sequence_ingress \
     test_fault_metrics_trace_framework \
     test_delivery_command_network_framework
 

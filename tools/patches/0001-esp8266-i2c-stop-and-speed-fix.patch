@@ -1,0 +1,32 @@
+diff --git a/components/esp8266/driver/i2c.c b/components/esp8266/driver/i2c.c
+index 1de5eb3..15f3d5e 100644
+--- a/components/esp8266/driver/i2c.c
++++ b/components/esp8266/driver/i2c.c
+@@ -516,7 +516,6 @@ static void i2c_master_cmd_begin_static(i2c_port_t i2c_num)
+                         i2c_master_set_dc(i2c_num, dat, 0);
+                         i2c_master_wait(1);
+                         i2c_master_set_dc(i2c_num, dat, 1);
+-                        i2c_master_wait(2);
+
+                         if (i == 0) {
+                             i2c_master_wait(1);   // wait slaver ack
+@@ -536,6 +535,11 @@ static void i2c_master_cmd_begin_static(i2c_port_t i2c_num)
+                     if (cmd->ack.en == 1) {
+                         if ((retVal & 0x01) != cmd->ack.exp) {
+                             p_i2c->status = I2C_STATUS_ACK_ERROR;
++                            const uint8_t scl_state = i2c_last_state[i2c_num]->scl;
++                            i2c_master_wait(1);
++                            i2c_master_set_dc(i2c_num, 0, scl_state);
++                            i2c_master_set_dc(i2c_num, 0, 1);
++                            i2c_master_set_dc(i2c_num, 1, 1);
+                             return ;
+                         }
+                     }
+@@ -552,7 +555,6 @@ static void i2c_master_cmd_begin_static(i2c_port_t i2c_num)
+
+                     for (i = 0; i < 8; i++) {
+                         i2c_master_set_dc(i2c_num, 1, 0);
+-                        i2c_master_wait(2);
+                         i2c_master_set_dc(i2c_num, 1, 1);
+                         i2c_master_wait(1);     // sda 1, scl 1
+                         k = i2c_master_get_dc(i2c_num);

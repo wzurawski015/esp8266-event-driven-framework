@@ -80,9 +80,14 @@ Thumbs.db
 Desktop.ini
 
 # Patch files and system artifacts
-*.patch
+# *.patch
 *.diff
 *:Zone.Identifier
 
 # Developer-local USB-UART profile overrides
 /adapters/esp8266_rtos_sdk/targets/*/target_usb_uart.local.profile
+
+# SDK patches are part of the reproducible ESP8266 build context.
+!/tools/patches/
+!/tools/patches/.gitkeep
+!/tools/patches/*.patch

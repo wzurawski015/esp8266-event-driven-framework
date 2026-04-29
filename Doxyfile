@@ -18,7 +18,7 @@ WARN_LOGFILE           = docs/generated/doxygen-warnings.log
 INPUT                  = README.md \
                          CONTRIBUTING.md \
                          docs \
-                         app \
+                         apps \
                          core \
                          domain \
                          ports \

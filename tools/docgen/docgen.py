@@ -15,6 +15,9 @@ RE_ACTOR = re.compile(
 RE_ROUTE = re.compile(
     r'^\s*EV_ROUTE\(\s*([A-Z0-9_]+)\s*,\s*([A-Z0-9_]+)\s*\)\s*$'
 )
+RE_ROUTE_EX = re.compile(
+    r'^\s*EV_ROUTE_EX\(\s*([A-Z0-9_]+)\s*,\s*([A-Z0-9_]+)\s*,\s*([A-Z0-9_]+)\s*,\s*([^,]+)\s*,\s*([^)]+)\s*\)\s*$'
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG = ROOT / "config"
@@ -70,14 +73,26 @@ def parse_actors(path: Path) -> list[dict[str, str]]:
 def parse_routes(path: Path) -> list[dict[str, str]]:
     out = []
     for line in read_nonempty_lines(path):
+        match_ex = RE_ROUTE_EX.match(line)
         match = RE_ROUTE.match(line)
-        if not match:
+        if match_ex:
+            event_name, actor_name, qos, priority, flags = (
+                value.strip() for value in match_ex.groups()
+            )
+        elif match:
+            event_name, actor_name = (value.strip() for value in match.groups())
+            qos = "EV_ROUTE_QOS_CRITICAL"
+            priority = "0U"
+            flags = "0U"
+        else:
             raise ValueError(f"Invalid route definition: {line}")
-        event_name, actor_name = match.groups()
         out.append(
             {
                 "event_name": event_name,
                 "actor_name": actor_name,
+                "qos": qos,
+                "priority": priority,
+                "flags": flags,
             }
         )
     return out
@@ -122,11 +137,14 @@ def generate_routes_md(routes: list[dict[str, str]]) -> None:
     lines = [
         "# Route Catalog",
         "",
-        "| Event | Target actor |",
-        "|---|---|",
+        "| Event | Target actor | QoS | Priority | Flags |",
+        "|---|---|---|---:|---:|",
     ]
     for route in routes:
-        lines.append(f"| `{route['event_name']}` | `{route['actor_name']}` |")
+        lines.append(
+            f"| `{route['event_name']}` | `{route['actor_name']}` | "
+            f"`{route['qos']}` | `{route['priority']}` | `{route['flags']}` |"
+        )
     lines.append("")
     write_text(OUT / "routes.md", "\n".join(lines))
 
@@ -140,7 +158,11 @@ def generate_routes_dot(routes: list[dict[str, str]]) -> Path:
         "",
     ]
     for route in routes:
-        lines.append(f'    "{route["event_name"]}" -> "{route["actor_name"]}";')
+        label = route.get("qos", "EV_ROUTE_QOS_CRITICAL")
+        lines.append(
+            f'    "{route["event_name"]}" -> "{route["actor_name"]}" '
+            f'[label="{label}"];'
+        )
     lines.append("}")
     dot_path = OUT / "routes.dot"
     write_text(dot_path, "\n".join(lines) + "\n")

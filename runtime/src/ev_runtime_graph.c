@@ -25,6 +25,7 @@ ev_result_t ev_runtime_graph_init(ev_runtime_graph_t *graph, ev_capability_mask_
     ev_metric_registry_init(&graph->metrics);
     ev_trace_ring_init(&graph->trace_ring);
     ev_active_route_table_init(&graph->active_routes);
+    ev_delivery_service_init(&graph->delivery_service, graph);
 
     graph->board_capabilities.configured = board_caps;
     graph->board_capabilities.active = board_caps;
@@ -384,6 +385,52 @@ ev_result_t ev_runtime_builder_build(ev_runtime_builder_t *builder)
     }
 
     return EV_OK;
+}
+
+
+ev_result_t ev_runtime_graph_publish(ev_runtime_graph_t *graph, const ev_msg_t *msg, ev_delivery_report_t *out_report)
+{
+    if ((graph == NULL) || (msg == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+    return ev_delivery_publish(&graph->delivery_service, msg, out_report);
+}
+
+ev_result_t ev_runtime_graph_send(ev_runtime_graph_t *graph, ev_actor_id_t target_actor, const ev_msg_t *msg)
+{
+    ev_msg_t send_msg;
+
+    if ((graph == NULL) || (msg == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if (!ev_actor_id_is_valid(target_actor)) {
+        return EV_ERR_OUT_OF_RANGE;
+    }
+    send_msg = *msg;
+    send_msg.target_actor = target_actor;
+    return ev_actor_registry_delivery(target_actor, &send_msg, &graph->registry);
+}
+
+ev_result_t ev_runtime_graph_post_event(ev_runtime_graph_t *graph, ev_event_id_t event_id, ev_actor_id_t source_actor, const void *payload, size_t payload_size)
+{
+    ev_msg_t msg = EV_MSG_INITIALIZER;
+    ev_result_t rc;
+    ev_delivery_report_t report;
+
+    if (graph == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+    rc = ev_msg_init_publish(&msg, event_id, source_actor);
+    if (rc != EV_OK) {
+        return rc;
+    }
+    if (payload_size > 0U) {
+        rc = ev_msg_set_inline_payload(&msg, payload, payload_size);
+        if (rc != EV_OK) {
+            return rc;
+        }
+    }
+    return ev_runtime_graph_publish(graph, &msg, &report);
 }
 
 const ev_active_route_table_t *ev_runtime_graph_active_routes(const ev_runtime_graph_t *graph)

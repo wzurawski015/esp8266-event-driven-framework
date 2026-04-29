@@ -101,6 +101,7 @@ HOST_TESTS := \
     test_runtime_actor_instance_descriptors \
     test_runtime_builder_route_validation \
     test_runtime_disabled_routes \
+    test_runtime_graph_publish_send \
     test_runtime_builder_framework \
     test_timer_quiescence_framework \
     test_fault_metrics_trace_framework \

@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "ev/active_route_table.h"
+#include "ev/delivery_service.h"
 #include "ev/actor_instance.h"
 #include "ev/actor_module.h"
 #include "ev/actor_runtime.h"
@@ -56,6 +57,7 @@ typedef struct ev_runtime_graph {
     ev_metric_registry_t metrics;
     ev_trace_ring_t trace_ring;
     ev_active_route_table_t active_routes;
+    ev_delivery_service_t delivery_service;
     uint8_t active_routes_bound;
 
     ev_board_capability_snapshot_t board_capabilities;
@@ -85,6 +87,9 @@ ev_result_t ev_runtime_builder_add_module(ev_runtime_builder_t *builder, ev_acto
 ev_result_t ev_runtime_builder_add_instance(ev_runtime_builder_t *builder, const ev_actor_instance_descriptor_t *instance);
 ev_result_t ev_runtime_builder_set_route_validation_flags(ev_runtime_builder_t *builder, uint32_t flags);
 const ev_active_route_table_t *ev_runtime_graph_active_routes(const ev_runtime_graph_t *graph);
+ev_result_t ev_runtime_graph_publish(ev_runtime_graph_t *graph, const ev_msg_t *msg, ev_delivery_report_t *out_report);
+ev_result_t ev_runtime_graph_send(ev_runtime_graph_t *graph, ev_actor_id_t target_actor, const ev_msg_t *msg);
+ev_result_t ev_runtime_graph_post_event(ev_runtime_graph_t *graph, ev_event_id_t event_id, ev_actor_id_t source_actor, const void *payload, size_t payload_size);
 ev_result_t ev_runtime_builder_bind_routes(ev_runtime_builder_t *builder);
 ev_result_t ev_runtime_builder_build(ev_runtime_builder_t *builder);
 ev_actor_runtime_t *ev_runtime_graph_get_runtime(ev_runtime_graph_t *graph, ev_actor_id_t actor_id);

@@ -13,3 +13,9 @@ The reusable framework mechanisms are in `runtime/`:
 - `ev_fault_bus`, `ev_metrics_registry`, and `ev_trace_ring` provide diagnostic infrastructure.
 
 The previous monolithic demo application role has been split. Application code now provides wiring and behavior, while runtime coordination lives in framework services.
+
+## Canonical runtime direction
+
+`runtime_graph` is the target framework kernel. During the preparation
+iteration, `apps/demo` remains a compatibility runtime while framework-level
+route binding, scheduler, quiescence and sequence-ring primitives are hardened.

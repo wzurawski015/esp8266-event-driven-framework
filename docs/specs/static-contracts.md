@@ -16,3 +16,9 @@ Run:
 ```sh
 make static-contracts
 ```
+
+## Migration blocker reporting
+
+The static contract checker reports remaining demo-runtime migration blockers as
+`MIGRATION_BLOCKER_REPORTED`. These are non-failing during the preparation
+iteration because full demo migration is intentionally deferred.

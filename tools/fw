@@ -49,6 +49,7 @@ Usage:
   ./tools/fw routegen
   ./tools/fw docgen
   ./tools/fw docs
+  ./tools/fw release-gate
   ./tools/fw clean
 
   ./tools/fw shell-host
@@ -1097,6 +1098,10 @@ case "$cmd" in
   docs)
     build_docs_image
     run_in_image "$DOCS_IMAGE" make docs
+    ;;
+  release-gate)
+    build_docs_image
+    run_in_image "$DOCS_IMAGE" make release-gate
     ;;
   clean)
     build_host_image

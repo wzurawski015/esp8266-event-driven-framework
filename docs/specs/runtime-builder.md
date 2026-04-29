@@ -16,3 +16,10 @@ ev_result_t ev_runtime_graph_stats(const ev_runtime_graph_t *graph, ev_runtime_g
 ```
 
 The builder initializes static mailbox storage, actor runtimes, module callbacks, diagnostic services, timer service, ingress service, trace ring, power manager, and route delivery state. Capability mismatches are rejected deterministically with `EV_ERR_NO_CAPABILITY`.
+
+## Runtime graph preparation API
+
+The builder now supports injected runtime ports, board-profile snapshots and
+concrete actor instance descriptors. `ev_runtime_builder_add_module()` remains a
+compatibility wrapper; new framework applications should prefer concrete actor
+instances once the demo migration begins.

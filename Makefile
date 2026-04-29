@@ -121,7 +121,7 @@ PROPERTY_TESTS := \
 
 PROPERTY_TEST_BINS := $(addprefix $(PROPERTY_BUILD_DIR)/,$(PROPERTY_TESTS))
 
-.PHONY: all host-test property-test routegen routegen-check static-contracts memory-budget quality-gate docgen docs clean
+.PHONY: all host-test property-test routegen routegen-check static-contracts memory-budget quality-gate release-gate docgen docs clean
 
 all: host-test
 
@@ -164,6 +164,9 @@ memory-budget: routegen
 .NOTPARALLEL: quality-gate
 quality-gate: clean routegen-check static-contracts memory-budget host-test property-test
 	@echo "quality-gate passed"
+
+release-gate: quality-gate docgen docs
+	@echo "release-gate passed"
 
 docgen: routegen
 	$(PYTHON) tools/docgen/docgen.py

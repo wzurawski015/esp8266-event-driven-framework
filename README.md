@@ -70,3 +70,14 @@ docs/      architecture, specs, and release reports
 ```
 
 The compatibility demo entry remains only under `apps/demo/ev_demo_app.c`; it is not the framework runtime root.
+
+## Runtime graph migration readiness
+
+This revision prepares `ev_runtime_graph_t` as the canonical framework kernel
+without yet deleting the compatibility composition root in `apps/demo`. Run:
+
+```sh
+make release-gate
+```
+
+to execute the host quality gate plus generated documentation checks.

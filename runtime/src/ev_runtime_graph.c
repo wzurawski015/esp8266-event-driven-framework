@@ -404,6 +404,16 @@ ev_result_t ev_runtime_builder_build(ev_runtime_builder_t *builder)
         }
     }
 
+    {
+        ev_result_t sched_rc = ev_runtime_scheduler_init(&builder->graph->scheduler,
+                                                         &builder->graph->registry,
+                                                         ev_runtime_builder_active_domain_mask(builder));
+        if (sched_rc != EV_OK) {
+            builder->last_error = sched_rc;
+            return sched_rc;
+        }
+    }
+
     return EV_OK;
 }
 

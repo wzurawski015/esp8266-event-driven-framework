@@ -6,6 +6,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[2]
 errors: list[str] = []
+migration_blockers: list[str] = []
 
 FORBIDDEN_HEAP = re.compile(r"\b(malloc|calloc|realloc|free|strdup)\s*\(")
 FORBIDDEN_BLOCK = re.compile(r"\b(portMAX_DELAY|vTaskDelay)\b")
@@ -78,6 +79,31 @@ for p in (ROOT / "adapters").rglob("*"):
 
 if (ROOT / "app" / "ev_demo_app.c").exists():
     errors.append("legacy app/ev_demo_app.c remains outside apps/demo")
+
+
+# Non-failing migration blockers for the deferred runtime_graph demo migration.
+demo_h = ROOT / "apps" / "demo" / "include" / "ev" / "demo_app.h"
+demo_c = ROOT / "apps" / "demo" / "ev_demo_app.c"
+if demo_h.exists():
+    demo_h_text = demo_h.read_text(encoding="utf-8", errors="ignore")
+    if "ev_mailbox_t" in demo_h_text:
+        migration_blockers.append("apps/demo/include/ev/demo_app.h still owns per-actor mailboxes")
+    if "ev_actor_runtime_t" in demo_h_text:
+        migration_blockers.append("apps/demo/include/ev/demo_app.h still owns per-actor runtimes")
+    if "ev_actor_registry_t" in demo_h_text:
+        migration_blockers.append("apps/demo/include/ev/demo_app.h still owns actor registry")
+    if "ev_system_pump_t" in demo_h_text:
+        migration_blockers.append("apps/demo/include/ev/demo_app.h still owns system pump")
+if demo_c.exists():
+    demo_c_text = demo_c.read_text(encoding="utf-8", errors="ignore")
+    if "ev_actor_registry_bind" in demo_c_text:
+        migration_blockers.append("apps/demo/ev_demo_app.c still manually binds actor registry")
+    if "ev_demo_app_poll" in demo_c_text and "ev_system_pump_run" in demo_c_text:
+        migration_blockers.append("apps/demo/ev_demo_app.c still owns compatibility poll loop")
+
+if migration_blockers:
+    for blocker in migration_blockers:
+        print(f"MIGRATION_BLOCKER_REPORTED: {blocker}")
 
 if errors:
     for error in errors:

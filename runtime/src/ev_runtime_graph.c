@@ -3,6 +3,8 @@
 #include <string.h>
 
 #include "ev/actor_catalog.h"
+#include "ev/event_catalog.h"
+#include "ev/metrics_registry.h"
 #include "ev/runtime_ports.h"
 #include "ev/runtime_board_profile.h"
 
@@ -22,6 +24,7 @@ ev_result_t ev_runtime_graph_init(ev_runtime_graph_t *graph, ev_capability_mask_
     ev_fault_registry_init(&graph->faults);
     ev_metric_registry_init(&graph->metrics);
     ev_trace_ring_init(&graph->trace_ring);
+    ev_active_route_table_init(&graph->active_routes);
 
     graph->board_capabilities.configured = board_caps;
     graph->board_capabilities.active = board_caps;
@@ -160,11 +163,135 @@ ev_result_t ev_runtime_builder_add_module(ev_runtime_builder_t *builder, ev_acto
     }
 }
 
-ev_result_t ev_runtime_builder_bind_routes(ev_runtime_builder_t *builder)
+
+ev_result_t ev_runtime_builder_set_route_validation_flags(ev_runtime_builder_t *builder, uint32_t flags)
 {
     if (builder == NULL) {
         return EV_ERR_INVALID_ARG;
     }
+    builder->route_validation_flags = flags;
+    return EV_OK;
+}
+
+static int ev_runtime_builder_route_qos_supported(const ev_actor_module_descriptor_t *descriptor, ev_route_qos_t qos)
+{
+    if (descriptor == NULL) {
+        return 0;
+    }
+    if (ev_route_qos_is_valid(qos) == 0) {
+        return 0;
+    }
+    if ((descriptor->route_policy_flags != 0U) && (qos != (ev_route_qos_t)descriptor->route_policy_flags)) {
+        if ((descriptor->route_policy_flags == EV_ROUTE_QOS_WAKEUP_CRITICAL) && (qos == EV_ROUTE_QOS_CRITICAL)) {
+            return 1;
+        }
+        if ((descriptor->route_policy_flags == EV_ROUTE_QOS_TELEMETRY) &&
+            ((qos == EV_ROUTE_QOS_TELEMETRY) || (qos == EV_ROUTE_QOS_BEST_EFFORT) || (qos == EV_ROUTE_QOS_LOSSY) || (qos == EV_ROUTE_QOS_CRITICAL))) {
+            return 1;
+        }
+        if ((descriptor->route_policy_flags == EV_ROUTE_QOS_COMMAND) && ((qos == EV_ROUTE_QOS_COMMAND) || (qos == EV_ROUTE_QOS_CRITICAL))) {
+            return 1;
+        }
+        return 0;
+    }
+    return 1;
+}
+
+static ev_active_route_state_t ev_runtime_builder_classify_route(ev_runtime_builder_t *builder, const ev_route_t *route, ev_result_t *out_reason)
+{
+    const ev_actor_module_descriptor_t *descriptor;
+    ev_capability_mask_t missing_board;
+    ev_capability_mask_t missing_runtime;
+
+    if ((builder == NULL) || (route == NULL)) {
+        if (out_reason != NULL) {
+            *out_reason = EV_ERR_INVALID_ARG;
+        }
+        return EV_ACTIVE_ROUTE_REJECTED_INVALID_EVENT;
+    }
+    if (!ev_event_id_is_valid(route->event_id)) {
+        if (out_reason != NULL) {
+            *out_reason = EV_ERR_OUT_OF_RANGE;
+        }
+        return EV_ACTIVE_ROUTE_REJECTED_INVALID_EVENT;
+    }
+    if (!ev_actor_id_is_valid(route->target_actor)) {
+        if (out_reason != NULL) {
+            *out_reason = EV_ERR_OUT_OF_RANGE;
+        }
+        return EV_ACTIVE_ROUTE_REJECTED_INVALID_ACTOR;
+    }
+    descriptor = ev_actor_module_find(route->target_actor);
+    if (descriptor == NULL) {
+        if (out_reason != NULL) {
+            *out_reason = EV_ERR_NOT_FOUND;
+        }
+        return EV_ACTIVE_ROUTE_REJECTED_INVALID_ACTOR;
+    }
+    if (ev_runtime_builder_route_qos_supported(descriptor, route->qos) == 0) {
+        if (out_reason != NULL) {
+            *out_reason = EV_ERR_POLICY;
+        }
+        return EV_ACTIVE_ROUTE_REJECTED_QOS_CONFLICT;
+    }
+    if (builder->requested[route->target_actor] != 0U) {
+        if (out_reason != NULL) {
+            *out_reason = EV_OK;
+        }
+        return EV_ACTIVE_ROUTE_ENABLED;
+    }
+
+    missing_board = descriptor->required_board_capabilities & ~builder->board_caps;
+    missing_runtime = descriptor->required_runtime_capabilities & ~builder->runtime_caps;
+    if ((missing_board != 0U) || (missing_runtime != 0U) || ((builder->route_validation_flags & EV_RUNTIME_ROUTE_VALIDATE_STRICT_MANDATORY) == 0U)) {
+        if (out_reason != NULL) {
+            *out_reason = EV_ERR_NO_CAPABILITY;
+        }
+        return EV_ACTIVE_ROUTE_OPTIONAL_DISABLED;
+    }
+
+    if (out_reason != NULL) {
+        *out_reason = EV_ERR_NOT_FOUND;
+    }
+    return EV_ACTIVE_ROUTE_REJECTED_MISSING_MANDATORY_ACTOR;
+}
+
+ev_result_t ev_runtime_builder_bind_routes(ev_runtime_builder_t *builder)
+{
+    size_t i;
+    ev_result_t rc;
+
+    if ((builder == NULL) || (builder->graph == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    ev_active_route_table_init(&builder->graph->active_routes);
+    for (i = 0U; i < ev_route_count(); ++i) {
+        const ev_route_t *route = ev_route_at(i);
+        ev_active_route_state_t state;
+        ev_result_t reason = EV_OK;
+        if (route == NULL) {
+            continue;
+        }
+        state = ev_runtime_builder_classify_route(builder, route, &reason);
+        rc = ev_active_route_table_add(&builder->graph->active_routes, route, state, reason);
+        if (rc != EV_OK) {
+            ev_route_t overflow_route = *route;
+            (void)ev_active_route_table_add(&builder->graph->active_routes, &overflow_route, EV_ACTIVE_ROUTE_REJECTED_OVERFLOW, EV_ERR_FULL);
+            builder->last_error = EV_ERR_FULL;
+            return builder->last_error;
+        }
+        if (state == EV_ACTIVE_ROUTE_OPTIONAL_DISABLED) {
+            (void)ev_metric_increment(&builder->graph->metrics, EV_METRIC_ROUTE_OPTIONAL_DISABLED, 1U);
+        } else if (state != EV_ACTIVE_ROUTE_ENABLED) {
+            (void)ev_metric_increment(&builder->graph->metrics, EV_METRIC_ROUTE_VALIDATION_REJECTED, 1U);
+            if ((builder->route_validation_flags & EV_RUNTIME_ROUTE_VALIDATE_STRICT_MANDATORY) != 0U) {
+                builder->last_error = reason;
+                return reason;
+            }
+        }
+    }
+    builder->graph->active_routes_bound = 1U;
     return EV_OK;
 }
 
@@ -174,6 +301,12 @@ ev_result_t ev_runtime_builder_build(ev_runtime_builder_t *builder)
 
     if ((builder == NULL) || (builder->graph == NULL)) {
         return EV_ERR_INVALID_ARG;
+    }
+    if (builder->graph->active_routes_bound == 0U) {
+        ev_result_t bind_rc = ev_runtime_builder_bind_routes(builder);
+        if (bind_rc != EV_OK) {
+            return bind_rc;
+        }
     }
 
     for (i = 0U; i < (size_t)EV_ACTOR_COUNT; ++i) {
@@ -251,6 +384,11 @@ ev_result_t ev_runtime_builder_build(ev_runtime_builder_t *builder)
     }
 
     return EV_OK;
+}
+
+const ev_active_route_table_t *ev_runtime_graph_active_routes(const ev_runtime_graph_t *graph)
+{
+    return (graph != NULL) ? &graph->active_routes : NULL;
 }
 
 ev_actor_runtime_t *ev_runtime_graph_get_runtime(ev_runtime_graph_t *graph, ev_actor_id_t actor_id)

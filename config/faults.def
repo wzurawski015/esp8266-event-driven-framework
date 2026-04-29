@@ -13,4 +13,8 @@ EV_FAULT(EV_FAULT_COMMAND_AUTH_FAILED, 0x0301, "Command authentication failed")
 EV_FAULT(EV_FAULT_COMMAND_AUTHZ_FAILED, 0x0302, "Command authorization failed")
 EV_FAULT(EV_FAULT_SLEEP_REJECTED, 0x0401, "Sleep rejected by framework policy")
 EV_FAULT(EV_FAULT_NETWORK_BACKPRESSURE, 0x0501, "Network outbox backpressure")
+EV_FAULT(EV_FAULT_ROUTE_VALIDATION_REJECTED, 0x0105, "Route validation rejected a static route")
+EV_FAULT(EV_FAULT_ROUTE_MISSING_CRITICAL_TARGET, 0x0106, "Critical route target is missing")
+EV_FAULT(EV_FAULT_ROUTE_QOS_CONFLICT, 0x0107, "Route QoS conflicts with actor/module policy")
+EV_FAULT(EV_FAULT_ACTIVE_ROUTE_TABLE_OVERFLOW, 0x0108, "Active route table overflow")
 

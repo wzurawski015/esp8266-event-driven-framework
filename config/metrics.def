@@ -42,4 +42,9 @@ EV_METRIC(EV_METRIC_NETWORK_PUBLISH_DROPPED, counter, "Network publishes dropped
 EV_METRIC(EV_METRIC_COMMAND_ACCEPTED, counter, "Commands accepted")
 EV_METRIC(EV_METRIC_COMMAND_REJECTED, counter, "Commands rejected")
 EV_METRIC(EV_METRIC_COMMAND_AUTH_FAILED, counter, "Command authentication failures")
+EV_METRIC(EV_METRIC_ROUTE_DISABLED_SKIPPED, counter, "Disabled optional routes skipped by active-route delivery")
+EV_METRIC(EV_METRIC_ROUTE_VALIDATION_REJECTED, counter, "Rejected active-route validation entries")
+EV_METRIC(EV_METRIC_ROUTE_OPTIONAL_DISABLED, counter, "Optional routes disabled by board/profile capabilities")
+EV_METRIC(EV_METRIC_ROUTE_QOS_CONFLICT, counter, "Routes rejected because QoS conflicts with module policy")
+EV_METRIC(EV_METRIC_ROUTE_ACTIVE_TABLE_OVERFLOW, counter, "Active route table overflows")
 

@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "ev/active_route_table.h"
 #include "ev/actor_instance.h"
 #include "ev/actor_module.h"
 #include "ev/actor_runtime.h"
@@ -54,6 +55,8 @@ typedef struct ev_runtime_graph {
     ev_fault_registry_t faults;
     ev_metric_registry_t metrics;
     ev_trace_ring_t trace_ring;
+    ev_active_route_table_t active_routes;
+    uint8_t active_routes_bound;
 
     ev_board_capability_snapshot_t board_capabilities;
     ev_runtime_capability_snapshot_t runtime_capabilities;
@@ -71,6 +74,7 @@ typedef struct {
     ev_runtime_board_profile_t board_profile;
     uint8_t ports_set;
     uint8_t board_profile_set;
+    uint32_t route_validation_flags;
 } ev_runtime_builder_t;
 
 ev_result_t ev_runtime_graph_init(ev_runtime_graph_t *graph, ev_capability_mask_t board_caps, ev_capability_mask_t runtime_caps);
@@ -79,6 +83,8 @@ ev_result_t ev_runtime_builder_set_ports(ev_runtime_builder_t *builder, const ev
 ev_result_t ev_runtime_builder_set_board_profile(ev_runtime_builder_t *builder, const ev_runtime_board_profile_t *profile);
 ev_result_t ev_runtime_builder_add_module(ev_runtime_builder_t *builder, ev_actor_id_t actor_id);
 ev_result_t ev_runtime_builder_add_instance(ev_runtime_builder_t *builder, const ev_actor_instance_descriptor_t *instance);
+ev_result_t ev_runtime_builder_set_route_validation_flags(ev_runtime_builder_t *builder, uint32_t flags);
+const ev_active_route_table_t *ev_runtime_graph_active_routes(const ev_runtime_graph_t *graph);
 ev_result_t ev_runtime_builder_bind_routes(ev_runtime_builder_t *builder);
 ev_result_t ev_runtime_builder_build(ev_runtime_builder_t *builder);
 ev_actor_runtime_t *ev_runtime_graph_get_runtime(ev_runtime_graph_t *graph, ev_actor_id_t actor_id);

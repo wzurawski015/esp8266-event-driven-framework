@@ -57,5 +57,7 @@ void ev_fault_registry_init(ev_fault_registry_t *registry);
 ev_result_t ev_fault_emit(ev_fault_registry_t *registry, const ev_fault_payload_t *payload);
 ev_result_t ev_fault_snapshot(const ev_fault_registry_t *registry, ev_fault_snapshot_t *out_snapshot);
 size_t ev_fault_pending_count(const ev_fault_registry_t *registry);
+size_t ev_fault_drain(ev_fault_registry_t *registry, ev_fault_payload_t *out_records, size_t max_records);
+ev_result_t ev_fault_ack_all(ev_fault_registry_t *registry);
 
 #endif

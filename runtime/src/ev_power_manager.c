@@ -16,7 +16,7 @@ void ev_power_manager_init(ev_power_manager_t *manager, const ev_power_policy_t 
     }
 }
 
-ev_result_t ev_power_manager_can_sleep(ev_runtime_graph_t *graph, ev_power_manager_t *manager, uint32_t requested_sleep_ms, ev_quiescence_report_t *out_report)
+ev_result_t ev_power_manager_can_sleep_at(ev_runtime_graph_t *graph, ev_power_manager_t *manager, uint32_t now_ms, uint32_t requested_sleep_ms, const ev_quiescence_policy_t *quiescence_policy, ev_quiescence_report_t *out_report)
 {
     ev_result_t rc;
 
@@ -31,7 +31,7 @@ ev_result_t ev_power_manager_can_sleep(ev_runtime_graph_t *graph, ev_power_manag
         return EV_ERR_POLICY;
     }
 
-    rc = ev_runtime_is_quiescent(graph, out_report);
+    rc = ev_runtime_is_quiescent_at(graph, now_ms, quiescence_policy, out_report);
     if (rc != EV_OK) {
         ev_fault_payload_t fault;
         (void)memset(&fault, 0, sizeof(fault));
@@ -47,4 +47,10 @@ ev_result_t ev_power_manager_can_sleep(ev_runtime_graph_t *graph, ev_power_manag
     manager->sleep_accepted++;
     (void)ev_metric_increment(&graph->metrics, EV_METRIC_SLEEP_ACCEPTED, 1U);
     return EV_OK;
+}
+
+
+ev_result_t ev_power_manager_can_sleep(ev_runtime_graph_t *graph, ev_power_manager_t *manager, uint32_t requested_sleep_ms, ev_quiescence_report_t *out_report)
+{
+    return ev_power_manager_can_sleep_at(graph, manager, 0U, requested_sleep_ms, NULL, out_report);
 }

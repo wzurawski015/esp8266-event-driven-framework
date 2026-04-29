@@ -38,5 +38,7 @@ void ev_trace_ring_init(ev_trace_ring_t *ring);
 ev_result_t ev_trace_record(ev_trace_ring_t *ring, const ev_trace_record_t *record);
 size_t ev_trace_pending(const ev_trace_ring_t *ring);
 uint32_t ev_trace_dropped(const ev_trace_ring_t *ring);
+size_t ev_trace_drain(ev_trace_ring_t *ring, ev_trace_record_t *out_records, size_t max_records);
+void ev_trace_clear(ev_trace_ring_t *ring);
 
 #endif

@@ -49,4 +49,5 @@ EV_METRIC(EV_METRIC_ROUTE_QOS_CONFLICT, counter, "Routes rejected because QoS co
 EV_METRIC(EV_METRIC_ROUTE_ACTIVE_TABLE_OVERFLOW, counter, "Active route table overflows")
 EV_METRIC(EV_METRIC_INGRESS_HIGH_WATER, gauge, "Ingress sequence ring high-water level")
 EV_METRIC(EV_METRIC_INGRESS_DROPPED, counter, "Ingress events dropped by bounded sequence ring")
+EV_METRIC(EV_METRIC_NETWORK_OUTBOX_HIGH_WATER, gauge, "Network outbox sequence ring high-water level")
 

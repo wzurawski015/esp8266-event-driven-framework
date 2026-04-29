@@ -296,6 +296,26 @@ ev_result_t ev_runtime_builder_bind_routes(ev_runtime_builder_t *builder)
     return EV_OK;
 }
 
+
+static uint32_t ev_runtime_builder_active_domain_mask(const ev_runtime_builder_t *builder)
+{
+    uint32_t mask = 0U;
+    size_t i;
+
+    if (builder == NULL) {
+        return 0U;
+    }
+    for (i = 0U; i < (size_t)EV_ACTOR_COUNT; ++i) {
+        if (builder->requested[i] != 0U) {
+            const ev_actor_meta_t *meta = ev_actor_meta((ev_actor_id_t)i);
+            if (meta != NULL) {
+                mask |= EV_RUNTIME_DOMAIN_MASK(meta->execution_domain);
+            }
+        }
+    }
+    return mask;
+}
+
 ev_result_t ev_runtime_builder_build(ev_runtime_builder_t *builder)
 {
     size_t i;

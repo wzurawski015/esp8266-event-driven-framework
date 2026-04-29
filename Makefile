@@ -40,6 +40,7 @@ RUNTIME_SRCS := \
     runtime/src/ev_actor_instance.c \
     runtime/src/ev_active_route_table.c \
     runtime/src/ev_runtime_graph.c \
+    runtime/src/ev_runtime_scheduler.c \
     runtime/src/ev_timer_service.c \
     runtime/src/ev_ingress_service.c \
     runtime/src/ev_quiescence_service.c \
@@ -102,6 +103,7 @@ HOST_TESTS := \
     test_runtime_builder_route_validation \
     test_runtime_disabled_routes \
     test_runtime_graph_publish_send \
+    test_runtime_graph_canonical_scheduler \
     test_runtime_builder_framework \
     test_timer_quiescence_framework \
     test_fault_metrics_trace_framework \

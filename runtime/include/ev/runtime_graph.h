@@ -19,6 +19,7 @@
 #include "ev/trace_ring.h"
 #include "ev/runtime_board_profile.h"
 #include "ev/runtime_ports.h"
+#include "ev/runtime_scheduler.h"
 
 #ifndef EV_RUNTIME_MAILBOX_CAPACITY_MAX
 #define EV_RUNTIME_MAILBOX_CAPACITY_MAX 16U
@@ -58,6 +59,7 @@ typedef struct ev_runtime_graph {
     ev_trace_ring_t trace_ring;
     ev_active_route_table_t active_routes;
     ev_delivery_service_t delivery_service;
+    ev_runtime_scheduler_t scheduler;
     uint8_t active_routes_bound;
 
     ev_board_capability_snapshot_t board_capabilities;

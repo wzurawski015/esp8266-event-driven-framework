@@ -37,6 +37,7 @@ CORE_SRCS := \
 
 RUNTIME_SRCS := \
     runtime/src/ev_actor_modules.c \
+    runtime/src/ev_actor_instance.c \
     runtime/src/ev_runtime_graph.c \
     runtime/src/ev_timer_service.c \
     runtime/src/ev_ingress_service.c \
@@ -96,6 +97,7 @@ HOST_TESTS := \
     test_app_fairness \
     test_network_isolation \
     test_command_actor_contract \
+    test_runtime_actor_instance_descriptors \
     test_runtime_builder_framework \
     test_timer_quiescence_framework \
     test_fault_metrics_trace_framework \

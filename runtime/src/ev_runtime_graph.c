@@ -3,6 +3,8 @@
 #include <string.h>
 
 #include "ev/actor_catalog.h"
+#include "ev/runtime_ports.h"
+#include "ev/runtime_board_profile.h"
 
 ev_result_t ev_runtime_graph_init(ev_runtime_graph_t *graph, ev_capability_mask_t board_caps, ev_capability_mask_t runtime_caps)
 {
@@ -49,6 +51,74 @@ ev_result_t ev_runtime_builder_init(ev_runtime_builder_t *builder, ev_runtime_gr
     return ev_runtime_graph_init(graph, board_caps, runtime_caps);
 }
 
+
+ev_result_t ev_runtime_builder_set_ports(ev_runtime_builder_t *builder, const ev_runtime_ports_t *ports)
+{
+    if ((builder == NULL) || (builder->graph == NULL) || (ports == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+    builder->ports = *ports;
+    builder->ports_set = 1U;
+    builder->graph->ports = *ports;
+    return EV_OK;
+}
+
+ev_result_t ev_runtime_builder_set_board_profile(ev_runtime_builder_t *builder, const ev_runtime_board_profile_t *profile)
+{
+    if ((builder == NULL) || (builder->graph == NULL) || (profile == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+    builder->board_profile = *profile;
+    builder->board_profile_set = 1U;
+    builder->graph->board_profile = *profile;
+    if (profile->configured_capabilities != 0U) {
+        builder->board_caps = profile->configured_capabilities;
+        builder->graph->board_capabilities.configured = profile->configured_capabilities;
+    }
+    if (profile->active_capabilities != 0U) {
+        builder->graph->board_capabilities.active = profile->active_capabilities;
+    }
+    builder->graph->board_capabilities.observed = profile->observed_capabilities;
+    return EV_OK;
+}
+
+ev_result_t ev_runtime_builder_add_instance(ev_runtime_builder_t *builder, const ev_actor_instance_descriptor_t *instance)
+{
+    ev_result_t rc;
+    ev_actor_instance_descriptor_t stored;
+
+    if ((builder == NULL) || (builder->graph == NULL) || (instance == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+    rc = ev_actor_instance_validate(instance);
+    if (rc != EV_OK) {
+        builder->last_error = rc;
+        return rc;
+    }
+    if ((instance->required_capabilities & builder->board_caps) != instance->required_capabilities) {
+        builder->last_error = EV_ERR_NO_CAPABILITY;
+        return builder->last_error;
+    }
+
+    stored = *instance;
+    if (stored.handler_fn == NULL) {
+        stored.handler_fn = stored.module->handler_fn;
+    }
+    if (stored.quiescence_fn == NULL) {
+        stored.quiescence_fn = stored.module->quiescence_fn;
+    }
+    if (stored.stats_fn == NULL) {
+        stored.stats_fn = stored.module->stats_fn;
+    }
+    if (stored.lifecycle_fn == NULL) {
+        stored.lifecycle_fn = stored.module->lifecycle_fn;
+    }
+    builder->graph->instances[stored.actor_id] = stored;
+    builder->graph->instance_bound[stored.actor_id] = 1U;
+    builder->requested[stored.actor_id] = 1U;
+    return EV_OK;
+}
+
 ev_result_t ev_runtime_builder_add_module(ev_runtime_builder_t *builder, ev_actor_id_t actor_id)
 {
     const ev_actor_module_descriptor_t *descriptor;
@@ -74,8 +144,20 @@ ev_result_t ev_runtime_builder_add_module(ev_runtime_builder_t *builder, ev_acto
         return builder->last_error;
     }
 
-    builder->requested[actor_id] = 1U;
-    return EV_OK;
+    {
+        ev_actor_instance_descriptor_t instance;
+        (void)memset(&instance, 0, sizeof(instance));
+        instance.actor_id = actor_id;
+        instance.module = descriptor;
+        instance.actor_context = &builder->graph->actor_contexts[actor_id];
+        instance.actor_context_size = sizeof(builder->graph->actor_contexts[actor_id]);
+        instance.handler_fn = descriptor->handler_fn;
+        instance.quiescence_fn = descriptor->quiescence_fn;
+        instance.stats_fn = descriptor->stats_fn;
+        instance.lifecycle_fn = descriptor->lifecycle_fn;
+        instance.required_capabilities = descriptor->required_board_capabilities;
+        return ev_runtime_builder_add_instance(builder, &instance);
+    }
 }
 
 ev_result_t ev_runtime_builder_bind_routes(ev_runtime_builder_t *builder)
@@ -112,12 +194,23 @@ ev_result_t ev_runtime_builder_build(ev_runtime_builder_t *builder)
                 return builder->last_error;
             }
 
+            void *actor_context = &builder->graph->actor_contexts[i];
+            ev_actor_handler_fn_t handler_fn = descriptor->handler_fn;
+            if (builder->graph->instance_bound[i] != 0U) {
+                const ev_actor_instance_descriptor_t *instance = &builder->graph->instances[i];
+                if (instance->actor_context != NULL) {
+                    actor_context = instance->actor_context;
+                }
+                if (instance->handler_fn != NULL) {
+                    handler_fn = instance->handler_fn;
+                }
+            }
             rc = ev_mailbox_init(&builder->graph->mailboxes[i], meta->mailbox_kind, builder->graph->mailbox_storage[i], cap);
             if (rc != EV_OK) {
                 builder->last_error = rc;
                 return rc;
             }
-            rc = ev_actor_runtime_init(&builder->graph->actor_runtimes[i], actor_id, &builder->graph->mailboxes[i], descriptor->handler_fn, &builder->graph->actor_contexts[i]);
+            rc = ev_actor_runtime_init(&builder->graph->actor_runtimes[i], actor_id, &builder->graph->mailboxes[i], handler_fn, actor_context);
             if (rc != EV_OK) {
                 builder->last_error = rc;
                 return rc;
@@ -130,6 +223,16 @@ ev_result_t ev_runtime_builder_build(ev_runtime_builder_t *builder)
             builder->graph->actor_enabled[i] = 1U;
             builder->graph->descriptors[i] = descriptor;
             builder->graph->lifecycle[i] = EV_ACTOR_STATE_READY;
+            if ((builder->graph->instance_bound[i] != 0U) && (builder->graph->instances[i].init_fn != NULL)) {
+                rc = builder->graph->instances[i].init_fn(builder->graph->actor_runtimes[i].actor_context,
+                                                         &builder->graph->ports,
+                                                         &builder->graph->board_profile,
+                                                         builder->graph->instances[i].user);
+                if (rc != EV_OK) {
+                    builder->last_error = rc;
+                    return rc;
+                }
+            }
             if (descriptor->init_fn != NULL) {
                 rc = descriptor->init_fn(builder->graph, descriptor);
                 if (rc != EV_OK) {

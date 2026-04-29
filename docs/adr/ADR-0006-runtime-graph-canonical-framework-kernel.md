@@ -31,3 +31,7 @@ Future application runtimes must use `runtime_graph` as the owner of framework
 mechanisms. `apps/demo` may keep UI/business behavior, but mailbox ownership,
 actor runtime ownership, registry binding, route delivery, timers, ingress and
 power quiescence must move to framework APIs in the next migration iteration.
+
+## Demo migration outcome
+
+The demo application is migrated to use `runtime_graph` ownership for scheduler, registry, mailboxes and actor runtimes. This ADR remains subject to SDK/HIL confirmation before hardware-production claims.

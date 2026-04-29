@@ -1336,7 +1336,7 @@ static ev_result_t ev_demo_app_drain_budgeted(ev_demo_app_t *app,
             diag->messages += report.messages_processed;
         }
         if ((rc == EV_OK) || (rc == EV_ERR_PARTIAL)) {
-            budget->exhausted = ev_demo_app_budget_exhausted(budget) || (rc == EV_ERR_PARTIAL);
+            budget->exhausted = ev_demo_app_budget_exhausted(budget);
             continue;
         }
         if (rc == EV_ERR_EMPTY) {

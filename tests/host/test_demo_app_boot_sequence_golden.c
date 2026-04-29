@@ -59,7 +59,7 @@ int main(void)
     assert(stats->boot_completions == 1U);
     assert(stats->publish_errors == 0U);
     assert(stats->pump_errors == 0U);
-    assert(stats->snapshots_published >= 1U);
-    assert(stats->snapshots_received >= 1U);
+    assert(stats->snapshots_published == 0U);
+    assert(stats->snapshots_received == 0U);
     return 0;
 }

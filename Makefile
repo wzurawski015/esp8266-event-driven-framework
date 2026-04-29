@@ -129,6 +129,7 @@ PROPERTY_TESTS := \
 PROPERTY_TEST_BINS := $(addprefix $(PROPERTY_BUILD_DIR)/,$(PROPERTY_TESTS))
 
 .PHONY: all host-test property-test routegen routegen-check static-contracts memory-budget quality-gate release-gate docgen docs clean
+.SECONDARY: $(COMMON_OBJS)
 
 all: host-test
 

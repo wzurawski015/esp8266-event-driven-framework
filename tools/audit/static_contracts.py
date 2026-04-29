@@ -6,7 +6,6 @@ import re
 
 ROOT = Path(__file__).resolve().parents[2]
 errors: list[str] = []
-migration_blockers: list[str] = []
 
 FORBIDDEN_HEAP = re.compile(r"\b(malloc|calloc|realloc|free|strdup)\s*\(")
 FORBIDDEN_BLOCK = re.compile(r"\b(portMAX_DELAY|vTaskDelay)\b")
@@ -81,29 +80,38 @@ if (ROOT / "app" / "ev_demo_app.c").exists():
     errors.append("legacy app/ev_demo_app.c remains outside apps/demo")
 
 
-# Non-failing migration blockers for the deferred runtime_graph demo migration.
+# Hard demo runtime_graph migration contracts.
 demo_h = ROOT / "apps" / "demo" / "include" / "ev" / "demo_app.h"
 demo_c = ROOT / "apps" / "demo" / "ev_demo_app.c"
+adapter_c = ROOT / "adapters" / "esp8266_rtos_sdk" / "components" / "ev_platform" / "ev_runtime_app.c"
 if demo_h.exists():
-    demo_h_text = demo_h.read_text(encoding="utf-8", errors="ignore")
-    if "ev_mailbox_t" in demo_h_text:
-        migration_blockers.append("apps/demo/include/ev/demo_app.h still owns per-actor mailboxes")
-    if "ev_actor_runtime_t" in demo_h_text:
-        migration_blockers.append("apps/demo/include/ev/demo_app.h still owns per-actor runtimes")
-    if "ev_actor_registry_t" in demo_h_text:
-        migration_blockers.append("apps/demo/include/ev/demo_app.h still owns actor registry")
-    if "ev_system_pump_t" in demo_h_text:
-        migration_blockers.append("apps/demo/include/ev/demo_app.h still owns system pump")
+    demo_h_text = strip_comments(demo_h.read_text(encoding="utf-8", errors="ignore"))
+    forbidden_demo_header_tokens = {
+        "ev_mailbox_t": "demo header must not own per-actor mailboxes",
+        "ev_actor_runtime_t": "demo header must not own per-actor runtimes",
+        "ev_actor_registry_t": "demo header must not own actor registry",
+        "ev_domain_pump_t": "demo header must not own domain pump",
+        "ev_system_pump_t": "demo header must not own system pump",
+        "next_tick_ms": "demo header must not own legacy tick deadline",
+        "next_tick_100ms_ms": "demo header must not own legacy fast tick deadline",
+    }
+    for token, message in forbidden_demo_header_tokens.items():
+        if token in demo_h_text:
+            errors.append(message)
 if demo_c.exists():
-    demo_c_text = demo_c.read_text(encoding="utf-8", errors="ignore")
-    if "ev_actor_registry_bind" in demo_c_text:
-        migration_blockers.append("apps/demo/ev_demo_app.c still manually binds actor registry")
-    if "ev_demo_app_poll" in demo_c_text and "ev_system_pump_run" in demo_c_text:
-        migration_blockers.append("apps/demo/ev_demo_app.c still owns compatibility poll loop")
-
-if migration_blockers:
-    for blocker in migration_blockers:
-        print(f"MIGRATION_BLOCKER_REPORTED: {blocker}")
+    demo_c_text = strip_comments(demo_c.read_text(encoding="utf-8", errors="ignore"))
+    for token, message in {
+        "ev_actor_registry_bind": "demo app must not manually bind actor registry",
+        "ev_domain_pump_init": "demo app must not initialize domain pumps as composition root",
+        "ev_system_pump_init": "demo app must not initialize system pump as composition root",
+        "ev_system_pump_run": "demo app poll must not run system pump directly",
+    }.items():
+        if token in demo_c_text:
+            errors.append(message)
+if adapter_c.exists():
+    adapter_text = strip_comments(adapter_c.read_text(encoding="utf-8", errors="ignore"))
+    if "next_tick_ms" in adapter_text or "next_tick_100ms_ms" in adapter_text:
+        errors.append("ESP8266 runtime adapter must not read legacy demo tick fields")
 
 if errors:
     for error in errors:

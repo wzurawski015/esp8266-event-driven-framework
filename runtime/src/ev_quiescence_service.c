@@ -82,7 +82,9 @@ ev_result_t ev_runtime_is_quiescent_at(ev_runtime_graph_t *graph, uint32_t now_m
     for (i = 0U; i < (size_t)EV_ACTOR_COUNT; ++i) {
         if (graph->actor_enabled[i] != 0U) {
             report.pending_actor_messages += (uint32_t)ev_mailbox_count(&graph->mailboxes[i]);
-            if ((graph->descriptors[i] != NULL) && (graph->descriptors[i]->quiescence_fn != NULL)) {
+            if ((graph->instance_bound[i] != 0U) && (graph->instances[i].quiescence_fn != NULL)) {
+                (void)graph->instances[i].quiescence_fn(graph->actor_runtimes[i].actor_context, &report);
+            } else if ((graph->descriptors[i] != NULL) && (graph->descriptors[i]->quiescence_fn != NULL)) {
                 (void)graph->descriptors[i]->quiescence_fn(graph->actor_runtimes[i].actor_context, &report);
             }
         }

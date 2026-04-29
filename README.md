@@ -81,3 +81,7 @@ make release-gate
 ```
 
 to execute the host quality gate plus generated documentation checks.
+
+## Runtime graph migration status
+
+The demo application now uses `ev_runtime_graph_t` as the owner of runtime mailboxes, actor runtimes, registry and scheduler. Remaining production hardening work is tracked in `docs/release/demo_runtime_graph_migration_final_report.md`.

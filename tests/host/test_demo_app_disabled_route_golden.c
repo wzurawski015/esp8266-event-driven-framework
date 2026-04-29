@@ -9,6 +9,19 @@ static ev_result_t fake_mono_now_us(void *ctx, ev_time_mono_us_t *out_now) { fak
 static ev_result_t fake_wall_now_us(void *ctx, ev_time_wall_us_t *out_now) { (void)ctx; (void)out_now; return EV_ERR_UNSUPPORTED; }
 static ev_result_t fake_delay_ms(void *ctx, uint32_t delay_ms) { fake_clock_t *c=(fake_clock_t*)ctx; assert(c); c->now_us += (ev_time_mono_us_t)delay_ms*1000ULL; return EV_OK; }
 
+static void drain(ev_demo_app_t *app, unsigned max_polls)
+{
+    unsigned i;
+    for (i = 0U; i < max_polls; ++i) {
+        ev_result_t rc = ev_demo_app_poll(app);
+        assert((rc == EV_OK) || (rc == EV_ERR_PARTIAL));
+        if ((rc == EV_OK) && (ev_demo_app_pending(app) == 0U)) {
+            return;
+        }
+    }
+    assert(!"demo did not drain");
+}
+
 int main(void)
 {
     fake_clock_t clock = {0};
@@ -31,12 +44,14 @@ int main(void)
 
     assert(ev_demo_app_init(&app, &cfg) == EV_OK);
     assert(ev_demo_app_publish_boot(&app) == EV_OK);
-    assert(ev_demo_app_poll(&app) == EV_OK);
+    drain(&app, 8U);
+    clock.now_us = 1000000ULL;
+    drain(&app, 32U);
     stats = ev_demo_app_stats(&app);
     assert(stats != 0);
     assert(stats->disabled_route_deliveries > 0U);
     assert(stats->watchdog_disabled_route_deliveries > 0U);
-    assert(stats->network_disabled_route_deliveries == 0U || stats->disabled_route_deliveries >= stats->network_disabled_route_deliveries);
+    assert(stats->network_disabled_route_deliveries > 0U);
     assert(stats->publish_errors == 0U);
     return 0;
 }

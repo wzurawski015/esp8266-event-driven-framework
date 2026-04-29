@@ -19,3 +19,7 @@ The previous monolithic demo application role has been split. Application code n
 `runtime_graph` is the target framework kernel. During the preparation
 iteration, `apps/demo` remains a compatibility runtime while framework-level
 route binding, scheduler, quiescence and sequence-ring primitives are hardened.
+
+## Canonical demo runtime
+
+`apps/demo` delegates runtime ownership to `ev_runtime_graph_t`. Demo-specific code owns actor contexts and application behavior; framework runtime primitives remain in `runtime/`.

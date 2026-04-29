@@ -4,11 +4,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "ev/actor_runtime.h"
-#include "ev/domain_pump.h"
 #include "ev/lease_pool.h"
 #include "ev/port_clock.h"
 #include "ev/port_log.h"
+#include "ev/runtime_graph.h"
 #include "ev/port_net.h"
 #include "ev/system_pump.h"
 
@@ -172,8 +171,9 @@ struct ev_demo_app {
     const char *app_tag;
     const char *board_name;
     uint32_t tick_period_ms;
-    uint32_t next_tick_ms;
-    uint32_t next_tick_100ms_ms;
+    ev_timer_token_t tick_1s_token;
+    ev_timer_token_t tick_100ms_token;
+    bool standard_timers_scheduled;
     bool boot_published;
     bool sleep_arming;
     ev_irq_port_t *irq_port;
@@ -182,52 +182,7 @@ struct ev_demo_app {
     ev_net_port_t *net_port;
     ev_demo_app_board_profile_t board_profile;
 
-    ev_mailbox_t runtime_mailbox;
-    ev_msg_t runtime_storage[8];
-    ev_actor_runtime_t runtime_actor;
-    ev_actor_registry_t registry;
-    ev_mailbox_t app_mailbox;
-    ev_mailbox_t diag_mailbox;
-    ev_mailbox_t panel_mailbox; /* Skrzynka pocztowa dla logicznego panelu */
-    ev_mailbox_t rtc_mailbox; /* Skrzynka pocztowa dla RTC */
-    ev_mailbox_t mcp23008_mailbox; /* Skrzynka pocztowa dla MCP23008 */
-    ev_mailbox_t ds18b20_mailbox; /* Skrzynka pocztowa dla DS18B20 */
-    ev_mailbox_t oled_mailbox; /* Skrzynka pocztowa dla OLED */
-    ev_mailbox_t supervisor_mailbox; /* Skrzynka pocztowa dla Supervisora */
-    ev_mailbox_t power_mailbox; /* Skrzynka pocztowa dla Aktora Power */
-    ev_mailbox_t watchdog_mailbox; /* Skrzynka pocztowa dla Aktora Watchdog */
-    ev_mailbox_t network_mailbox; /* Skrzynka pocztowa dla Aktora Network */
-    ev_mailbox_t command_mailbox; /* Mailbox for authenticated remote command actor */
-
-    ev_msg_t app_storage[EV_DEMO_APP_MAILBOX_CAPACITY];
-    ev_msg_t diag_storage[EV_DEMO_APP_MAILBOX_CAPACITY];
-    ev_msg_t panel_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla logicznego panelu */
-    ev_msg_t rtc_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla RTC */
-    ev_msg_t mcp23008_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla MCP23008 */
-    ev_msg_t ds18b20_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla DS18B20 */
-    ev_msg_t oled_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla OLED */
-    ev_msg_t supervisor_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla Supervisora */
-    ev_msg_t power_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla Aktora Power */
-    ev_msg_t watchdog_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla Aktora Watchdog */
-    ev_msg_t network_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Bufor wiadomości dla Aktora Network */
-    ev_msg_t command_storage[EV_DEMO_APP_MAILBOX_CAPACITY]; /* Storage for authenticated remote command actor */
-
-    ev_actor_runtime_t app_runtime;
-    ev_actor_runtime_t diag_runtime;
-    ev_actor_runtime_t panel_runtime; /* Wątek logiczny Aktora Panelu */
-    ev_actor_runtime_t rtc_runtime; /* Wątek logiczny Aktora RTC */
-    ev_actor_runtime_t mcp23008_runtime; /* Wątek logiczny Aktora MCP23008 */
-    ev_actor_runtime_t ds18b20_runtime; /* Wątek logiczny Aktora DS18B20 */
-    ev_actor_runtime_t oled_runtime; /* Wątek logiczny Aktora OLED */
-    ev_actor_runtime_t supervisor_runtime; /* Wątek logiczny Aktora Supervisora */
-    ev_actor_runtime_t power_runtime; /* Wątek logiczny Aktora Power */
-    ev_actor_runtime_t watchdog_runtime; /* Wątek logiczny Aktora Watchdog */
-    ev_actor_runtime_t network_runtime; /* Wątek logiczny Aktora Network */
-    ev_actor_runtime_t command_runtime; /* Runtime for authenticated remote command actor */
-
-    ev_domain_pump_t fast_domain;
-    ev_domain_pump_t slow_domain;
-    ev_system_pump_t system_pump;
+    ev_runtime_graph_t graph;
 
     ev_lease_pool_t lease_pool;
     ev_lease_slot_t lease_slots[EV_DEMO_APP_LEASE_SLOTS];
@@ -290,6 +245,8 @@ ev_result_t ev_demo_app_poll(ev_demo_app_t *app);
  * @return Pending message count.
  */
 size_t ev_demo_app_pending(const ev_demo_app_t *app);
+ev_result_t ev_demo_app_next_deadline_ms(const ev_demo_app_t *app, uint32_t *out_deadline_ms);
+ev_result_t ev_demo_app_post_event(ev_demo_app_t *app, ev_event_id_t event_id, ev_actor_id_t source_actor, const void *payload, size_t payload_size);
 
 /**
  * @brief Return a stable pointer to high-level demo counters.

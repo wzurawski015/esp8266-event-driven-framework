@@ -126,7 +126,11 @@ static void test_watchdog_registered_and_fed_by_tick_route(void)
     make_base_cfg(&cfg, &clock_port, &log_port, &wdt_port);
 
     assert(ev_demo_app_init(&app, &cfg) == EV_OK);
-    assert(ev_actor_registry_find(&app.registry, ACT_WATCHDOG) == &app.watchdog_runtime);
+    {
+        ev_actor_runtime_t *watchdog_runtime = ev_runtime_graph_get_runtime(&app.graph, ACT_WATCHDOG);
+        assert(watchdog_runtime != NULL);
+        assert(watchdog_runtime->actor_id == ACT_WATCHDOG);
+    }
     assert(fake_wdt.enable_calls == 1U);
     assert(fake_wdt.last_timeout_ms == k_wdt_profile.watchdog_timeout_ms);
     assert(ev_route_exists(EV_TICK_1S, ACT_WATCHDOG));

@@ -109,6 +109,7 @@ HOST_TESTS := \
     test_runtime_quiescence_time_aware \
     test_runtime_sequence_ingress \
     test_runtime_sequence_network_outbox \
+    test_wemos_runtime_profile \
     test_fault_metrics_trace_framework \
     test_delivery_command_network_framework
 

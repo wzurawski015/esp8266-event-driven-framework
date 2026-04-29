@@ -476,6 +476,14 @@ ev_actor_runtime_t *ev_runtime_graph_get_runtime(ev_runtime_graph_t *graph, ev_a
     return &graph->actor_runtimes[actor_id];
 }
 
+ev_result_t ev_runtime_graph_next_deadline_ms(const ev_runtime_graph_t *graph, uint32_t *out_deadline_ms)
+{
+    if ((graph == NULL) || (out_deadline_ms == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+    return ev_timer_next_deadline_ms(&graph->timer_service, out_deadline_ms);
+}
+
 size_t ev_runtime_graph_pending(const ev_runtime_graph_t *graph)
 {
     size_t i;

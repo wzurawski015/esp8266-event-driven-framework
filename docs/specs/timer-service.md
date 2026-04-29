@@ -16,3 +16,7 @@ uint8_t ev_timer_is_due(...);
 ```
 
 The service does not allocate memory. `publish_due` is bounded by the caller-provided budget and can therefore be used inside deterministic polling loops and sleep-deadline calculations.
+
+## Demo integration
+
+The demo application schedules its standard `EV_TICK_100MS` and `EV_TICK_1S` periodic timers through `ev_timer_service_t` owned by `ev_runtime_graph_t`. Platform adapters must use `ev_demo_app_next_deadline_ms()` or `ev_runtime_graph_next_deadline_ms()` instead of reading application-local tick fields.

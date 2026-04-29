@@ -96,6 +96,7 @@ ev_result_t ev_runtime_builder_bind_routes(ev_runtime_builder_t *builder);
 ev_result_t ev_runtime_builder_build(ev_runtime_builder_t *builder);
 ev_actor_runtime_t *ev_runtime_graph_get_runtime(ev_runtime_graph_t *graph, ev_actor_id_t actor_id);
 size_t ev_runtime_graph_pending(const ev_runtime_graph_t *graph);
+ev_result_t ev_runtime_graph_next_deadline_ms(const ev_runtime_graph_t *graph, uint32_t *out_deadline_ms);
 ev_runtime_graph_stats_t ev_runtime_graph_stats(const ev_runtime_graph_t *graph);
 
 #endif

@@ -23,3 +23,7 @@ The builder now supports injected runtime ports, board-profile snapshots and
 concrete actor instance descriptors. `ev_runtime_builder_add_module()` remains a
 compatibility wrapper; new framework applications should prefer concrete actor
 instances once the demo migration begins.
+
+## Demo migration completion
+
+The demo compatibility runtime is built through `ev_runtime_builder_add_instance()`, active route binding and the graph scheduler. The demo header must not own mailbox, actor-runtime, registry or pump primitives.

@@ -60,7 +60,8 @@ DRIVER_SRCS := \
     drivers/src/ev_driver_layer.c
 
 APP_SRCS := \
-    apps/demo/ev_demo_app.c
+    apps/demo/ev_demo_app.c \
+    apps/demo/ev_demo_runtime_instances.c
 
 TEST_SUPPORT_SRCS := \
     tests/host/fakes/fake_i2c_port.c \
@@ -93,6 +94,11 @@ HOST_TESTS := \
     test_demo_app_sleep_quiescence \
     test_irq_observability \
     test_bsp_runtime_profile \
+    test_demo_app_boot_sequence_golden \
+    test_demo_app_disabled_route_golden \
+    test_demo_app_tick_order_golden \
+    test_demo_app_sleep_guard_golden \
+    test_demo_app_fairness_golden \
     test_demo_app_contract \
     test_demo_app_fault_contract \
     test_app_starvation \
@@ -110,6 +116,7 @@ HOST_TESTS := \
     test_runtime_sequence_ingress \
     test_runtime_sequence_network_outbox \
     test_wemos_runtime_profile \
+    test_demo_runtime_instances \
     test_demo_migration_blockers \
     test_fault_metrics_trace_framework \
     test_delivery_command_network_framework

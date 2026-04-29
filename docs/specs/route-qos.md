@@ -24,3 +24,7 @@ Supported QoS values:
 - `EV_ROUTE_QOS_COMMAND`
 
 The delivery service updates metrics, emits faults on critical overflow, and records trace entries when tracing is enabled.
+
+## Demo compatibility delivery
+
+The demo application keeps a compatibility delivery callback for legacy actor contexts that still call `ev_publish()`. That callback must consult `ev_runtime_graph_active_routes()` and treat `EV_ACTIVE_ROUTE_OPTIONAL_DISABLED` as a safe skip. The active route table, not an application-local route engine, is the source of truth for disabled-route semantics.

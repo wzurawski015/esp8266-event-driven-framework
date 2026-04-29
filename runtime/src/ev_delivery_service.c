@@ -115,6 +115,13 @@ static ev_result_t ev_delivery_publish_active(ev_runtime_graph_t *graph, const e
         local->matched_routes++;
         if (entry->state == EV_ACTIVE_ROUTE_OPTIONAL_DISABLED) {
             local->dropped++;
+            local->optional_disabled_routes++;
+            if (entry->route.target_actor == ACT_WATCHDOG) {
+                local->optional_disabled_watchdog_routes++;
+            }
+            if (entry->route.target_actor == ACT_NETWORK) {
+                local->optional_disabled_network_routes++;
+            }
             (void)ev_metric_increment(&graph->metrics, EV_METRIC_ROUTE_DISABLED_SKIPPED, 1U);
             continue;
         }

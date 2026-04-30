@@ -31,5 +31,6 @@ int main(void)
     assert(report.delivered == 0U);
     assert(report.dropped > 0U);
     assert(graph.metrics.values[EV_METRIC_ROUTE_DISABLED_SKIPPED] > 0U);
+    assert(graph.metrics.values[EV_METRIC_POST_OK] > 0U);
     return 0;
 }

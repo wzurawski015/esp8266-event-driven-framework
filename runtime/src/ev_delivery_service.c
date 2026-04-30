@@ -37,8 +37,12 @@ static void ev_delivery_emit_fault(ev_runtime_graph_t *graph, ev_actor_id_t sour
     fault.triggering_event = event_id;
     fault.arg0 = (uint32_t)target_actor;
     fault.arg1 = (uint32_t)(-result);
-    (void)ev_fault_emit(&graph->faults, &fault);
-    (void)ev_metric_increment(&graph->metrics, EV_METRIC_FAULT_EMITTED, 1U);
+    if (ev_fault_emit(&graph->faults, &fault) == EV_OK) {
+        (void)ev_metric_increment(&graph->metrics, EV_METRIC_FAULT_EMITTED, 1U);
+    }
+    if (result == EV_ERR_FULL) {
+        (void)ev_metric_increment(&graph->metrics, EV_METRIC_MAILBOX_OVERFLOW, 1U);
+    }
 }
 
 static void ev_delivery_trace(ev_runtime_graph_t *graph, const ev_route_t *route, const ev_msg_t *msg, ev_result_t result)
@@ -128,6 +132,10 @@ static ev_result_t ev_delivery_publish_active(ev_runtime_graph_t *graph, const e
         if (entry->state != EV_ACTIVE_ROUTE_ENABLED) {
             local->dropped++;
             (void)ev_metric_increment(&graph->metrics, EV_METRIC_ROUTE_VALIDATION_REJECTED, 1U);
+            if (entry->state == EV_ACTIVE_ROUTE_REJECTED_QOS_CONFLICT) {
+                (void)ev_metric_increment(&graph->metrics, EV_METRIC_ROUTE_QOS_CONFLICT, 1U);
+            }
+            ev_delivery_emit_fault(graph, msg->source_actor, entry->route.target_actor, msg->event_id, entry->reason);
             if (local->first_error == EV_OK) {
                 local->first_error = entry->reason;
                 local->first_failed_actor = entry->route.target_actor;
@@ -188,7 +196,10 @@ ev_result_t ev_delivery_publish(ev_delivery_service_t *svc, const ev_msg_t *msg,
 
     if (local.matched_routes == 0U) {
         local.first_error = EV_ERR_NOT_FOUND;
+        (void)ev_metric_increment(&svc->graph->metrics, EV_METRIC_DELIVERY_FAILED, 1U);
         final_rc = EV_ERR_NOT_FOUND;
+    } else if (final_rc == EV_OK) {
+        (void)ev_metric_increment(&svc->graph->metrics, EV_METRIC_POST_OK, 1U);
     }
     if (report != NULL) {
         *report = local;

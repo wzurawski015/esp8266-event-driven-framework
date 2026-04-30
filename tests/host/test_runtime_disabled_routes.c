@@ -29,5 +29,6 @@ int main(void)
     }
     assert(saw_network_disabled == 1U);
     assert(saw_watchdog_disabled == 1U);
+    assert(graph.metrics.values[EV_METRIC_ROUTE_OPTIONAL_DISABLED] >= 2U);
     return 0;
 }

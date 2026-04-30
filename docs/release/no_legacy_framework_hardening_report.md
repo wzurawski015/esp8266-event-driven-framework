@@ -76,3 +76,10 @@ Demo actor initialization now passes `ev_actor_publish_port_delivery_adapter` wi
 actor-specific graph-backed publish ports. `ev_demo_app_delivery()` is no longer
 the production actor emission path. Disabled-route compatibility counters are
 synchronized from publish-port statistics.
+
+## Commit 7: route/delivery diagnostics
+
+Route binding and delivery now increment concrete metrics and emit faults for
+validation rejection, QoS conflicts, active-route overflow, optional-disabled
+routes and critical delivery failures. Tests assert representative metric values
+for optional disabled routes and successful graph publication.

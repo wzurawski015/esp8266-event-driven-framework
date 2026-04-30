@@ -257,6 +257,41 @@ static ev_active_route_state_t ev_runtime_builder_classify_route(ev_runtime_buil
     return EV_ACTIVE_ROUTE_REJECTED_MISSING_MANDATORY_ACTOR;
 }
 
+static void ev_runtime_builder_emit_route_fault(ev_runtime_graph_t *graph,
+                                                const ev_route_t *route,
+                                                ev_active_route_state_t state,
+                                                ev_result_t reason)
+{
+    ev_fault_payload_t fault;
+    if ((graph == NULL) || (route == NULL)) {
+        return;
+    }
+    memset(&fault, 0, sizeof(fault));
+    fault.source_actor = ACT_RUNTIME;
+    fault.triggering_event = route->event_id;
+    fault.arg0 = (uint32_t)route->target_actor;
+    fault.arg1 = (uint32_t)(-reason);
+    fault.severity = EV_FAULT_SEV_ERROR;
+    switch (state) {
+    case EV_ACTIVE_ROUTE_REJECTED_QOS_CONFLICT:
+        fault.fault_id = EV_FAULT_ROUTE_QOS_CONFLICT;
+        break;
+    case EV_ACTIVE_ROUTE_REJECTED_MISSING_MANDATORY_ACTOR:
+        fault.fault_id = EV_FAULT_ROUTE_MISSING_CRITICAL_TARGET;
+        fault.severity = EV_FAULT_SEV_CRITICAL;
+        break;
+    case EV_ACTIVE_ROUTE_REJECTED_OVERFLOW:
+        fault.fault_id = EV_FAULT_ACTIVE_ROUTE_TABLE_OVERFLOW;
+        break;
+    default:
+        fault.fault_id = EV_FAULT_ROUTE_VALIDATION_REJECTED;
+        break;
+    }
+    if (ev_fault_emit(&graph->faults, &fault) == EV_OK) {
+        (void)ev_metric_increment(&graph->metrics, EV_METRIC_FAULT_EMITTED, 1U);
+    }
+}
+
 ev_result_t ev_runtime_builder_bind_routes(ev_runtime_builder_t *builder)
 {
     size_t i;
@@ -279,6 +314,8 @@ ev_result_t ev_runtime_builder_bind_routes(ev_runtime_builder_t *builder)
         if (rc != EV_OK) {
             ev_route_t overflow_route = *route;
             (void)ev_active_route_table_add(&builder->graph->active_routes, &overflow_route, EV_ACTIVE_ROUTE_REJECTED_OVERFLOW, EV_ERR_FULL);
+            (void)ev_metric_increment(&builder->graph->metrics, EV_METRIC_ROUTE_ACTIVE_TABLE_OVERFLOW, 1U);
+            ev_runtime_builder_emit_route_fault(builder->graph, route, EV_ACTIVE_ROUTE_REJECTED_OVERFLOW, EV_ERR_FULL);
             builder->last_error = EV_ERR_FULL;
             return builder->last_error;
         }
@@ -286,6 +323,10 @@ ev_result_t ev_runtime_builder_bind_routes(ev_runtime_builder_t *builder)
             (void)ev_metric_increment(&builder->graph->metrics, EV_METRIC_ROUTE_OPTIONAL_DISABLED, 1U);
         } else if (state != EV_ACTIVE_ROUTE_ENABLED) {
             (void)ev_metric_increment(&builder->graph->metrics, EV_METRIC_ROUTE_VALIDATION_REJECTED, 1U);
+            if (state == EV_ACTIVE_ROUTE_REJECTED_QOS_CONFLICT) {
+                (void)ev_metric_increment(&builder->graph->metrics, EV_METRIC_ROUTE_QOS_CONFLICT, 1U);
+            }
+            ev_runtime_builder_emit_route_fault(builder->graph, route, state, reason);
             if ((builder->route_validation_flags & EV_RUNTIME_ROUTE_VALIDATE_STRICT_MANDATORY) != 0U) {
                 builder->last_error = reason;
                 return reason;

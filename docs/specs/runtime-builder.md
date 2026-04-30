@@ -27,3 +27,8 @@ instances once the demo migration begins.
 ## Demo migration completion
 
 The demo compatibility runtime is built through `ev_runtime_builder_add_instance()`, active route binding and the graph scheduler. The demo header must not own mailbox, actor-runtime, registry or pump primitives.
+
+
+## No-legacy hardening boundary
+
+After the demo runtime-graph migration, applications must use public runtime graph APIs for scheduling, timers, route delivery and diagnostics. Direct access to `graph.scheduler` or `graph.timer_service` from `apps/demo` is treated as a compatibility seam and is removed by the no-legacy hardening iteration.

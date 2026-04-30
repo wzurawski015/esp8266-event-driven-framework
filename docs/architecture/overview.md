@@ -14,12 +14,12 @@ The reusable framework mechanisms are in `runtime/`:
 
 The previous monolithic demo application role has been split. Application code now provides wiring and behavior, while runtime coordination lives in framework services.
 
-## Canonical runtime direction
+## Canonical runtime
 
-`runtime_graph` is the target framework kernel. During the preparation
-iteration, `apps/demo` remains a compatibility runtime while framework-level
-route binding, scheduler, quiescence and sequence-ring primitives are hardened.
-
-## Canonical demo runtime
-
-`apps/demo` delegates runtime ownership to `ev_runtime_graph_t`. Demo-specific code owns actor contexts and application behavior; framework runtime primitives remain in `runtime/`.
+`runtime_graph` is the framework kernel. `apps/demo` delegates mailbox, actor
+runtime, registry, scheduler, route binding and timer ownership to
+`ev_runtime_graph_t`. Demo-specific code owns actor contexts, UI behavior, board
+profile selection and compatibility counters only. Remaining hardening work is
+to hide scheduler/timer internals behind public graph APIs, move poll
+orchestration into `runtime_loop`, and replace the demo delivery callback with a
+graph-backed actor publish port.

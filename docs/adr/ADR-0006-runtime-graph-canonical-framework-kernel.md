@@ -2,36 +2,40 @@
 
 ## Status
 
-Accepted for staged migration.
+Accepted. Demo runtime ownership migration is complete for host-validated code.
+SDK and HIL confirmation remain outside this ADR until executed on the target
+toolchain and hardware.
 
 ## Decision
 
-`ev_runtime_graph_t` is the target canonical framework kernel for route binding,
+`ev_runtime_graph_t` is the canonical framework kernel for route binding,
 delivery, scheduling, timers, quiescence, fault/metric storage and trace state.
-The existing `apps/demo` composition root remains a compatibility runtime during
-this preparation iteration and must not be removed until equivalent behavior is
-covered by host and property tests.
+The demo application now owns application state and actor contexts, while
+mailboxes, actor runtimes, actor registry, route binding, scheduler ownership
+and timer ownership are framework-owned.
 
 ## Current migration boundary
 
-This iteration adds actor-instance descriptors, active-route validation,
-`runtime_graph` publish/send APIs, a scheduler wrapper around domain/system
-pumps, time-aware quiescence, sequence-mask rings and an honest Wemos minimal
-runtime target.
+The previous manual demo-owned runtime was removed in the migration series.
+Hard static contracts prevent `apps/demo` from reintroducing per-actor
+mailboxes, actor runtimes, registry, domain/system pumps or legacy tick fields.
 
-The full demo migration is intentionally deferred to the next commit series:
+This hardening iteration removes the remaining compatibility seams:
 
-```text
-refactor(app): migrate demo app to runtime_graph without losing behavior
-```
+- direct demo access to `graph.scheduler` and `graph.timer_service`,
+- demo-owned poll orchestration,
+- demo delivery callback as actor emission path,
+- incomplete route/delivery fault and metric emission,
+- dead `pending_log_records` quiescence reporting without a log pending hook.
 
 ## Consequences
 
-Future application runtimes must use `runtime_graph` as the owner of framework
-mechanisms. `apps/demo` may keep UI/business behavior, but mailbox ownership,
-actor runtime ownership, registry binding, route delivery, timers, ingress and
-power quiescence must move to framework APIs in the next migration iteration.
+Future application runtimes must call public `runtime_graph` and `runtime_loop`
+APIs rather than inspecting framework internals. Actor emission must use a
+framework publish/send port, not an application-specific delivery callback.
 
-## Demo migration outcome
+## Remaining validation boundary
 
-The demo application is migrated to use `runtime_graph` ownership for scheduler, registry, mailboxes and actor runtimes. This ADR remains subject to SDK/HIL confirmation before hardware-production claims.
+The architecture is host-gated. SDK matrix builds, HIL on ATNEL I2C/OneWire/WiFi,
+Wemos minimal-runtime smoke on a real board and final linker-map RAM accounting
+remain required before hardware-production claims.

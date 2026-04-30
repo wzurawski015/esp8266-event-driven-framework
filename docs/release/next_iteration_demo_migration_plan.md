@@ -1,16 +1,17 @@
-# Next iteration: demo migration to runtime_graph
+# Next iteration: no-legacy framework hardening
 
-Recommended next commit:
-
-```text
-refactor(app): migrate demo app to runtime_graph without losing behavior
-```
+The demo runtime-ownership migration has been applied. The next iteration is no
+longer a migration from manual mailboxes/registry/pumps; it is hardening that
+removes the remaining compatibility seams.
 
 Required acceptance criteria:
 
-- `apps/demo/include/ev/demo_app.h` no longer owns per-actor mailboxes.
-- `apps/demo/include/ev/demo_app.h` no longer owns per-actor actor runtimes.
-- `apps/demo/ev_demo_app.c` no longer manually binds every actor into a registry.
-- `ev_demo_app_poll()` delegates scheduler work to `runtime_graph`.
-- disabled NET/WDT route behavior remains counted and safe.
-- fairness, starvation, BSP profile, sleep quiescence and fault tests pass.
+- `apps/demo` does not access `app->graph.scheduler` or `app->graph.timer_service` directly.
+- `ev_demo_app_poll()` delegates orchestration to reusable `runtime_loop`.
+- production actor initialization does not pass `ev_demo_app_delivery`.
+- route/delivery fault and metric emission is covered by tests.
+- quiescence reports log pending state through a real log-port hook.
+- static contracts hard-fail regression to demo-owned runtime internals.
+
+Post-hardening work remains: SDK build matrix, HIL, Wemos board smoke and final
+ESP8266 linker-map memory reporting.

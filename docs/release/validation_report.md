@@ -1,10 +1,8 @@
 # Validation report
 
-Baseline archive: `esp8266-event-driven_20260429_225838.tar.gz`.
+Baseline archive: `esp8266-event-driven_20260430_080553.tar.gz`.
 
-This report records validation executed for the 7-commit demo runtime-graph
-migration patch series. The migration moves demo runtime ownership to
-`ev_runtime_graph_t` while preserving the public demo compatibility API.
+This report records the host-side validation state after the demo runtime-graph migration. The follow-up hardening series removes remaining compatibility seams around graph internals, poll orchestration, actor emission, diagnostics and quiescence log pending state.
 
 ## Executed gates
 

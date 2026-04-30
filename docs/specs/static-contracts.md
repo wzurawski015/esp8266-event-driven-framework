@@ -26,3 +26,8 @@ iteration because full demo migration is intentionally deferred.
 ## Demo runtime ownership contract
 
 The static-contract checker fails if demo code reintroduces per-actor mailboxes, per-actor actor runtimes, actor registry ownership, domain/system pump ownership, legacy tick fields or adapter reads of those legacy fields. Compatibility wrappers are allowed only when they delegate to `runtime_graph`.
+
+
+## No-legacy demo contracts
+
+The static audit hard-fails reintroduction of demo-owned runtime primitives and, after no-legacy hardening, also hard-fails direct demo access to graph scheduler and timer internals or production actor initialization through `ev_demo_app_delivery`.

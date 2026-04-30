@@ -56,3 +56,10 @@ access for its remaining compatibility paths.
 `runtime_loop` now owns bounded orchestration of ingress collection, scheduler
 draining, due-timer publication and partial-work reporting. It is a runtime-layer
 service and has no dependency on `apps/demo`.
+
+## Commit 4: demo poll wrapper
+
+`ev_demo_app_poll()` now prepares runtime-loop policy/ports, delegates to
+`ev_runtime_loop_poll_once()` and records compatibility statistics from the
+runtime-loop report. Demo-specific ingress remains a callback; the orchestration
+algorithm is framework-owned.

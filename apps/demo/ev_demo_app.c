@@ -12,6 +12,7 @@
 #include "ev/msg.h"
 #include "ev/publish.h"
 #include "ev/runtime_poll.h"
+#include "ev/runtime_loop.h"
 #include "ev/demo_runtime_instances.h"
 
 #define EV_DEMO_APP_DEFAULT_TICK_MS 1000U
@@ -1315,43 +1316,6 @@ static bool ev_demo_app_budget_exhausted(const ev_poll_budget_t *budget)
            (budget->net_samples_used >= EV_APP_POLL_MAX_NET_SAMPLES);
 }
 
-static ev_result_t ev_demo_app_drain_budgeted(ev_demo_app_t *app,
-                                              ev_demo_app_poll_diag_t *diag,
-                                              ev_poll_budget_t *budget)
-{
-    ev_system_pump_report_t report = {0};
-    ev_result_t rc;
-    if ((app == NULL) || (budget == NULL)) {
-        return EV_ERR_INVALID_ARG;
-    }
-    while ((ev_runtime_graph_scheduler_pending(&app->graph) > 0U) && !budget->exhausted) {
-        if (ev_demo_app_budget_exhausted(budget)) {
-            budget->exhausted = true;
-            break;
-        }
-        rc = ev_runtime_graph_poll_scheduler_once(&app->graph, EV_DEMO_APP_TURN_BUDGET, &report);
-        ++budget->pump_calls_used;
-        budget->turns_used += report.turns_processed;
-        budget->messages_used += report.messages_processed;
-        if (diag != NULL) {
-            ++diag->pump_calls;
-            diag->turns += report.turns_processed;
-            diag->messages += report.messages_processed;
-        }
-        if ((rc == EV_OK) || (rc == EV_ERR_PARTIAL)) {
-            budget->exhausted = ev_demo_app_budget_exhausted(budget);
-            continue;
-        }
-        if (rc == EV_ERR_EMPTY) {
-            return EV_OK;
-        }
-        ++app->stats.pump_errors;
-        ev_demo_app_logf(app, EV_LOG_ERROR, "runtime scheduler rc=%d turns=%u messages=%u pending_after=%u", (int)rc, (unsigned)report.turns_processed, (unsigned)report.messages_processed, (unsigned)report.pending_after);
-        return rc;
-    }
-    return EV_OK;
-}
-
 static ev_result_t ev_demo_app_collect_ingress(ev_demo_app_t *app,
                                                ev_poll_budget_t *budget,
                                                ev_demo_app_poll_diag_t *diag)
@@ -1547,24 +1511,75 @@ static ev_result_t ev_demo_app_timer_delivery(ev_actor_id_t target_actor, const 
     return ev_runtime_graph_send(&app->graph, target_actor, msg);
 }
 
-static ev_result_t ev_demo_app_process_timers(ev_demo_app_t *app,
-                                              ev_poll_budget_t *budget,
-                                              uint32_t now_ms)
+static ev_result_t ev_demo_app_loop_now(void *ctx, uint32_t *out_now_ms)
 {
-    size_t published;
-    if ((app == NULL) || (budget == NULL)) {
+    return ev_demo_app_now_ms((ev_demo_app_t *)ctx, out_now_ms);
+}
+
+static ev_result_t ev_demo_app_loop_collect(ev_runtime_graph_t *graph,
+                                            void *context,
+                                            ev_runtime_loop_report_t *report,
+                                            const ev_runtime_loop_policy_t *policy)
+{
+    ev_demo_app_t *app = (ev_demo_app_t *)context;
+    ev_poll_budget_t budget;
+    ev_demo_app_poll_diag_t diag;
+    ev_result_t rc;
+
+    (void)graph;
+    if ((app == NULL) || (report == NULL) || (policy == NULL)) {
         return EV_ERR_INVALID_ARG;
     }
-    if (budget->exhausted || app->sleep_arming) {
-        return EV_OK;
+    memset(&budget, 0, sizeof(budget));
+    ev_demo_app_poll_diag_reset(&diag);
+    budget.pump_calls_used = report->pump_calls;
+    budget.messages_used = report->messages;
+    budget.turns_used = report->turns;
+    budget.irq_samples_used = report->irq_samples;
+    budget.net_samples_used = report->net_samples;
+    budget.exhausted = report->exhausted != 0U;
+
+    rc = ev_demo_app_collect_ingress(app, &budget, &diag);
+    report->irq_samples = (uint32_t)budget.irq_samples_used;
+    report->net_samples = (uint32_t)budget.net_samples_used;
+    report->exhausted = budget.exhausted ? 1U : 0U;
+    (void)policy;
+    return rc;
+}
+
+static ev_result_t ev_demo_app_loop_work_pending(ev_runtime_graph_t *graph,
+                                                 void *context,
+                                                 uint32_t now_ms,
+                                                 const ev_runtime_loop_report_t *report,
+                                                 uint8_t *out_pending)
+{
+    ev_demo_app_t *app = (ev_demo_app_t *)context;
+    bool irq_work_pending = false;
+    bool net_work_pending = false;
+    bool timer_due = false;
+
+    (void)report;
+    if ((graph == NULL) || (app == NULL) || (out_pending == NULL)) {
+        return EV_ERR_INVALID_ARG;
     }
-    if (ev_runtime_graph_scheduler_pending(&app->graph) > 0U) {
-        return EV_OK;
+    if ((app->irq_port != NULL) && (app->irq_port->wait != NULL)) {
+        (void)app->irq_port->wait(app->irq_port->ctx, 0U, &irq_work_pending);
     }
-    published = ev_runtime_graph_publish_due_timers(&app->graph, now_ms, ev_demo_app_timer_delivery, app, 1U);
-    if (published > 0U) {
-        budget->exhausted = ev_demo_app_budget_exhausted(budget);
+    if ((app->net_port != NULL) && (app->net_port->get_stats != NULL)) {
+        ev_net_stats_t net_stats;
+        if (app->net_port->get_stats(app->net_port->ctx, &net_stats) == EV_OK) {
+            net_work_pending = (net_stats.pending_events > 0U);
+        }
     }
+    {
+        ev_quiescence_report_t q = {0};
+        ev_quiescence_policy_t quiescence_policy = {0};
+        quiescence_policy.block_due_timers = 1U;
+        if (ev_runtime_is_quiescent_at(graph, now_ms, &quiescence_policy, &q) != EV_OK) {
+            timer_due = (q.due_timers > 0U);
+        }
+    }
+    *out_pending = (irq_work_pending || net_work_pending || timer_due) ? 1U : 0U;
     return EV_OK;
 }
 
@@ -1711,16 +1726,11 @@ ev_result_t ev_demo_app_publish_boot(ev_demo_app_t *app)
 
 ev_result_t ev_demo_app_poll(ev_demo_app_t *app)
 {
-    ev_result_t rc = EV_OK;
+    ev_runtime_loop_policy_t policy;
+    ev_runtime_loop_ports_t ports;
+    ev_runtime_loop_report_t report;
     ev_demo_app_poll_diag_t diag;
-    ev_poll_budget_t budget = {0};
-    uint32_t now_ms = 0U;
-    uint32_t start_ms = 0U;
-    uint32_t end_ms = 0U;
-    uint32_t elapsed_ms = 0U;
-    size_t pending_before = 0U;
-    size_t pending_after = 0U;
-    bool have_timing = false;
+    ev_result_t rc;
 
     if (app == NULL) {
         return EV_ERR_INVALID_ARG;
@@ -1729,96 +1739,38 @@ ev_result_t ev_demo_app_poll(ev_demo_app_t *app)
         return EV_ERR_STATE;
     }
 
+    ev_runtime_loop_policy_default(&policy);
+    policy.max_pump_calls = EV_APP_POLL_MAX_PUMP_TURNS;
+    policy.max_messages = EV_APP_POLL_MAX_MESSAGES;
+    policy.max_turns = EV_APP_POLL_MAX_PUMP_TURNS;
+    policy.max_irq_samples = EV_APP_POLL_MAX_IRQ_SAMPLES;
+    policy.max_net_samples = EV_APP_POLL_MAX_NET_SAMPLES;
+    policy.timer_publish_budget = 1U;
+    policy.scheduler_turn_budget = EV_DEMO_APP_TURN_BUDGET;
+    policy.skip_timers_when_scheduler_pending = 1U;
+    policy.run_scheduler_after_timers = 1U;
+
+    memset(&ports, 0, sizeof(ports));
+    ports.collect_ingress = ev_demo_app_loop_collect;
+    ports.collect_ctx = app;
+    ports.timer_delivery = ev_demo_app_timer_delivery;
+    ports.timer_delivery_ctx = app;
+    ports.now_ms = ev_demo_app_loop_now;
+    ports.now_ctx = app;
+    ports.work_pending = ev_demo_app_loop_work_pending;
+    ports.work_pending_ctx = app;
+
+    rc = ev_runtime_loop_poll_once(&app->graph, &policy, &ports, &report);
+
     ev_demo_app_poll_diag_reset(&diag);
-    pending_before = ev_runtime_graph_scheduler_pending(&app->graph);
-    if (ev_demo_app_now_ms(app, &start_ms) == EV_OK) {
-        have_timing = true;
-    }
-
-    for (;;) {
-        size_t before_irq_samples = budget.irq_samples_used;
-        size_t before_net_samples = budget.net_samples_used;
-
-        rc = ev_demo_app_collect_ingress(app, &budget, &diag);
-        if (rc != EV_OK) {
-            goto finalize;
-        }
-
-        rc = ev_demo_app_drain_budgeted(app, &diag, &budget);
-        if (rc != EV_OK) {
-            goto finalize;
-        }
-
-        if (budget.exhausted || ((budget.irq_samples_used == before_irq_samples) &&
-                                  (budget.net_samples_used == before_net_samples))) {
-            break;
-        }
-    }
-
-    if (!budget.exhausted) {
-        rc = ev_demo_app_now_ms(app, &now_ms);
-        if (rc != EV_OK) {
-            goto finalize;
-        }
-
-        for (;;) {
-            const uint32_t before_timer_published = ev_runtime_graph_timer_published_count(&app->graph);
-
-            rc = ev_demo_app_process_timers(app, &budget, now_ms);
-            if (rc != EV_OK) {
-                goto finalize;
-            }
-
-            rc = ev_demo_app_drain_budgeted(app, &diag, &budget);
-            if (rc != EV_OK) {
-                goto finalize;
-            }
-
-            if (budget.exhausted ||
-                (ev_runtime_graph_timer_published_count(&app->graph) == before_timer_published)) {
-                break;
-            }
-        }
-    }
-
-finalize:
-    pending_after = ev_runtime_graph_scheduler_pending(&app->graph);
-    if (have_timing && (ev_demo_app_now_ms(app, &end_ms) == EV_OK)) {
-        elapsed_ms = end_ms - start_ms;
-    }
-    ev_demo_app_record_poll_diag(app, &diag, pending_before, pending_after, elapsed_ms);
+    diag.irq_samples = report.irq_samples;
+    diag.net_samples = report.net_samples;
+    diag.pump_calls = report.pump_calls;
+    diag.turns = report.turns;
+    diag.messages = report.messages;
+    ev_demo_app_record_poll_diag(app, &diag, report.pending_before, report.pending_after, report.elapsed_ms);
     ev_demo_app_record_irq_stats(app);
     ev_demo_app_record_net_stats(app);
-    if ((rc == EV_OK) && budget.exhausted) {
-        bool irq_work_pending = false;
-        bool net_work_pending = false;
-        uint32_t current_now_ms = end_ms;
-        bool timer_due = false;
-
-        if ((app->irq_port != NULL) && (app->irq_port->wait != NULL)) {
-            (void)app->irq_port->wait(app->irq_port->ctx, 0U, &irq_work_pending);
-        }
-        if ((app->net_port != NULL) && (app->net_port->get_stats != NULL)) {
-            ev_net_stats_t net_stats;
-            if (app->net_port->get_stats(app->net_port->ctx, &net_stats) == EV_OK) {
-                net_work_pending = (net_stats.pending_events > 0U);
-            }
-        }
-        if (!have_timing || (ev_demo_app_now_ms(app, &current_now_ms) != EV_OK)) {
-            current_now_ms = end_ms;
-        }
-        {
-            ev_quiescence_report_t q = {0};
-            ev_quiescence_policy_t policy = {0};
-            policy.block_due_timers = 1U;
-            if (ev_runtime_is_quiescent_at(&app->graph, current_now_ms, &policy, &q) != EV_OK) {
-                timer_due = (q.due_timers > 0U);
-            }
-        }
-        if ((pending_after > 0U) || irq_work_pending || net_work_pending || timer_due) {
-            rc = EV_ERR_PARTIAL;
-        }
-    }
     return rc;
 }
 

@@ -468,6 +468,77 @@ const ev_active_route_table_t *ev_runtime_graph_active_routes(const ev_runtime_g
     return (graph != NULL) ? &graph->active_routes : NULL;
 }
 
+ev_result_t ev_runtime_graph_schedule_periodic(ev_runtime_graph_t *graph,
+                                               uint32_t now_ms,
+                                               uint32_t period_ms,
+                                               ev_actor_id_t target_actor,
+                                               ev_event_id_t event_id,
+                                               uint32_t arg0,
+                                               ev_timer_token_t *out_token)
+{
+    if ((graph == NULL) || (out_token == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+    return ev_timer_schedule_periodic(&graph->timer_service,
+                                      now_ms,
+                                      period_ms,
+                                      target_actor,
+                                      event_id,
+                                      arg0,
+                                      out_token);
+}
+
+size_t ev_runtime_graph_scheduler_pending(const ev_runtime_graph_t *graph)
+{
+    return (graph != NULL) ? ev_runtime_scheduler_pending(&graph->scheduler) : 0U;
+}
+
+ev_result_t ev_runtime_graph_poll_scheduler_once(ev_runtime_graph_t *graph, size_t turn_budget, ev_system_pump_report_t *out_report)
+{
+    if (graph == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+    return ev_runtime_scheduler_poll_once(&graph->scheduler, turn_budget, out_report);
+}
+
+size_t ev_runtime_graph_publish_due_timers(ev_runtime_graph_t *graph,
+                                           uint32_t now_ms,
+                                           ev_timer_delivery_fn_t deliver,
+                                           void *deliver_ctx,
+                                           size_t max_publish)
+{
+    if (graph == NULL) {
+        return 0U;
+    }
+    return ev_timer_publish_due(&graph->timer_service, now_ms, deliver, deliver_ctx, max_publish);
+}
+
+const ev_system_pump_stats_t *ev_runtime_graph_system_pump_stats(const ev_runtime_graph_t *graph)
+{
+    return (graph != NULL) ? ev_system_pump_stats(&graph->scheduler.system) : NULL;
+}
+
+const ev_domain_pump_stats_t *ev_runtime_graph_domain_pump_stats(const ev_runtime_graph_t *graph, ev_execution_domain_t domain)
+{
+    if ((graph == NULL) || ((uint32_t)domain >= (uint32_t)EV_DOMAIN_COUNT)) {
+        return NULL;
+    }
+    return ev_domain_pump_stats(&graph->scheduler.domains[domain]);
+}
+
+size_t ev_runtime_graph_domain_pending(const ev_runtime_graph_t *graph, ev_execution_domain_t domain)
+{
+    if ((graph == NULL) || ((uint32_t)domain >= (uint32_t)EV_DOMAIN_COUNT)) {
+        return 0U;
+    }
+    return ev_domain_pump_pending(&graph->scheduler.domains[domain]);
+}
+
+uint32_t ev_runtime_graph_timer_published_count(const ev_runtime_graph_t *graph)
+{
+    return (graph != NULL) ? graph->timer_service.published : 0U;
+}
+
 ev_actor_runtime_t *ev_runtime_graph_get_runtime(ev_runtime_graph_t *graph, ev_actor_id_t actor_id)
 {
     if ((graph == NULL) || !ev_actor_id_is_valid(actor_id) || (graph->actor_enabled[actor_id] == 0U)) {

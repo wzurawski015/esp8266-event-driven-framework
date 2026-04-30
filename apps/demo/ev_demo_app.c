@@ -1114,21 +1114,21 @@ static ev_result_t ev_demo_app_schedule_standard_timers(ev_demo_app_t *app, uint
     if (app == NULL) {
         return EV_ERR_INVALID_ARG;
     }
-    rc = ev_timer_schedule_periodic(&app->graph.timer_service,
-                                    now_ms,
-                                    EV_DEMO_APP_FAST_TICK_MS,
-                                    ACT_RUNTIME,
-                                    EV_TICK_100MS,
-                                    0U,
-                                    &app->tick_100ms_token);
+    rc = ev_runtime_graph_schedule_periodic(&app->graph,
+                                       now_ms,
+                                       EV_DEMO_APP_FAST_TICK_MS,
+                                       ACT_RUNTIME,
+                                       EV_TICK_100MS,
+                                       0U,
+                                       &app->tick_100ms_token);
     if (rc != EV_OK) return rc;
-    rc = ev_timer_schedule_periodic(&app->graph.timer_service,
-                                    now_ms,
-                                    app->tick_period_ms,
-                                    ACT_RUNTIME,
-                                    EV_TICK_1S,
-                                    0U,
-                                    &app->tick_1s_token);
+    rc = ev_runtime_graph_schedule_periodic(&app->graph,
+                                       now_ms,
+                                       app->tick_period_ms,
+                                       ACT_RUNTIME,
+                                       EV_TICK_1S,
+                                       0U,
+                                       &app->tick_1s_token);
     if (rc == EV_OK) {
         app->standard_timers_scheduled = true;
     }
@@ -1244,7 +1244,8 @@ static ev_result_t ev_demo_app_sleep_disarm(void *ctx)
     return EV_OK;
 }
 
-static void ev_demo_app_fill_watchdog_domain_snapshot(ev_domain_pump_t *domain_pump,
+static void ev_demo_app_fill_watchdog_domain_snapshot(const ev_runtime_graph_t *graph,
+                                                        ev_execution_domain_t domain,
                                                         ev_watchdog_domain_snapshot_t *out_snapshot)
 {
     const ev_domain_pump_stats_t *stats;
@@ -1253,21 +1254,23 @@ static void ev_demo_app_fill_watchdog_domain_snapshot(ev_domain_pump_t *domain_p
         return;
     }
     memset(out_snapshot, 0, sizeof(*out_snapshot));
-    if (domain_pump == NULL) {
+    if (graph == NULL) {
         out_snapshot->domain = EV_DOMAIN_COUNT;
         out_snapshot->last_result = EV_ERR_STATE;
         return;
     }
 
-    stats = ev_domain_pump_stats(domain_pump);
-    out_snapshot->domain = domain_pump->domain;
-    out_snapshot->bound = true;
-    out_snapshot->pending_messages = ev_domain_pump_pending(domain_pump);
+    stats = ev_runtime_graph_domain_pump_stats(graph, domain);
+    out_snapshot->domain = domain;
+    out_snapshot->bound = (stats != NULL);
+    out_snapshot->pending_messages = ev_runtime_graph_domain_pending(graph, domain);
     if (stats != NULL) {
         out_snapshot->pump_calls = stats->pump_calls;
         out_snapshot->pump_empty_calls = stats->pump_empty_calls;
         out_snapshot->pump_budget_hits = stats->pump_budget_hits;
         out_snapshot->last_result = stats->last_result;
+    } else {
+        out_snapshot->last_result = EV_ERR_STATE;
     }
 }
 
@@ -1281,21 +1284,21 @@ static ev_result_t ev_demo_app_watchdog_liveness(void *ctx, ev_watchdog_liveness
     }
 
     memset(out_snapshot, 0, sizeof(*out_snapshot));
-    system_stats = ev_system_pump_stats(&app->graph.scheduler.system);
+    system_stats = ev_runtime_graph_system_pump_stats(&app->graph);
     if (system_stats == NULL) {
         return EV_ERR_STATE;
     }
 
     out_snapshot->system_turn_counter = system_stats->turns_processed;
     out_snapshot->system_messages_processed = system_stats->messages_processed;
-    out_snapshot->system_pending_messages = ev_runtime_scheduler_pending(&app->graph.scheduler);
+    out_snapshot->system_pending_messages = ev_runtime_graph_scheduler_pending(&app->graph);
     out_snapshot->sleep_arming = app->sleep_arming;
     out_snapshot->permanent_stall = (system_stats->last_result != EV_OK) &&
                                     (system_stats->last_result != EV_ERR_EMPTY) &&
                                     (system_stats->last_result != EV_ERR_PARTIAL);
     out_snapshot->domain_count = 2U;
-    ev_demo_app_fill_watchdog_domain_snapshot(&app->graph.scheduler.domains[EV_DOMAIN_FAST_LOOP], &out_snapshot->domains[0]);
-    ev_demo_app_fill_watchdog_domain_snapshot(&app->graph.scheduler.domains[EV_DOMAIN_SLOW_IO], &out_snapshot->domains[1]);
+    ev_demo_app_fill_watchdog_domain_snapshot(&app->graph, EV_DOMAIN_FAST_LOOP, &out_snapshot->domains[0]);
+    ev_demo_app_fill_watchdog_domain_snapshot(&app->graph, EV_DOMAIN_SLOW_IO, &out_snapshot->domains[1]);
     return EV_OK;
 }
 
@@ -1321,12 +1324,12 @@ static ev_result_t ev_demo_app_drain_budgeted(ev_demo_app_t *app,
     if ((app == NULL) || (budget == NULL)) {
         return EV_ERR_INVALID_ARG;
     }
-    while ((ev_runtime_scheduler_pending(&app->graph.scheduler) > 0U) && !budget->exhausted) {
+    while ((ev_runtime_graph_scheduler_pending(&app->graph) > 0U) && !budget->exhausted) {
         if (ev_demo_app_budget_exhausted(budget)) {
             budget->exhausted = true;
             break;
         }
-        rc = ev_runtime_scheduler_poll_once(&app->graph.scheduler, EV_DEMO_APP_TURN_BUDGET, &report);
+        rc = ev_runtime_graph_poll_scheduler_once(&app->graph, EV_DEMO_APP_TURN_BUDGET, &report);
         ++budget->pump_calls_used;
         budget->turns_used += report.turns_processed;
         budget->messages_used += report.messages_processed;
@@ -1555,10 +1558,10 @@ static ev_result_t ev_demo_app_process_timers(ev_demo_app_t *app,
     if (budget->exhausted || app->sleep_arming) {
         return EV_OK;
     }
-    if (ev_runtime_scheduler_pending(&app->graph.scheduler) > 0U) {
+    if (ev_runtime_graph_scheduler_pending(&app->graph) > 0U) {
         return EV_OK;
     }
-    published = ev_timer_publish_due(&app->graph.timer_service, now_ms, ev_demo_app_timer_delivery, app, 1U);
+    published = ev_runtime_graph_publish_due_timers(&app->graph, now_ms, ev_demo_app_timer_delivery, app, 1U);
     if (published > 0U) {
         budget->exhausted = ev_demo_app_budget_exhausted(budget);
     }
@@ -1727,7 +1730,7 @@ ev_result_t ev_demo_app_poll(ev_demo_app_t *app)
     }
 
     ev_demo_app_poll_diag_reset(&diag);
-    pending_before = ev_runtime_scheduler_pending(&app->graph.scheduler);
+    pending_before = ev_runtime_graph_scheduler_pending(&app->graph);
     if (ev_demo_app_now_ms(app, &start_ms) == EV_OK) {
         have_timing = true;
     }
@@ -1759,7 +1762,7 @@ ev_result_t ev_demo_app_poll(ev_demo_app_t *app)
         }
 
         for (;;) {
-            const uint32_t before_timer_published = app->graph.timer_service.published;
+            const uint32_t before_timer_published = ev_runtime_graph_timer_published_count(&app->graph);
 
             rc = ev_demo_app_process_timers(app, &budget, now_ms);
             if (rc != EV_OK) {
@@ -1772,14 +1775,14 @@ ev_result_t ev_demo_app_poll(ev_demo_app_t *app)
             }
 
             if (budget.exhausted ||
-                (app->graph.timer_service.published == before_timer_published)) {
+                (ev_runtime_graph_timer_published_count(&app->graph) == before_timer_published)) {
                 break;
             }
         }
     }
 
 finalize:
-    pending_after = ev_runtime_scheduler_pending(&app->graph.scheduler);
+    pending_after = ev_runtime_graph_scheduler_pending(&app->graph);
     if (have_timing && (ev_demo_app_now_ms(app, &end_ms) == EV_OK)) {
         elapsed_ms = end_ms - start_ms;
     }
@@ -1821,7 +1824,7 @@ finalize:
 
 size_t ev_demo_app_pending(const ev_demo_app_t *app)
 {
-    return (app != NULL) ? ev_runtime_scheduler_pending(&app->graph.scheduler) : 0U;
+    return (app != NULL) ? ev_runtime_graph_scheduler_pending(&app->graph) : 0U;
 }
 
 
@@ -1852,7 +1855,7 @@ const ev_demo_app_stats_t *ev_demo_app_stats(const ev_demo_app_t *app)
 
 const ev_system_pump_stats_t *ev_demo_app_system_pump_stats(const ev_demo_app_t *app)
 {
-    return (app != NULL) ? ev_system_pump_stats(&app->graph.scheduler.system) : NULL;
+    return (app != NULL) ? ev_runtime_graph_system_pump_stats(&app->graph) : NULL;
 }
 
 const ev_watchdog_actor_stats_t *ev_demo_app_watchdog_stats(const ev_demo_app_t *app)

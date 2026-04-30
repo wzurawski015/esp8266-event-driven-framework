@@ -95,6 +95,24 @@ ev_result_t ev_runtime_graph_post_event(ev_runtime_graph_t *graph, ev_event_id_t
 ev_result_t ev_runtime_builder_bind_routes(ev_runtime_builder_t *builder);
 ev_result_t ev_runtime_builder_build(ev_runtime_builder_t *builder);
 ev_actor_runtime_t *ev_runtime_graph_get_runtime(ev_runtime_graph_t *graph, ev_actor_id_t actor_id);
+ev_result_t ev_runtime_graph_schedule_periodic(ev_runtime_graph_t *graph,
+                                               uint32_t now_ms,
+                                               uint32_t period_ms,
+                                               ev_actor_id_t target_actor,
+                                               ev_event_id_t event_id,
+                                               uint32_t arg0,
+                                               ev_timer_token_t *out_token);
+size_t ev_runtime_graph_scheduler_pending(const ev_runtime_graph_t *graph);
+ev_result_t ev_runtime_graph_poll_scheduler_once(ev_runtime_graph_t *graph, size_t turn_budget, ev_system_pump_report_t *out_report);
+size_t ev_runtime_graph_publish_due_timers(ev_runtime_graph_t *graph,
+                                           uint32_t now_ms,
+                                           ev_timer_delivery_fn_t deliver,
+                                           void *deliver_ctx,
+                                           size_t max_publish);
+const ev_system_pump_stats_t *ev_runtime_graph_system_pump_stats(const ev_runtime_graph_t *graph);
+const ev_domain_pump_stats_t *ev_runtime_graph_domain_pump_stats(const ev_runtime_graph_t *graph, ev_execution_domain_t domain);
+size_t ev_runtime_graph_domain_pending(const ev_runtime_graph_t *graph, ev_execution_domain_t domain);
+uint32_t ev_runtime_graph_timer_published_count(const ev_runtime_graph_t *graph);
 size_t ev_runtime_graph_pending(const ev_runtime_graph_t *graph);
 ev_result_t ev_runtime_graph_next_deadline_ms(const ev_runtime_graph_t *graph, uint32_t *out_deadline_ms);
 ev_runtime_graph_stats_t ev_runtime_graph_stats(const ev_runtime_graph_t *graph);

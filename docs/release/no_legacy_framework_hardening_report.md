@@ -43,3 +43,10 @@ regression.
 
 SDK build matrix, HIL, Wemos physical-board smoke and final ESP8266 linker-map
 RAM accounting are not claimed unless executed separately.
+
+## Commit 2: graph API encapsulation
+
+Public `runtime_graph` wrappers now provide timer scheduling, due-timer
+publication, scheduler polling, pending counts and pump statistics. `apps/demo`
+uses those wrappers instead of direct `graph.scheduler` or `graph.timer_service`
+access for its remaining compatibility paths.

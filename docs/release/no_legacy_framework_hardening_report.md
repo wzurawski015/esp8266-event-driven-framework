@@ -50,3 +50,9 @@ Public `runtime_graph` wrappers now provide timer scheduling, due-timer
 publication, scheduler polling, pending counts and pump statistics. `apps/demo`
 uses those wrappers instead of direct `graph.scheduler` or `graph.timer_service`
 access for its remaining compatibility paths.
+
+## Commit 3: reusable runtime_loop
+
+`runtime_loop` now owns bounded orchestration of ingress collection, scheduler
+draining, due-timer publication and partial-work reporting. It is a runtime-layer
+service and has no dependency on `apps/demo`.

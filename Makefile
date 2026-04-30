@@ -46,6 +46,7 @@ RUNTIME_SRCS := \
     runtime/src/ev_quiescence_service.c \
     runtime/src/ev_delivery_service.c \
     runtime/src/ev_runtime_poll.c \
+    runtime/src/ev_runtime_loop.c \
     runtime/src/ev_power_manager.c \
     runtime/src/ev_fault_bus.c \
     runtime/src/ev_metrics_registry.c \
@@ -110,6 +111,7 @@ HOST_TESTS := \
     test_runtime_disabled_routes \
     test_runtime_graph_publish_send \
     test_runtime_graph_canonical_scheduler \
+    test_runtime_loop \
     test_runtime_builder_framework \
     test_timer_quiescence_framework \
     test_runtime_quiescence_time_aware \

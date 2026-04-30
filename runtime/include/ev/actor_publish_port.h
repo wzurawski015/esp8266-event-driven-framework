@@ -15,6 +15,8 @@ typedef struct {
     uint32_t sends_attempted;
     uint32_t sends_ok;
     uint32_t optional_disabled_routes;
+    uint32_t optional_disabled_watchdog_routes;
+    uint32_t optional_disabled_network_routes;
     uint32_t failed;
 } ev_actor_publish_port_stats_t;
 

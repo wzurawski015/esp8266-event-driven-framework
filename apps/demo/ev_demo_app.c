@@ -181,7 +181,6 @@ static ev_result_t ev_demo_app_now_ms(ev_demo_app_t *app, uint32_t *out_now_ms)
     return EV_OK;
 }
 
-static ev_result_t ev_demo_app_delivery(ev_actor_id_t target_actor, const ev_msg_t *msg, void *context);
 static ev_result_t ev_demo_app_publish_net_event(ev_demo_app_t *app, const ev_net_ingress_event_t *event);
 
 static void ev_demo_app_record_delivery_report(ev_demo_app_t *app, const ev_delivery_report_t *report)
@@ -878,31 +877,6 @@ static bool ev_demo_app_profile_has_hardware(const ev_demo_app_t *app, uint32_t 
     return (app != NULL) && ((app->board_profile.hardware_present_mask & hw_mask) != 0U);
 }
 
-static const ev_active_route_t *ev_demo_app_find_active_route(const ev_demo_app_t *app,
-                                                               ev_event_id_t event_id,
-                                                               ev_actor_id_t target_actor)
-{
-    const ev_active_route_table_t *routes;
-    size_t i;
-
-    if (app == NULL) {
-        return NULL;
-    }
-    routes = ev_runtime_graph_active_routes(&app->graph);
-    if (routes == NULL) {
-        return NULL;
-    }
-    for (i = 0U; i < routes->count; ++i) {
-        const ev_active_route_t *entry = ev_active_route_at(routes, i);
-        if ((entry != NULL) &&
-            (entry->route.event_id == event_id) &&
-            (entry->route.target_actor == target_actor)) {
-            return entry;
-        }
-    }
-    return NULL;
-}
-
 static void ev_demo_app_record_disabled_route(ev_demo_app_t *app, ev_actor_id_t target_actor)
 {
     if (app == NULL) {
@@ -917,28 +891,46 @@ static void ev_demo_app_record_disabled_route(ev_demo_app_t *app, ev_actor_id_t 
     }
 }
 
-static ev_result_t ev_demo_app_delivery(ev_actor_id_t target_actor, const ev_msg_t *msg, void *context)
-{
-    ev_demo_app_t *app = (ev_demo_app_t *)context;
-    const ev_active_route_t *route;
 
-    if ((app == NULL) || (msg == NULL)) {
+static ev_result_t ev_demo_app_init_publish_ports(ev_demo_app_t *app)
+{
+    size_t i;
+    if (app == NULL) {
         return EV_ERR_INVALID_ARG;
     }
+    for (i = 0U; i < (size_t)EV_ACTOR_COUNT; ++i) {
+        ev_result_t rc = ev_actor_publish_port_init(&app->publish_ports[i], &app->graph, (ev_actor_id_t)i);
+        if (rc != EV_OK) {
+            return rc;
+        }
+    }
+    return EV_OK;
+}
 
-    route = ev_demo_app_find_active_route(app, msg->event_id, target_actor);
-    if (route == NULL) {
-        return EV_ERR_NOT_FOUND;
+static void ev_demo_app_record_publish_port_stats(ev_demo_app_t *app)
+{
+    size_t i;
+    if (app == NULL) {
+        return;
     }
-    if (route->state == EV_ACTIVE_ROUTE_OPTIONAL_DISABLED) {
-        ev_demo_app_record_disabled_route(app, target_actor);
-        return EV_OK;
+    for (i = 0U; i < (size_t)EV_ACTOR_COUNT; ++i) {
+        const ev_actor_publish_port_stats_t *stats = ev_actor_publish_port_stats(&app->publish_ports[i]);
+        if (stats == NULL) {
+            continue;
+        }
+        if (stats->optional_disabled_routes > app->publish_port_disabled_consumed[i]) {
+            app->stats.disabled_route_deliveries += stats->optional_disabled_routes - app->publish_port_disabled_consumed[i];
+            app->publish_port_disabled_consumed[i] = stats->optional_disabled_routes;
+        }
+        if (stats->optional_disabled_watchdog_routes > app->publish_port_disabled_watchdog_consumed[i]) {
+            app->stats.watchdog_disabled_route_deliveries += stats->optional_disabled_watchdog_routes - app->publish_port_disabled_watchdog_consumed[i];
+            app->publish_port_disabled_watchdog_consumed[i] = stats->optional_disabled_watchdog_routes;
+        }
+        if (stats->optional_disabled_network_routes > app->publish_port_disabled_network_consumed[i]) {
+            app->stats.network_disabled_route_deliveries += stats->optional_disabled_network_routes - app->publish_port_disabled_network_consumed[i];
+            app->publish_port_disabled_network_consumed[i] = stats->optional_disabled_network_routes;
+        }
     }
-    if (route->state != EV_ACTIVE_ROUTE_ENABLED) {
-        return (route->reason != EV_OK) ? route->reason : EV_ERR_STATE;
-    }
-
-    return ev_runtime_graph_send(&app->graph, target_actor, msg);
 }
 
 static bool ev_demo_app_i2c_port_valid(const ev_i2c_port_t *port)
@@ -1635,10 +1627,12 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
 
     rc = ev_demo_app_now_ms(app, &now_ms);
     if (rc != EV_OK) return rc;
-
-    rc = ev_panel_actor_init(&app->panel_ctx, ev_demo_app_delivery, app);
+    rc = ev_demo_app_init_publish_ports(app);
     if (rc != EV_OK) return rc;
-    rc = ev_supervisor_actor_init(&app->supervisor_ctx, ev_demo_app_delivery, app);
+
+    rc = ev_panel_actor_init(&app->panel_ctx, ev_actor_publish_port_delivery_adapter, &app->publish_ports[ACT_PANEL]);
+    if (rc != EV_OK) return rc;
+    rc = ev_supervisor_actor_init(&app->supervisor_ctx, ev_actor_publish_port_delivery_adapter, &app->publish_ports[ACT_SUPERVISOR]);
     if (rc != EV_OK) return rc;
     rc = ev_supervisor_actor_configure_hardware(&app->supervisor_ctx,
                                                 app->board_profile.supervisor_required_mask,
@@ -1646,7 +1640,7 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
     if (rc != EV_OK) return rc;
     rc = ev_power_actor_init(&app->power_ctx, app->system_port, app->log_port, app->app_tag);
     if (rc != EV_OK) return rc;
-    rc = ev_command_actor_init(&app->command_ctx, ev_demo_app_delivery, app, app->board_profile.remote_command_token, app->board_profile.remote_command_capabilities);
+    rc = ev_command_actor_init(&app->command_ctx, ev_actor_publish_port_delivery_adapter, &app->publish_ports[ACT_COMMAND], app->board_profile.remote_command_token, app->board_profile.remote_command_capabilities);
     if (rc != EV_OK) return rc;
     if ((app->board_profile.capabilities_mask & EV_DEMO_APP_BOARD_CAP_WDT) != 0U) {
         rc = ev_watchdog_actor_init(&app->watchdog_ctx, app->wdt_port, app->board_profile.watchdog_timeout_ms, ev_demo_app_watchdog_liveness, app);
@@ -1664,19 +1658,19 @@ ev_result_t ev_demo_app_init(ev_demo_app_t *app, const ev_demo_app_config_t *cfg
         if (rc != EV_OK) return rc;
     }
     if (ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_MCP23008)) {
-        rc = ev_mcp23008_actor_init(&app->mcp23008_ctx, active_i2c, app->board_profile.i2c_port_num, app->board_profile.mcp23008_addr_7bit, ev_demo_app_delivery, app);
+        rc = ev_mcp23008_actor_init(&app->mcp23008_ctx, active_i2c, app->board_profile.i2c_port_num, app->board_profile.mcp23008_addr_7bit, ev_actor_publish_port_delivery_adapter, &app->publish_ports[ACT_MCP23008]);
         if (rc != EV_OK) return rc;
     }
     if (ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_RTC)) {
-        rc = ev_rtc_actor_init(&app->rtc_ctx, active_i2c, app->irq_port, app->board_profile.i2c_port_num, app->board_profile.rtc_addr_7bit, app->board_profile.rtc_sqw_line_id, ev_demo_app_delivery, app);
+        rc = ev_rtc_actor_init(&app->rtc_ctx, active_i2c, app->irq_port, app->board_profile.i2c_port_num, app->board_profile.rtc_addr_7bit, app->board_profile.rtc_sqw_line_id, ev_actor_publish_port_delivery_adapter, &app->publish_ports[ACT_RTC]);
         if (rc != EV_OK) return rc;
     }
     if (ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_DS18B20)) {
-        rc = ev_ds18b20_actor_init(&app->ds18b20_ctx, active_onewire, ev_demo_app_delivery, app);
+        rc = ev_ds18b20_actor_init(&app->ds18b20_ctx, active_onewire, ev_actor_publish_port_delivery_adapter, &app->publish_ports[ACT_DS18B20]);
         if (rc != EV_OK) return rc;
     }
     if (ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_OLED)) {
-        rc = ev_oled_actor_init(&app->oled_ctx, active_i2c, app->board_profile.i2c_port_num, app->board_profile.oled_addr_7bit, app->board_profile.oled_controller, ev_demo_app_delivery, app);
+        rc = ev_oled_actor_init(&app->oled_ctx, active_i2c, app->board_profile.i2c_port_num, app->board_profile.oled_addr_7bit, app->board_profile.oled_controller, ev_actor_publish_port_delivery_adapter, &app->publish_ports[ACT_OLED]);
         if (rc != EV_OK) return rc;
     }
     rc = ev_demo_app_build_runtime_graph(app);
@@ -1771,6 +1765,7 @@ ev_result_t ev_demo_app_poll(ev_demo_app_t *app)
     ev_demo_app_record_poll_diag(app, &diag, report.pending_before, report.pending_after, report.elapsed_ms);
     ev_demo_app_record_irq_stats(app);
     ev_demo_app_record_net_stats(app);
+    ev_demo_app_record_publish_port_stats(app);
     return rc;
 }
 

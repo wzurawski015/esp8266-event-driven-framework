@@ -8,6 +8,7 @@
 #include "ev/port_clock.h"
 #include "ev/port_log.h"
 #include "ev/runtime_graph.h"
+#include "ev/actor_publish_port.h"
 #include "ev/port_net.h"
 #include "ev/system_pump.h"
 
@@ -183,6 +184,10 @@ struct ev_demo_app {
     ev_demo_app_board_profile_t board_profile;
 
     ev_runtime_graph_t graph;
+    ev_actor_publish_port_t publish_ports[EV_ACTOR_COUNT];
+    uint32_t publish_port_disabled_consumed[EV_ACTOR_COUNT];
+    uint32_t publish_port_disabled_watchdog_consumed[EV_ACTOR_COUNT];
+    uint32_t publish_port_disabled_network_consumed[EV_ACTOR_COUNT];
 
     ev_lease_pool_t lease_pool;
     ev_lease_slot_t lease_slots[EV_DEMO_APP_LEASE_SLOTS];

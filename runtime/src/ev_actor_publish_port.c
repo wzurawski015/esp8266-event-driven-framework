@@ -69,6 +69,12 @@ ev_result_t ev_actor_send(ev_actor_publish_port_t *port, ev_actor_id_t target_ac
     if (route != NULL) {
         if (route->state == EV_ACTIVE_ROUTE_OPTIONAL_DISABLED) {
             port->stats.optional_disabled_routes++;
+            if (target_actor == ACT_WATCHDOG) {
+                port->stats.optional_disabled_watchdog_routes++;
+            }
+            if (target_actor == ACT_NETWORK) {
+                port->stats.optional_disabled_network_routes++;
+            }
             (void)ev_metric_increment(&port->graph->metrics, EV_METRIC_ROUTE_DISABLED_SKIPPED, 1U);
             return EV_OK;
         }

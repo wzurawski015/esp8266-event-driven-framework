@@ -69,3 +69,10 @@ algorithm is framework-owned.
 A graph-backed `ev_actor_publish_port_t` now adapts the existing `ev_delivery_fn_t`
 actor API to `runtime_graph` send/publish semantics. It preserves optional
 disabled-route behavior and keeps actor emission independent of `ev_demo_app_t`.
+
+## Commit 6: demo delivery callback removed from actor initialization
+
+Demo actor initialization now passes `ev_actor_publish_port_delivery_adapter` with
+actor-specific graph-backed publish ports. `ev_demo_app_delivery()` is no longer
+the production actor emission path. Disabled-route compatibility counters are
+synchronized from publish-port statistics.

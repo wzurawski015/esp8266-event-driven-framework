@@ -160,6 +160,7 @@ ev_result_t ev_esp8266_log_port_init(ev_log_port_t *out_port)
     out_port->ctx = NULL;
     out_port->write = ev_log_write_impl;
     out_port->flush = ev_log_flush_impl;
+    out_port->pending = NULL;
     return EV_OK;
 }
 

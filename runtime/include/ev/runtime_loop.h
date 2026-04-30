@@ -20,6 +20,7 @@ typedef struct {
     size_t scheduler_turn_budget;
     uint8_t skip_timers_when_scheduler_pending;
     uint8_t run_scheduler_after_timers;
+    uint8_t skip_timers;
 } ev_runtime_loop_policy_t;
 
 typedef struct {
@@ -55,7 +56,7 @@ typedef ev_result_t (*ev_runtime_loop_pending_fn_t)(
 typedef struct {
     ev_runtime_loop_collect_fn_t collect_ingress;
     void *collect_ctx;
-    ev_timer_delivery_fn_t timer_delivery;
+    ev_timer_publish_fn_t timer_delivery;
     void *timer_delivery_ctx;
     ev_runtime_loop_now_fn_t now_ms;
     void *now_ctx;

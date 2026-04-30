@@ -12,3 +12,8 @@ The framework-level power manager evaluates sleep eligibility through:
 ## Demo runtime migration note
 
 The demo power path uses the runtime quiescence policy as the sleep admission gate. The demo compatibility power guard may still format `ev_power_quiescence_report_t`, but the source of truth is the framework quiescence report and runtime timer deadline state.
+
+
+## Log pending hook
+
+Power policy may use quiescence `log_policy` to require log draining before sleep without performing blocking flush inside the quiescence query.

@@ -94,6 +94,12 @@ ev_result_t ev_runtime_is_quiescent_at(ev_runtime_graph_t *graph, uint32_t now_m
     report.pending_trace_records = (uint32_t)ev_trace_pending(&graph->trace_ring);
     report.pending_fault_records = (uint32_t)ev_fault_pending_count(&graph->faults);
     report.pending_log_records = 0U;
+    if ((graph->ports.log != NULL) && (graph->ports.log->pending != NULL)) {
+        uint32_t pending_logs = 0U;
+        if (graph->ports.log->pending(graph->ports.log->ctx, &pending_logs) == EV_OK) {
+            report.pending_log_records = pending_logs;
+        }
+    }
 
     deadline_rc = ev_timer_next_deadline_ms(&graph->timer_service, &next_deadline);
     if (deadline_rc == EV_OK) {

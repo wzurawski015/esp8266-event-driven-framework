@@ -72,3 +72,8 @@ Stage 2A1 does not yet:
 
 It only freezes the target-side toolchain contract and the public platform
 boundary.
+
+
+## Log pending hook
+
+`ev_log_port_t.pending` is a non-blocking optional hook for buffered-log visibility. A NULL hook means zero observable pending records.

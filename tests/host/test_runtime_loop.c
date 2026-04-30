@@ -62,6 +62,7 @@ int main(void)
     ports.timer_delivery_ctx = &graph;
 
     assert(ev_runtime_graph_schedule_periodic(&graph, now, 10U, ACT_METRICS, EV_TICK_1S, 0U, &token) == EV_OK);
+    now = 20U;
     assert(ev_runtime_loop_poll_once(&graph, &policy, &ports, &report) == EV_OK);
     assert(report.irq_samples == 1U);
     assert(report.timers_published == 1U);

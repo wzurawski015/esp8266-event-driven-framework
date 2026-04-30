@@ -42,16 +42,21 @@ ESP8266 SDK build validation and HIL validation were not executed in this
 environment. They must not be claimed until run on a configured SDK toolchain and
 physical/self-hosted hardware runner.
 
-## Remaining post-migration work
+## Remaining post-hardening work
 
 1. SDK build matrix for all targets.
 2. HIL for ATNEL I2C / OneWire / WiFi.
 3. Wemos minimal runtime smoke on a real board.
-4. Full fault/metrics runtime emission for every route/delivery branch.
-5. Log flush pending hook in quiescence.
-6. Final memory budget from ESP8266 linker map.
-7. ADR wording review after hardware validation.
+4. Final memory budget from ESP8266 linker map.
+5. Release report with real SDK/HIL results.
+6. ADR wording review after hardware validation.
 
 ## Final status for executed host gates
 
 For the host-side gates actually executed above, there are zero known critical defects after the executed gates.
+
+
+## No-legacy hardening status
+
+This report is updated by the hardening patch series. SDK and HIL validation are
+not claimed unless run in a configured environment.

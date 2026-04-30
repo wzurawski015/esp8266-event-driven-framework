@@ -544,7 +544,7 @@ ev_result_t ev_runtime_graph_poll_scheduler_once(ev_runtime_graph_t *graph, size
 
 size_t ev_runtime_graph_publish_due_timers(ev_runtime_graph_t *graph,
                                            uint32_t now_ms,
-                                           ev_timer_delivery_fn_t deliver,
+                                           ev_timer_publish_fn_t deliver,
                                            void *deliver_ctx,
                                            size_t max_publish)
 {

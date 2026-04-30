@@ -12,12 +12,15 @@ extern "C" {
 typedef struct {
     uint32_t write_calls;
     uint32_t flush_calls;
+    uint32_t pending_calls;
+    uint32_t pending_records;
     uint32_t call_sequence;
     uint32_t *shared_sequence;
     uint32_t write_order;
     uint32_t flush_order;
     ev_result_t next_write_result;
     ev_result_t next_flush_result;
+    ev_result_t next_pending_result;
 } fake_log_port_t;
 
 void fake_log_port_init(fake_log_port_t *fake);

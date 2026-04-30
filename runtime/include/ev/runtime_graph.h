@@ -106,7 +106,7 @@ size_t ev_runtime_graph_scheduler_pending(const ev_runtime_graph_t *graph);
 ev_result_t ev_runtime_graph_poll_scheduler_once(ev_runtime_graph_t *graph, size_t turn_budget, ev_system_pump_report_t *out_report);
 size_t ev_runtime_graph_publish_due_timers(ev_runtime_graph_t *graph,
                                            uint32_t now_ms,
-                                           ev_timer_delivery_fn_t deliver,
+                                           ev_timer_publish_fn_t deliver,
                                            void *deliver_ctx,
                                            size_t max_publish);
 const ev_system_pump_stats_t *ev_runtime_graph_system_pump_stats(const ev_runtime_graph_t *graph);

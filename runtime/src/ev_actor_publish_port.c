@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "ev/active_route_table.h"
+#include "ev/actor_catalog.h"
 #include "ev/metrics_registry.h"
 
 static const ev_active_route_t *ev_actor_publish_find_route(ev_runtime_graph_t *graph,

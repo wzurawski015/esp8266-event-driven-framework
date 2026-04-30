@@ -105,6 +105,13 @@ if demo_c.exists():
         "ev_domain_pump_init": "demo app must not initialize domain pumps as composition root",
         "ev_system_pump_init": "demo app must not initialize system pump as composition root",
         "ev_system_pump_run": "demo app poll must not run system pump directly",
+        "app->graph.scheduler": "demo app must not access runtime graph scheduler internals",
+        "app->graph.timer_service": "demo app must not access runtime graph timer internals",
+        ".scheduler.system": "demo app must not access runtime graph system-pump internals",
+        ".scheduler.domains": "demo app must not access runtime graph domain-pump internals",
+        "ev_demo_app_delivery": "demo app must not use the application delivery callback as actor emission path",
+        "ev_runtime_scheduler_poll_once": "demo app poll must use runtime_loop instead of polling scheduler directly",
+        "ev_timer_publish_due": "demo app poll must use runtime_loop/graph APIs instead of publishing timers directly",
     }.items():
         if token in demo_c_text:
             errors.append(message)

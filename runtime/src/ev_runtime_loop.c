@@ -146,8 +146,9 @@ ev_result_t ev_runtime_loop_poll_once(ev_runtime_graph_t *graph,
         for (;;) {
             uint32_t before_published = ev_runtime_graph_timer_published_count(graph);
             size_t published = 0U;
-            if ((local_policy.skip_timers_when_scheduler_pending == 0U) ||
-                (ev_runtime_graph_scheduler_pending(graph) == 0U)) {
+            if ((local_policy.skip_timers == 0U) &&
+                ((local_policy.skip_timers_when_scheduler_pending == 0U) ||
+                 (ev_runtime_graph_scheduler_pending(graph) == 0U))) {
                 published = ev_runtime_graph_publish_due_timers(graph,
                                                                 now_ms,
                                                                 ports->timer_delivery,

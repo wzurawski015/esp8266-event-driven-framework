@@ -83,3 +83,28 @@ Route binding and delivery now increment concrete metrics and emit faults for
 validation rejection, QoS conflicts, active-route overflow, optional-disabled
 routes and critical delivery failures. Tests assert representative metric values
 for optional disabled routes and successful graph publication.
+
+## Commit 8: log pending quiescence and hard contracts
+
+`ev_log_port_t` now has an optional `pending` hook.
+`ev_runtime_is_quiescent_at()` uses it to populate `pending_log_records` and to
+apply `EV_QUIESCENCE_BUFFER_BLOCK_UNTIL_DRAINED` log policy. Static contracts
+hard-fail direct demo access to graph scheduler/timer internals, direct scheduler
+or timer calls from `ev_demo_app_poll()`, and use of `ev_demo_app_delivery` as an
+actor emission path.
+
+## Remaining post-hardening work
+
+1. SDK build matrix for all targets.
+2. HIL for ATNEL I2C / OneWire / WiFi.
+3. Wemos minimal runtime smoke on a real board.
+4. Final memory budget from ESP8266 linker map.
+5. Release report with real SDK/HIL results.
+
+## Validation limitation in this environment
+
+`make docgen PYTHON=/usr/bin/python3` was executed successfully.
+`make docs PYTHON=/usr/bin/python3` and therefore `make release-gate` could not be
+completed in this container because the `doxygen` executable is not installed.
+This is an environmental limitation, not a host-side compile/test failure.
+SDK and HIL validation were not executed in this environment and are not claimed.

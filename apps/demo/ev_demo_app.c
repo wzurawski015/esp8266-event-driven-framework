@@ -877,21 +877,6 @@ static bool ev_demo_app_profile_has_hardware(const ev_demo_app_t *app, uint32_t 
     return (app != NULL) && ((app->board_profile.hardware_present_mask & hw_mask) != 0U);
 }
 
-static void ev_demo_app_record_disabled_route(ev_demo_app_t *app, ev_actor_id_t target_actor)
-{
-    if (app == NULL) {
-        return;
-    }
-    ++app->stats.disabled_route_deliveries;
-    if (target_actor == ACT_WATCHDOG) {
-        ++app->stats.watchdog_disabled_route_deliveries;
-    }
-    if (target_actor == ACT_NETWORK) {
-        ++app->stats.network_disabled_route_deliveries;
-    }
-}
-
-
 static ev_result_t ev_demo_app_init_publish_ports(ev_demo_app_t *app)
 {
     size_t i;
@@ -1743,6 +1728,7 @@ ev_result_t ev_demo_app_poll(ev_demo_app_t *app)
     policy.scheduler_turn_budget = EV_DEMO_APP_TURN_BUDGET;
     policy.skip_timers_when_scheduler_pending = 1U;
     policy.run_scheduler_after_timers = 1U;
+    policy.skip_timers = app->sleep_arming ? 1U : 0U;
 
     memset(&ports, 0, sizeof(ports));
     ports.collect_ingress = ev_demo_app_loop_collect;

@@ -63,3 +63,9 @@ service and has no dependency on `apps/demo`.
 `ev_runtime_loop_poll_once()` and records compatibility statistics from the
 runtime-loop report. Demo-specific ingress remains a callback; the orchestration
 algorithm is framework-owned.
+
+## Commit 5: actor publish port
+
+A graph-backed `ev_actor_publish_port_t` now adapts the existing `ev_delivery_fn_t`
+actor API to `runtime_graph` send/publish semantics. It preserves optional
+disabled-route behavior and keeps actor emission independent of `ev_demo_app_t`.

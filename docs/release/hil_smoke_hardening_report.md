@@ -64,3 +64,13 @@ at least three increasing `app actor: snapshot seq=` values, with no failure or
 reset-loop markers. The report records whether PASS was marker-based or
 runtime-alive-fallback. The static repository report remains `NOT_RUN` until a
 real board run produces PASS evidence.
+
+## Commit 4 release summary refresh
+
+The final release summary now keeps SDK build and SDK linker-map memory evidence
+separate from physical HIL. SDK build/memory rows stay PASS because their reports
+contain real target rows. ATNEL I2C HIL remains FAIL on
+`sda-stuck-low-containment`; OneWire, WiFi and Wemos smoke remain NOT_RUN until
+physical serial logs prove otherwise. Remaining work now points to HIL/smoke
+closure rather than rerunning SDK matrix gates that have already produced PASS
+reports.

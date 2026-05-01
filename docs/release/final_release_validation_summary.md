@@ -14,15 +14,16 @@ This summary must not collapse `NOT_RUN` into `PASS`.
 | SDK build matrix: HIL SDK targets | PASS | HIL SDK targets are separate from non-HIL SDK build matrix. |
 | SDK linker-map memory matrix: buildable targets | PASS | Buildable/physical-smoke memory rows from docs/release/sdk_memory_matrix_report.md. |
 | SDK linker-map memory matrix: HIL SDK targets | PASS | HIL SDK memory rows are separate from non-HIL memory matrix. |
-| ATNEL I2C HIL | FAIL | Requires physical fixture and serial PASS marker. |
+| ATNEL I2C HIL | FAIL | Current failure is isolated to sda-stuck-low-containment fixture/fault-injection coupling. |
 | ATNEL OneWire HIL | NOT_RUN | Requires physical fixture and serial PASS marker. |
 | ATNEL WiFi HIL | NOT_RUN | Requires physical fixture and serial PASS marker. |
-| Wemos minimal runtime smoke | NOT_RUN | Requires physical board and smoke markers. |
+| Wemos minimal runtime smoke | NOT_RUN | Requires physical board and marker-based or runtime-alive-fallback PASS. |
 | Wemos board constraints | PASS | Constrained to minimal runtime and 2 MB default flash. |
 
 ## Remaining production work
 
-- Run SDK matrix with a configured ESP8266 SDK Docker/toolchain and archive logs.
-- Run ATNEL I2C, OneWire and WiFi HIL on a self-hosted hardware runner.
-- Run Wemos minimal-runtime smoke on a physical Wemos ESP-WROOM-02 18650 board.
-- Re-run SDK linker-map memory matrix after SDK builds produce ELF section reports.
+- Resolve ATNEL I2C `sda-stuck-low-containment` fixture/fault-injection failure.
+- Run ATNEL OneWire HIL on a physical fixture and archive the serial PASS/FAIL log.
+- Run ATNEL WiFi HIL on a physical fixture and archive the serial PASS/FAIL log.
+- Run Wemos minimal-runtime smoke to completion and archive the serial log.
+- Archive hardware logs as release artifacts; local `logs/` remains ignored by Git.

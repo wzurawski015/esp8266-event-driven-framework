@@ -46,3 +46,11 @@ This report is updated by the HIL/smoke hardening iteration. If documentation
 build cannot run in an environment because Doxygen/Graphviz are unavailable, the
 limitation must be recorded by the operator; docs must not be marked PASS unless
 they actually executed.
+
+## Commit 2 I2C fault-injection diagnostics
+
+The I2C HIL firmware now logs fault GPIO and bus GPIO levels before, during and
+after stuck-low injection. The expected diagnostic line includes the configured
+fault GPIO, the real SDA/SCL bus GPIOs and their sampled levels. If both
+`stuck_status` and `recovery_status` are `OK`, the failure reason points to
+fixture coupling instead of using a generic containment message.

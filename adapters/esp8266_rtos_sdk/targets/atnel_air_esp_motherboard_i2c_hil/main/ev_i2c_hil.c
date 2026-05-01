@@ -33,6 +33,13 @@
 #define configSUPPORT_STATIC_ALLOCATION 0
 #endif
 
+#ifndef EV_BOARD_I2C_SDA_GPIO
+#define EV_BOARD_I2C_SDA_GPIO (-1)
+#endif
+#ifndef EV_BOARD_I2C_SCL_GPIO
+#define EV_BOARD_I2C_SCL_GPIO (-1)
+#endif
+
 typedef struct ev_hil_suite_result {
     uint32_t passed;
     uint32_t failed;
@@ -93,6 +100,48 @@ static void ev_hil_skip(ev_hil_suite_result_t *result, const char *name, const c
 static bool ev_hil_gpio_is_valid(int gpio)
 {
     return (gpio >= 0) && (gpio <= 15);
+}
+
+static int ev_hil_gpio_level_or_minus_one(int gpio)
+{
+    if (!ev_hil_gpio_is_valid(gpio)) {
+        return -1;
+    }
+    return gpio_get_level((gpio_num_t)gpio);
+}
+
+static void ev_hil_log_fault_fixture_levels(const char *name,
+                                             const char *stage,
+                                             int fault_gpio,
+                                             int sda_gpio,
+                                             int scl_gpio)
+{
+    ESP_LOGI(EV_HIL_I2C_TAG,
+             "fault-fixture:%s:%s fault_gpio=%d fault_level=%d sda_gpio=%d sda_level=%d scl_gpio=%d scl_level=%d",
+             (name != NULL) ? name : "unknown",
+             (stage != NULL) ? stage : "unknown",
+             fault_gpio,
+             ev_hil_gpio_level_or_minus_one(fault_gpio),
+             sda_gpio,
+             ev_hil_gpio_level_or_minus_one(sda_gpio),
+             scl_gpio,
+             ev_hil_gpio_level_or_minus_one(scl_gpio));
+}
+
+static const char *ev_hil_fault_reason_for_sda(ev_i2c_status_t stuck_status, ev_i2c_status_t recovery_status)
+{
+    if ((stuck_status == EV_I2C_OK) && (recovery_status == EV_I2C_OK)) {
+        return "fault GPIO did not pull SDA low; check fixture coupling";
+    }
+    return "SDA fault was not contained or bus did not recover after release";
+}
+
+static const char *ev_hil_fault_reason_for_scl(ev_i2c_status_t stuck_status, ev_i2c_status_t recovery_status)
+{
+    if ((stuck_status == EV_I2C_OK) && (recovery_status == EV_I2C_OK)) {
+        return "fault GPIO did not pull SCL low; check fixture coupling";
+    }
+    return "SCL fault did not timeout or bus did not recover after release";
 }
 
 static bool ev_hil_i2c_port_is_valid(const ev_i2c_port_t *port)
@@ -528,11 +577,14 @@ static void ev_hil_test_sda_stuck_low(const ev_esp8266_i2c_hil_config_t *cfg, ev
         return;
     }
 
+    ev_hil_log_fault_fixture_levels(name, "before_fault", cfg->sda_fault_gpio, EV_BOARD_I2C_SDA_GPIO, EV_BOARD_I2C_SCL_GPIO);
     ev_hil_fault_gpio_drive_low(cfg->sda_fault_gpio);
     ets_delay_us(20U);
+    ev_hil_log_fault_fixture_levels(name, "during_fault", cfg->sda_fault_gpio, EV_BOARD_I2C_SDA_GPIO, EV_BOARD_I2C_SCL_GPIO);
     stuck_status = ev_hil_i2c_write_stream(cfg, cfg->rtc_addr_7bit, NULL, 0U);
     ev_hil_fault_gpio_release(cfg->sda_fault_gpio);
     ets_delay_us(20U);
+    ev_hil_log_fault_fixture_levels(name, "after_release", cfg->sda_fault_gpio, EV_BOARD_I2C_SDA_GPIO, EV_BOARD_I2C_SCL_GPIO);
     recovery_status = ev_hil_i2c_write_stream(cfg, cfg->rtc_addr_7bit, NULL, 0U);
 
     if (((stuck_status == EV_I2C_ERR_BUS_LOCKED) || (stuck_status == EV_I2C_ERR_TIMEOUT)) &&
@@ -540,11 +592,14 @@ static void ev_hil_test_sda_stuck_low(const ev_esp8266_i2c_hil_config_t *cfg, ev
         ev_hil_pass(result, name);
     } else {
         ESP_LOGE(EV_HIL_I2C_TAG,
-                 "%s stuck_status=%s recovery_status=%s",
+                 "%s sda_fault_gpio=%d sda_bus_gpio=%d scl_bus_gpio=%d stuck_status=%s recovery_status=%s",
                  name,
+                 cfg->sda_fault_gpio,
+                 EV_BOARD_I2C_SDA_GPIO,
+                 EV_BOARD_I2C_SCL_GPIO,
                  ev_hil_status_name(stuck_status),
                  ev_hil_status_name(recovery_status));
-        ev_hil_fail(result, name, "SDA fault was not contained or bus did not recover after release");
+        ev_hil_fail(result, name, ev_hil_fault_reason_for_sda(stuck_status, recovery_status));
     }
     ev_hil_heap_gate(result, name, before_heap);
 }
@@ -560,22 +615,28 @@ static void ev_hil_test_scl_held_low_timeout(const ev_esp8266_i2c_hil_config_t *
         return;
     }
 
+    ev_hil_log_fault_fixture_levels(name, "before_fault", cfg->scl_fault_gpio, EV_BOARD_I2C_SDA_GPIO, EV_BOARD_I2C_SCL_GPIO);
     ev_hil_fault_gpio_drive_low(cfg->scl_fault_gpio);
     ets_delay_us(20U);
+    ev_hil_log_fault_fixture_levels(name, "during_fault", cfg->scl_fault_gpio, EV_BOARD_I2C_SDA_GPIO, EV_BOARD_I2C_SCL_GPIO);
     stuck_status = ev_hil_i2c_write_stream(cfg, cfg->rtc_addr_7bit, NULL, 0U);
     ev_hil_fault_gpio_release(cfg->scl_fault_gpio);
     ets_delay_us(20U);
+    ev_hil_log_fault_fixture_levels(name, "after_release", cfg->scl_fault_gpio, EV_BOARD_I2C_SDA_GPIO, EV_BOARD_I2C_SCL_GPIO);
     recovery_status = ev_hil_i2c_write_stream(cfg, cfg->rtc_addr_7bit, NULL, 0U);
 
     if ((stuck_status == EV_I2C_ERR_TIMEOUT) && (recovery_status == EV_I2C_OK)) {
         ev_hil_pass(result, name);
     } else {
         ESP_LOGE(EV_HIL_I2C_TAG,
-                 "%s stuck_status=%s recovery_status=%s",
+                 "%s scl_fault_gpio=%d sda_bus_gpio=%d scl_bus_gpio=%d stuck_status=%s recovery_status=%s",
                  name,
+                 cfg->scl_fault_gpio,
+                 EV_BOARD_I2C_SDA_GPIO,
+                 EV_BOARD_I2C_SCL_GPIO,
                  ev_hil_status_name(stuck_status),
                  ev_hil_status_name(recovery_status));
-        ev_hil_fail(result, name, "SCL fault did not timeout or bus did not recover after release");
+        ev_hil_fail(result, name, ev_hil_fault_reason_for_scl(stuck_status, recovery_status));
     }
     ev_hil_heap_gate(result, name, before_heap);
 }

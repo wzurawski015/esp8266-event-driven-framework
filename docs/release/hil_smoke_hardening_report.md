@@ -54,3 +54,13 @@ after stuck-low injection. The expected diagnostic line includes the configured
 fault GPIO, the real SDA/SCL bus GPIOs and their sampled levels. If both
 `stuck_status` and `recovery_status` are `OK`, the failure reason points to
 fixture coupling instead of using a generic containment message.
+
+## Commit 3 Wemos smoke monitor hardening
+
+The Wemos smoke monitor now keeps marker-based PASS as the preferred path, but
+it also accepts a guarded runtime-alive fallback for post-reset monitor attach.
+Fallback PASS requires at least three increasing `diag actor: tick=` values and
+at least three increasing `app actor: snapshot seq=` values, with no failure or
+reset-loop markers. The report records whether PASS was marker-based or
+runtime-alive-fallback. The static repository report remains `NOT_RUN` until a
+real board run produces PASS evidence.

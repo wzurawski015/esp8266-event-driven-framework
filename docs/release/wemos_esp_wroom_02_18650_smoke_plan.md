@@ -38,3 +38,12 @@ and release RESET, release FLASH, then start flashing.
 
 The firmware emits bounded smoke markers `EV_WEMOS_SMOKE_BOOT` and
 `EV_WEMOS_SMOKE_RUNTIME_READY`. PASS requires observing both over serial.
+
+## Post-reset attach fallback
+
+The smoke monitor still prefers `EV_WEMOS_SMOKE_BOOT` plus
+`EV_WEMOS_SMOKE_RUNTIME_READY`. If it attaches after reset and misses those early
+lines, it may pass by runtime-alive fallback: at least three increasing diag
+actor ticks and three increasing app snapshot sequence numbers, with no reset or
+failure markers. The generated smoke report records whether PASS came from
+`markers` or `runtime_alive_fallback` mode.

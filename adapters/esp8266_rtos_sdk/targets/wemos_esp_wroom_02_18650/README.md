@@ -37,3 +37,12 @@ EV_WEMOS_SMOKE_RUNTIME_READY
 ```
 
 A smoke PASS requires both markers from the physical board.
+
+## Smoke monitor modes
+
+`./tools/fw wemos-smoke-run` prefers the explicit firmware markers
+`EV_WEMOS_SMOKE_BOOT` and `EV_WEMOS_SMOKE_RUNTIME_READY`. When the serial monitor
+attaches after reset and misses those early lines, the monitor can accept a
+runtime-alive fallback based on increasing `diag actor: tick=` and
+`app actor: snapshot seq=` lines. The report identifies the PASS mode so marker
+PASS and fallback PASS are auditable.

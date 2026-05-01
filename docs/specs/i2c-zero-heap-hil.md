@@ -76,3 +76,27 @@ i2c zero-heap HIL completed successfully
 Any skipped fixture gate makes the final suite return `EV_ERR_STATE`.  This is
 intentional: the HIL target is an acceptance binary, not a best-effort smoke
 test.
+
+## ATNEL fixture coupling checklist
+
+For the tracked ATNEL I2C HIL profile, the I2C bus pins are:
+
+```text
+PIN_I2C0_SCL = GPIO4
+PIN_I2C0_SDA = GPIO5
+EV_BOARD_I2C_SCL_GPIO = EV_BOARD_PIN_I2C0_SCL
+EV_BOARD_I2C_SDA_GPIO = EV_BOARD_PIN_I2C0_SDA
+```
+
+The fault-injection pins are supplied by the HIL target `main/component.mk`:
+
+```text
+EV_BOARD_HIL_I2C_SDA_FAULT_GPIO = GPIO12
+EV_BOARD_HIL_I2C_SCL_FAULT_GPIO = GPIO13
+```
+
+A valid `sda-stuck-low-containment` run requires GPIO12 to pull the real
+SDA/GPIO5 bus line low through an open-drain-safe or series-resistor-limited
+coupling. If the log shows `stuck_status=OK` and `recovery_status=OK`, the first
+thing to verify is fixture coupling: the fault GPIO may have gone low without
+pulling the real SDA line low.

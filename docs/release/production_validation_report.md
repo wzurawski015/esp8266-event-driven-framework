@@ -143,3 +143,14 @@ smoke monitor observes the required markers.
 `tools/release_report.py` writes `docs/release/final_release_validation_summary.md`.
 The report uses explicit `PASS`, `FAIL`, `NOT_RUN`, `ENVIRONMENT_BLOCKED` and
 `NOT_APPLICABLE` statuses and does not convert missing SDK/HIL runs into PASS.
+
+## ATNEL I2C HIL fault-injection classification
+
+The ATNEL I2C HIL failure is currently classified as a fault-injection fixture
+or coupling issue, not a general I2C failure. The captured run passed RTC,
+MCP23008, OLED partial flush, OLED full scene flush and missing-device NACK. The
+only failed case was `sda-stuck-low-containment`, with `stuck_status=OK` and
+`recovery_status=OK`. This indicates that the configured fault GPIO likely did
+not pull the real SDA/GPIO5 line low during the fault window. See
+`docs/release/hil_atnel_i2c_report.md` and
+`docs/hil/fixtures/atnel_i2c_fixture.md` for the wiring checklist.

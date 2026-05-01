@@ -11,10 +11,10 @@ This summary must not collapse `NOT_RUN` into `PASS`.
 | Routegen/docgen freshness | PASS | routegen/docgen are host gates; rerun before release. |
 | SDK toolchain check | NOT_RUN | No SDK toolchain log was provided in this patch build. |
 | SDK build matrix: buildable targets | PASS | Buildable/physical-smoke SDK targets from docs/release/sdk_build_matrix_report.md. |
-| SDK build matrix: HIL SDK targets | NOT_RUN | HIL SDK targets are separate from non-HIL SDK build matrix. |
+| SDK build matrix: HIL SDK targets | PASS | HIL SDK targets are separate from non-HIL SDK build matrix. |
 | SDK linker-map memory matrix: buildable targets | PASS | Buildable/physical-smoke memory rows from docs/release/sdk_memory_matrix_report.md. |
-| SDK linker-map memory matrix: HIL SDK targets | NOT_RUN | HIL SDK memory rows are separate from non-HIL memory matrix. |
-| ATNEL I2C HIL | NOT_RUN | Requires physical fixture and serial PASS marker. |
+| SDK linker-map memory matrix: HIL SDK targets | PASS | HIL SDK memory rows are separate from non-HIL memory matrix. |
+| ATNEL I2C HIL | FAIL | Requires physical fixture and serial PASS marker. |
 | ATNEL OneWire HIL | NOT_RUN | Requires physical fixture and serial PASS marker. |
 | ATNEL WiFi HIL | NOT_RUN | Requires physical fixture and serial PASS marker. |
 | Wemos minimal runtime smoke | NOT_RUN | Requires physical board and smoke markers. |

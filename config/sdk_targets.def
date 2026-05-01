@@ -1,0 +1,10 @@
+// ESP8266 SDK target matrix source of truth.
+// Fields: name, path, class, monitor_baud, family.
+EV_SDK_TARGET(esp8266_generic_dev, adapters/esp8266_rtos_sdk/targets/esp8266_generic_dev, buildable_sdk, 115200, generic)
+EV_SDK_TARGET(atnel_air_esp_motherboard, adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard, buildable_sdk, 115200, atnel)
+EV_SDK_TARGET(atnel_air_esp_motherboard_i2c_hil, adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_i2c_hil, hil_sdk, 115200, atnel)
+EV_SDK_TARGET(atnel_air_esp_motherboard_onewire_hil, adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_onewire_hil, hil_sdk, 115200, atnel)
+EV_SDK_TARGET(atnel_air_esp_motherboard_wifi_hil, adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_wifi_hil, hil_sdk, 115200, atnel)
+EV_SDK_TARGET(wemos_d1_mini, adapters/esp8266_rtos_sdk/targets/wemos_d1_mini, buildable_sdk, 115200, wemos)
+EV_SDK_TARGET(wemos_esp_wroom_02_18650, adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650, physical_smoke, 115200, wemos)
+EV_SDK_TARGET(adafruit_feather_huzzah_esp8266, adapters/esp8266_rtos_sdk/targets/adafruit_feather_huzzah_esp8266, metadata_only, 115200, adafruit)

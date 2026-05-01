@@ -13,3 +13,27 @@ external wiring is documented and validated.
 The minimal runtime exercises framework init, timers, quiescence, fault/metrics
 storage and the cooperative scheduler through the same runtime app entrypoint
 used by other ESP8266 targets.
+
+## Release-validation target constraints
+
+This target is classified as `physical_smoke` in `config/sdk_targets.def`.
+The default SDK flash size is 2 MB / 16 Mbit because the supplied board
+documentation identifies that as the practical default. 4 MB variants must be
+selected explicitly by a documented local/variant configuration; the release
+configuration does not assume them.
+
+The target remains `minimal_runtime`. It does not claim DS18B20, RTC, OLED,
+MCP23008, network or watchdog hardware without external wiring and HIL evidence.
+Manual bootloader entry may be required: hold FLASH, press and release RESET,
+then release FLASH before flashing.
+
+## Minimal runtime smoke markers
+
+The target emits two low-volume serial markers for release smoke validation:
+
+```text
+EV_WEMOS_SMOKE_BOOT board=wemos_esp_wroom_02_18650 profile=minimal_runtime
+EV_WEMOS_SMOKE_RUNTIME_READY
+```
+
+A smoke PASS requires both markers from the physical board.

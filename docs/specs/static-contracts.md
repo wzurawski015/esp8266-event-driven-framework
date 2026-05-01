@@ -17,11 +17,13 @@ Run:
 make static-contracts
 ```
 
-## Migration blocker reporting
+## Migration blocker contract status
 
-The static contract checker reports remaining demo-runtime migration blockers as
-`MIGRATION_BLOCKER_REPORTED`. These are non-failing during the preparation
-iteration because full demo migration is intentionally deferred.
+The preparation-era `MIGRATION_BLOCKER_REPORTED` mode is no longer the release posture.
+After the demo migration and no-legacy hardening, the static-contract checker
+hard-fails reintroduction of demo-owned runtime primitives, direct demo access to
+`runtime_graph` scheduler/timer internals, and production actor initialization
+through the old demo delivery callback.
 
 ## Demo runtime ownership contract
 

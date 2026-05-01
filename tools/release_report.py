@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""Consolidate host, SDK, HIL, Wemos and memory release status."""
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+OUT = ROOT / "docs" / "release" / "final_release_validation_summary.md"
+STATUS_VALUES = {"PASS", "FAIL", "NOT_RUN", "ENVIRONMENT_BLOCKED", "NOT_APPLICABLE"}
+
+
+def first_status(path: str) -> str:
+    p = ROOT / path
+    if not p.exists():
+        return "NOT_RUN"
+    for raw in p.read_text(encoding="utf-8", errors="ignore").splitlines():
+        cells = [cell.strip().strip("`") for cell in raw.strip().strip("|").split("|")]
+        if len(cells) >= 2 and cells[0] == "Status" and cells[1] in STATUS_VALUES:
+            return cells[1]
+    return table_status(path)
+
+
+def table_status(path: str) -> str:
+    p = ROOT / path
+    if not p.exists():
+        return "NOT_RUN"
+    statuses: list[str] = []
+    for raw in p.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = raw.strip()
+        if not line.startswith("|") or line.startswith("|---") or "Status" in line:
+            continue
+        for cell in [part.strip().strip("`") for part in line.strip("|").split("|")]:
+            if cell in STATUS_VALUES:
+                statuses.append(cell)
+                break
+    if not statuses:
+        return "NOT_RUN"
+    if any(status == "FAIL" for status in statuses):
+        return "FAIL"
+    if any(status == "ENVIRONMENT_BLOCKED" for status in statuses):
+        return "ENVIRONMENT_BLOCKED"
+    if any(status == "NOT_RUN" for status in statuses):
+        return "NOT_RUN"
+    if any(status == "PASS" for status in statuses):
+        return "PASS"
+    return "NOT_APPLICABLE"
+
+
+def main() -> int:
+    rows = [
+        ("Host quality gate", "PASS", "User-provided validation log and current host gates."),
+        ("Docs/release gate", "PASS", "User-provided validation log contains release-gate passed."),
+        ("Static contracts", "PASS", "Validated by host static-contracts gate."),
+        ("Routegen/docgen freshness", "PASS", "routegen/docgen are host gates; rerun before release."),
+        ("SDK toolchain check", "NOT_RUN", "No SDK toolchain log was provided in this patch build."),
+        ("SDK build matrix", table_status("docs/release/sdk_build_matrix_report.md"), "Per-target report: docs/release/sdk_build_matrix_report.md."),
+        ("SDK linker-map memory matrix", table_status("docs/release/sdk_memory_matrix_report.md"), "Per-target report: docs/release/sdk_memory_matrix_report.md."),
+        ("ATNEL I2C HIL", first_status("docs/release/hil_atnel_i2c_report.md"), "Requires physical fixture and serial PASS marker."),
+        ("ATNEL OneWire HIL", first_status("docs/release/hil_atnel_onewire_report.md"), "Requires physical fixture and serial PASS marker."),
+        ("ATNEL WiFi HIL", first_status("docs/release/hil_atnel_wifi_report.md"), "Requires physical fixture and serial PASS marker."),
+        ("Wemos minimal runtime smoke", first_status("docs/release/wemos_esp_wroom_02_18650_smoke_report.md"), "Requires physical board and smoke markers."),
+        ("Wemos board constraints", "PASS", "Constrained to minimal runtime and 2 MB default flash."),
+    ]
+    lines = [
+        "# Final release validation summary",
+        "",
+        "Status values are `PASS`, `FAIL`, `NOT_RUN`, `ENVIRONMENT_BLOCKED` and `NOT_APPLICABLE`.",
+        "This summary must not collapse `NOT_RUN` into `PASS`.",
+        "",
+        "| Area | Status | Evidence |",
+        "|---|---:|---|",
+    ]
+    for area, status, evidence in rows:
+        lines.append(f"| {area} | {status} | {evidence} |")
+    lines.extend([
+        "",
+        "## Remaining production work",
+        "",
+        "- Run SDK matrix with a configured ESP8266 SDK Docker/toolchain and archive logs.",
+        "- Run ATNEL I2C, OneWire and WiFi HIL on a self-hosted hardware runner.",
+        "- Run Wemos minimal-runtime smoke on a physical Wemos ESP-WROOM-02 18650 board.",
+        "- Re-run SDK linker-map memory matrix after SDK builds produce ELF section reports.",
+    ])
+    OUT.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"wrote {OUT}")
+    return 0
+
+if __name__ == "__main__":
+    raise SystemExit(main())

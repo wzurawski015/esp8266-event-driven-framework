@@ -1,0 +1,9 @@
+// ESP8266 SDK linker-map memory budgets.
+// Fields: target, max_iram_bytes, max_dram_bytes, max_bss_bytes, max_data_bytes, max_app_bin_bytes.
+EV_SDK_MEMORY_BUDGET(esp8266_generic_dev, 32768, 81920, 65536, 32768, 1048576)
+EV_SDK_MEMORY_BUDGET(atnel_air_esp_motherboard, 32768, 81920, 65536, 32768, 1048576)
+EV_SDK_MEMORY_BUDGET(atnel_air_esp_motherboard_i2c_hil, 32768, 81920, 65536, 32768, 1048576)
+EV_SDK_MEMORY_BUDGET(atnel_air_esp_motherboard_onewire_hil, 32768, 81920, 65536, 32768, 1048576)
+EV_SDK_MEMORY_BUDGET(atnel_air_esp_motherboard_wifi_hil, 32768, 81920, 65536, 32768, 1048576)
+EV_SDK_MEMORY_BUDGET(wemos_d1_mini, 32768, 81920, 65536, 32768, 1048576)
+EV_SDK_MEMORY_BUDGET(wemos_esp_wroom_02_18650, 32768, 81920, 65536, 32768, 1048576)

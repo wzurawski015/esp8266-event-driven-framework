@@ -12,6 +12,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Validate SDK target matrix metadata
+        run: ./tools/fw sdk-matrix-check
+
       - name: Generate static route table artifacts
         run: ./tools/fw routegen
 

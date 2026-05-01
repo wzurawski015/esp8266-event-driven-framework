@@ -81,3 +81,9 @@ With default values this is four slots of 64-byte topic storage plus 128-byte
 payload storage, plus small metadata. The SDK memory report gate should be run
 after enabling MQTT to record the actual ELF section impact. Do not raise memory
 thresholds without inspecting `EV_MEM_*` output.
+
+## SDK linker-map release matrix
+
+The release SDK memory gate uses `config/sdk_memory_budgets.def` and
+`tools/sdk_memory_matrix.py`. Host `make memory-budget` remains a host static-size
+gate; it is not a substitute for ESP8266 ELF/linker-map validation.

@@ -60,3 +60,10 @@ For the host-side gates actually executed above, there are zero known critical d
 
 This report is updated by the hardening patch series. SDK and HIL validation are
 not claimed unless run in a configured environment.
+
+## Production validation tooling update
+
+The production-validation patch adds SDK target matrix tooling, SDK memory matrix
+reporting, ATNEL HIL release runners and Wemos minimal-runtime smoke reporting.
+In this patch build, SDK/HIL/Wemos physical execution is not claimed unless the
+corresponding report contains real logs and PASS markers.

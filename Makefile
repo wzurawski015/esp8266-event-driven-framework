@@ -132,7 +132,7 @@ PROPERTY_TESTS := \
 
 PROPERTY_TEST_BINS := $(addprefix $(PROPERTY_BUILD_DIR)/,$(PROPERTY_TESTS))
 
-.PHONY: all host-test property-test routegen routegen-check static-contracts memory-budget quality-gate release-gate docgen docs clean
+.PHONY: all host-test property-test routegen routegen-check static-contracts memory-budget sdk-matrix-check sdk-memory-matrix production-release-gate quality-gate release-gate docgen docs clean
 .SECONDARY: $(COMMON_OBJS)
 
 all: host-test
@@ -173,12 +173,25 @@ static-contracts: routegen
 memory-budget: routegen
 	$(PYTHON) tools/audit/memory_budget.py
 
+sdk-matrix-check:
+	$(PYTHON) tools/audit/sdk_matrix_check.py
+	$(PYTHON) tools/audit/sdk_target_defaults_check.py
+
+sdk-memory-matrix:
+	$(PYTHON) tools/sdk_memory_report.py --self-test
+	$(PYTHON) tools/sdk_memory_matrix.py --self-test
+	$(PYTHON) tools/sdk_memory_matrix.py
+
 .NOTPARALLEL: quality-gate
 quality-gate: clean routegen-check static-contracts memory-budget host-test property-test
 	@echo "quality-gate passed"
 
 release-gate: quality-gate docgen docs
 	@echo "release-gate passed"
+
+production-release-gate: release-gate sdk-matrix-check sdk-memory-matrix
+	$(PYTHON) tools/release_report.py
+	@echo "production-release-gate host/docs/matrix checks passed; HIL remains opt-in unless EV_REQUIRE_HIL=1 is handled by external runner"
 
 docgen: routegen
 	$(PYTHON) tools/docgen/docgen.py

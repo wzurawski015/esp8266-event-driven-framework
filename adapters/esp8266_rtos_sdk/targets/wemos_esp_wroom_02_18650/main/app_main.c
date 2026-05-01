@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stdio.h>
 
 #include "board_profile.h"
 
@@ -30,6 +31,8 @@ static const ev_demo_app_board_profile_t k_wemos_minimal_runtime_profile = {
 
 void app_main(void)
 {
+    printf("EV_WEMOS_SMOKE_BOOT board=%s profile=minimal_runtime\n", EV_BOARD_NAME);
+
     static const ev_boot_diag_config_t k_boot_diag = {
         .board_tag = EV_BOARD_TAG,
         .board_name = EV_BOARD_NAME,
@@ -39,6 +42,7 @@ void app_main(void)
     };
 
 #if EV_BOARD_RUNTIME_PROFILE_MINIMAL
+    printf("EV_WEMOS_SMOKE_RUNTIME_READY\n");
     ev_esp8266_runtime_app_run(&k_boot_diag,
                                NULL,
                                NULL,

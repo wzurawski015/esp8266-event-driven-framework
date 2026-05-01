@@ -1,0 +1,26 @@
+# Final release validation summary
+
+Status values are `PASS`, `FAIL`, `NOT_RUN`, `ENVIRONMENT_BLOCKED` and `NOT_APPLICABLE`.
+This summary must not collapse `NOT_RUN` into `PASS`.
+
+| Area | Status | Evidence |
+|---|---:|---|
+| Host quality gate | PASS | User-provided validation log and current host gates. |
+| Docs/release gate | PASS | User-provided validation log contains release-gate passed. |
+| Static contracts | PASS | Validated by host static-contracts gate. |
+| Routegen/docgen freshness | PASS | routegen/docgen are host gates; rerun before release. |
+| SDK toolchain check | NOT_RUN | No SDK toolchain log was provided in this patch build. |
+| SDK build matrix | NOT_RUN | Per-target report: docs/release/sdk_build_matrix_report.md. |
+| SDK linker-map memory matrix | NOT_RUN | Per-target report: docs/release/sdk_memory_matrix_report.md. |
+| ATNEL I2C HIL | NOT_RUN | Requires physical fixture and serial PASS marker. |
+| ATNEL OneWire HIL | NOT_RUN | Requires physical fixture and serial PASS marker. |
+| ATNEL WiFi HIL | NOT_RUN | Requires physical fixture and serial PASS marker. |
+| Wemos minimal runtime smoke | NOT_RUN | Requires physical board and smoke markers. |
+| Wemos board constraints | PASS | Constrained to minimal runtime and 2 MB default flash. |
+
+## Remaining production work
+
+- Run SDK matrix with a configured ESP8266 SDK Docker/toolchain and archive logs.
+- Run ATNEL I2C, OneWire and WiFi HIL on a self-hosted hardware runner.
+- Run Wemos minimal-runtime smoke on a physical Wemos ESP-WROOM-02 18650 board.
+- Re-run SDK linker-map memory matrix after SDK builds produce ELF section reports.

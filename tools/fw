@@ -50,6 +50,8 @@ Usage:
   ./tools/fw docgen
   ./tools/fw docs
   ./tools/fw release-gate
+  ./tools/fw release-report
+  ./tools/fw production-release-report
   ./tools/fw clean
 
   ./tools/fw shell-host
@@ -60,6 +62,14 @@ Usage:
   ./tools/fw sdk-port-resolve
   ./tools/fw target-usb-profile-check
   ./tools/fw sdk-port-resolve-test
+
+  ./tools/fw sdk-target-list
+  ./tools/fw sdk-matrix-check
+  ./tools/fw sdk-target-defaults-check
+  ./tools/fw sdk-build-one <target-name>
+  ./tools/fw sdk-build-matrix
+  ./tools/fw sdk-build-matrix-report
+  ./tools/fw sdk-memory-matrix
 
   ./tools/fw sdk-check
   ./tools/fw sdk-defconfig
@@ -79,6 +89,11 @@ Usage:
   ./tools/fw hil-i2c-flash
   ./tools/fw hil-i2c-monitor
   ./tools/fw hil-i2c-run
+  ./tools/fw hil-release-dry-run
+  ./tools/fw hil-release-atnel-i2c
+  ./tools/fw hil-release-atnel-onewire
+  ./tools/fw hil-release-atnel-wifi
+  ./tools/fw hil-release-all
 
   ./tools/fw hil-onewire-build
   ./tools/fw hil-onewire-flash
@@ -89,6 +104,13 @@ Usage:
   ./tools/fw hil-wifi-flash
   ./tools/fw hil-wifi-monitor
   ./tools/fw hil-wifi-run
+
+  ./tools/fw wemos-smoke-build
+  ./tools/fw wemos-smoke-flash
+  ./tools/fw wemos-smoke-flash-manual
+  ./tools/fw wemos-smoke-monitor
+  ./tools/fw wemos-smoke-run
+  ./tools/fw wemos-smoke-not-run-report
 
 Notes:
   - All developer-facing validation runs inside Docker by default.
@@ -746,6 +768,47 @@ routegen() {
   "$python_bin" "$ROOT_DIR/tools/routegen/routegen.py"
 }
 
+sdk_target_list() {
+  python3 "$ROOT_DIR/tools/sdk_matrix.py" list
+}
+
+sdk_matrix_check() {
+  python3 "$ROOT_DIR/tools/sdk_matrix.py" check
+  python3 "$ROOT_DIR/tools/audit/sdk_target_defaults_check.py"
+}
+
+sdk_target_defaults_check() {
+  python3 "$ROOT_DIR/tools/audit/sdk_target_defaults_check.py"
+}
+
+sdk_build_one() {
+  target_name="${1:-}"
+  if [ -z "$target_name" ]; then
+    echo "error: sdk-build-one requires a target name" >&2
+    exit 1
+  fi
+  target_path=$(python3 "$ROOT_DIR/tools/sdk_matrix.py" path "$target_name")
+  FW_SDK_PROJECT_DIR="$target_path" "$0" sdk-defconfig
+  FW_SDK_PROJECT_DIR="$target_path" "$0" sdk-build
+  FW_SDK_PROJECT_DIR="$target_path" "$0" sdk-memory-report
+}
+
+sdk_build_matrix() {
+  python3 "$ROOT_DIR/tools/sdk_matrix.py" build --fw "$0" ${EV_SDK_MATRIX_INCLUDE_HIL:+--include-hil}
+}
+
+sdk_build_matrix_report() {
+  python3 "$ROOT_DIR/tools/sdk_matrix.py" report --reason "SDK matrix not executed in this environment"
+}
+
+sdk_memory_matrix() {
+  python3 "$ROOT_DIR/tools/sdk_memory_matrix.py"
+}
+
+release_report() {
+  python3 "$ROOT_DIR/tools/release_report.py"
+}
+
 sdk_check() {
   build_sdk_image
   run_in_image \
@@ -985,6 +1048,68 @@ sdk_simple_monitor() {
     python3 -u /work/tools/serial_monitor.py "$SDK_SERIAL_PORT" "$SDK_MONITOR_BAUD"
 }
 
+hil_release_mode() {
+  printf '%s\n' "${EV_HIL_RELEASE_MODE:-run}"
+}
+
+hil_release_dry_run() {
+  python3 "$ROOT_DIR/tools/hil/hil_release_runner.py" --case all --mode dry-run
+}
+
+hil_release_atnel_i2c() {
+  python3 "$ROOT_DIR/tools/hil/hil_release_runner.py" --case atnel-i2c --mode "$(hil_release_mode)"
+}
+
+hil_release_atnel_onewire() {
+  python3 "$ROOT_DIR/tools/hil/hil_release_runner.py" --case atnel-onewire --mode "$(hil_release_mode)"
+}
+
+hil_release_atnel_wifi() {
+  python3 "$ROOT_DIR/tools/hil/hil_release_runner.py" --case atnel-wifi --mode "$(hil_release_mode)"
+}
+
+hil_release_all() {
+  python3 "$ROOT_DIR/tools/hil/hil_release_runner.py" --case all --mode "$(hil_release_mode)"
+}
+
+wemos_select_project() {
+  SDK_PROJECT_DIR_REL="adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650"
+  SDK_MONITOR_BAUD="${FW_MONITOR_BAUD:-${MONITORBAUD:-115200}}"
+}
+
+wemos_smoke_build() {
+  wemos_select_project
+  sdk_build
+}
+
+wemos_smoke_flash() {
+  wemos_select_project
+  sdk_flash
+}
+
+wemos_smoke_flash_manual() {
+  wemos_select_project
+  sdk_flash_manual
+}
+
+wemos_smoke_monitor() {
+  wemos_select_project
+  require_serial_port
+  run_in_sdk_with_device_i \
+    python3 -u /work/tools/hil/wemos_minimal_runtime_smoke_monitor.py "$SDK_SERIAL_PORT" "$SDK_MONITOR_BAUD" "${FW_WEMOS_SMOKE_TIMEOUT_S:-120}"
+}
+
+wemos_smoke_run() {
+  wemos_select_project
+  sdk_build
+  sdk_flash
+  wemos_smoke_monitor
+}
+
+wemos_smoke_not_run_report() {
+  python3 "$ROOT_DIR/tools/hil/wemos_minimal_runtime_smoke_monitor.py" --not-run-report
+}
+
 hil_i2c_select_project() {
   SDK_PROJECT_DIR_REL="$HIL_I2C_PROJECT_DIR_REL"
   SDK_MONITOR_BAUD="${FW_MONITOR_BAUD:-${MONITORBAUD:-115200}}"
@@ -1103,6 +1228,12 @@ case "$cmd" in
     build_docs_image
     run_in_image "$DOCS_IMAGE" make release-gate
     ;;
+  release-report)
+    release_report
+    ;;
+  production-release-report)
+    release_report
+    ;;
   clean)
     build_host_image
     run_in_image "$HOST_IMAGE" make clean
@@ -1131,6 +1262,28 @@ case "$cmd" in
     ;;
   sdk-port-resolve-test)
     sdk_port_resolve_test
+    ;;
+  sdk-target-list)
+    sdk_target_list
+    ;;
+  sdk-matrix-check)
+    sdk_matrix_check
+    ;;
+  sdk-target-defaults-check)
+    sdk_target_defaults_check
+    ;;
+  sdk-build-one)
+    shift
+    sdk_build_one "$@"
+    ;;
+  sdk-build-matrix)
+    sdk_build_matrix
+    ;;
+  sdk-build-matrix-report)
+    sdk_build_matrix_report
+    ;;
+  sdk-memory-matrix)
+    sdk_memory_matrix
     ;;
   sdk-check)
     sdk_check
@@ -1182,6 +1335,39 @@ case "$cmd" in
     ;;
   hil-i2c-run)
     hil_i2c_run
+    ;;
+  hil-release-dry-run)
+    hil_release_dry_run
+    ;;
+  hil-release-atnel-i2c)
+    hil_release_atnel_i2c
+    ;;
+  hil-release-atnel-onewire)
+    hil_release_atnel_onewire
+    ;;
+  hil-release-atnel-wifi)
+    hil_release_atnel_wifi
+    ;;
+  hil-release-all)
+    hil_release_all
+    ;;
+  wemos-smoke-build)
+    wemos_smoke_build
+    ;;
+  wemos-smoke-flash)
+    wemos_smoke_flash
+    ;;
+  wemos-smoke-flash-manual)
+    wemos_smoke_flash_manual
+    ;;
+  wemos-smoke-monitor)
+    wemos_smoke_monitor
+    ;;
+  wemos-smoke-run)
+    wemos_smoke_run
+    ;;
+  wemos-smoke-not-run-report)
+    wemos_smoke_not_run_report
     ;;
   hil-onewire-build)
     hil_onewire_build

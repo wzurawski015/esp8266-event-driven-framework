@@ -19,3 +19,9 @@ Run:
 ```sh
 make memory-budget
 ```
+
+## Distinction from ESP8266 linker-map budget
+
+`make memory-budget` checks host-side static object budgets. ESP8266 production
+release memory status is reported by `tools/sdk_memory_matrix.py` from SDK ELF
+section markers and per-target thresholds.

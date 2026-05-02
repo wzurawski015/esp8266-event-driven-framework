@@ -22,7 +22,7 @@
  * a developer-local board_secrets.local.h next to this file, or provide -D
  * overrides from the build environment.  The local header is ignored by git.
  */
-#if defined(EV_BOARD_INCLUDE_LOCAL_SECRETS)
+#if 1
 #include "board_secrets.local.h"
 #endif
 

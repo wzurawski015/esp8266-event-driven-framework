@@ -84,10 +84,10 @@ are explicitly documented and validated.
 |---|---:|---|
 | Host quality gate | PASS | Observed in uploaded validation log. |
 | Docs/release gate | PASS | Observed in uploaded validation log. |
-| SDK toolchain check | NOT_RUN | Not evidenced by uploaded log. |
-| SDK build matrix | NOT_RUN | Matrix tools are added by this iteration. |
-| SDK linker-map memory matrix | NOT_RUN | Requires SDK build ELF outputs. |
-| ATNEL I2C HIL | NOT_RUN | Requires physical fixture and serial PASS marker. |
+| SDK toolchain check | NOT_RUN | Toolchain log is not stored in this archive snapshot. |
+| SDK build matrix | PASS | `docs/release/sdk_build_matrix_report.md` contains committed PASS rows for buildable, HIL SDK and Wemos physical-smoke targets. |
+| SDK linker-map memory matrix | NOT_RUN | `docs/release/sdk_memory_matrix_report.md` contains no committed EV_MEM rows in this archive snapshot. |
+| ATNEL I2C HIL | FAIL | Isolated to `sda-stuck-low-containment`; base I2C cases passed. |
 | ATNEL OneWire HIL | NOT_RUN | Requires physical fixture and serial PASS marker. |
 | ATNEL WiFi HIL | NOT_RUN | Requires physical fixture and serial PASS marker. |
 | Wemos minimal runtime smoke | NOT_RUN | Requires physical Wemos board and serial smoke markers. |

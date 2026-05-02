@@ -14,6 +14,7 @@
 
 #include "ev/esp8266_i2c_hil.h"
 #include "ev/esp8266_port_adapters.h"
+#include "board_profile.h"
 
 #define EV_HIL_I2C_TAG "ev_i2c_hil"
 #define EV_HIL_OLED_CONTROL_CMD 0x00U

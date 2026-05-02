@@ -12,6 +12,11 @@ FORBIDDEN_BLOCK = re.compile(r"\b(portMAX_DELAY|vTaskDelay)\b")
 SDK_INCLUDE = re.compile(r'#\s*include\s*[<"](?:esp_|freertos/|FreeRTOS|driver/|gpio|i2c)')
 TODO = re.compile(r"\b(TODO|FIXME)\b")
 
+for artifact in ROOT.rglob("*"):
+    if artifact.is_file() and artifact.suffix in {".orig", ".rej"}:
+        errors.append(f"patch conflict artifact must not be committed: {artifact.relative_to(ROOT).as_posix()}")
+
+
 def strip_comments(text: str) -> str:
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
     text = re.sub(r"//.*", "", text)

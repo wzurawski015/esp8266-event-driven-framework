@@ -82,6 +82,8 @@ Desktop.ini
 # Patch files and system artifacts
 # *.patch
 *.diff
+*.orig
+*.rej
 *:Zone.Identifier
 
 # Developer-local USB-UART profile overrides

@@ -44,8 +44,24 @@ for target_dir in sorted((ROOT / "adapters" / "esp8266_rtos_sdk" / "targets").it
         board = (ROOT / "bsp" / "wemos_esp_wroom_02_18650" / "board_profile.h").read_text(encoding="utf-8", errors="ignore")
         if "EV_BOARD_RUNTIME_PROFILE_FULL 0U" not in board:
             errors.append("wemos_esp_wroom_02_18650: board profile must not claim full runtime by default")
+        if "EV_BOARD_RUNTIME_PROFILE_MINIMAL 1U" not in board:
+            errors.append("wemos_esp_wroom_02_18650: minimal runtime profile must remain enabled by default")
+        if "#ifndef EV_BOARD_HAS_NET" not in board or "#define EV_BOARD_HAS_NET 0U" not in board:
+            errors.append("wemos_esp_wroom_02_18650: network capability must be opt-in, defaulting to EV_BOARD_HAS_NET 0U")
         if "EV_BOARD_RUNTIME_HARDWARE_PRESENT_MASK 0U" not in board:
             errors.append("wemos_esp_wroom_02_18650: hardware-present mask must remain zero without external wiring validation")
+        required_net_defaults = [
+            "EV_BOARD_NET_WIFI_SSID",
+            "EV_BOARD_NET_WIFI_PASSWORD",
+            "EV_BOARD_NET_WIFI_AUTH_MODE",
+            "EV_BOARD_NET_MQTT_BROKER_URI",
+            "EV_BOARD_NET_MQTT_CLIENT_ID",
+            "EV_BOARD_NET_COMMAND_TOKEN",
+            "EV_BOARD_REMOTE_COMMAND_CAPABILITIES",
+        ]
+        for macro in required_net_defaults:
+            if macro not in board:
+                errors.append(f"wemos_esp_wroom_02_18650: board profile missing safe default for {macro}")
 
 tracked_local = []
 try:

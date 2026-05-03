@@ -59,3 +59,7 @@ fault-fixture:sda-stuck-low-containment:during_fault fault_gpio=12 fault_level=0
 means the fault output went low but the real SDA bus line did not. In that case
 the expected failure reason is `fault GPIO did not pull SDA low; check fixture
 coupling`; do not treat it as a firmware PASS.
+
+## Fault-fixture diagnostic note
+
+Successful OLED/RTC/MCP23008 traffic confirms the base I2C bus. It does not prove that the GPIO12 fault fixture pulls SDA/GPIO5 low. The fault-fixture log must show `sda_gpio=5` and `scl_gpio=4`; the `sda-stuck-low-containment` case remains FAIL until the serial log reports `EV_HIL_RESULT PASS failures=0 skipped=0`.

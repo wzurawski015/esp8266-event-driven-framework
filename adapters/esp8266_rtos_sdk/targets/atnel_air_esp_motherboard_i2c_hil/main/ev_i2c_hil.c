@@ -45,6 +45,10 @@
 #define EV_BOARD_I2C_SCL_GPIO (-1)
 #endif
 
+#if (EV_BOARD_I2C_SDA_GPIO < 0) || (EV_BOARD_I2C_SCL_GPIO < 0)
+#error "ATNEL I2C HIL requires EV_BOARD_I2C_SDA_GPIO and EV_BOARD_I2C_SCL_GPIO for fault diagnostics"
+#endif
+
 typedef struct ev_hil_suite_result {
     uint32_t passed;
     uint32_t failed;

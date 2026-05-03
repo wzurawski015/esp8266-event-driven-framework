@@ -27,3 +27,8 @@ The Wemos target now supports target-local inclusion of `board_secrets.local.h` 
 ## Commit 4: HIL stack high-water diagnostics
 
 I2C and OneWire IRQ flood HIL tasks emit `EV_HIL_STACK task=irq-flood high_water_words=<n>` when the FreeRTOS high-water API is enabled. The monitor scripts accept and self-test this marker without making it a hardware PASS substitute.
+
+
+## Commit 5: I2C HIL SDA/SCL diagnostics
+
+The ATNEL I2C HIL target now hard-requires board-profile SDA/SCL GPIO definitions for fault-fixture diagnostics. For this board the bus pins are SDA=GPIO5 and SCL=GPIO4; fault injection remains GPIO12/GPIO13 and the HIL failure status is not hidden.

@@ -120,3 +120,8 @@ and the final `EV_HIL_RESULT PASS failures=0 skipped=0` marker is observed.
 ## Stack high-water marker
 
 The IRQ flood HIL task emits `EV_HIL_STACK task=irq-flood high_water_words=<n>` when `uxTaskGetStackHighWaterMark()` is available. This complements heap-delta checks and helps detect insufficient task stack margin during flood testing.
+
+
+## Board GPIO diagnostics
+
+ATNEL I2C HIL fault diagnostics require real board GPIO definitions. The target fails at compile time if `EV_BOARD_I2C_SDA_GPIO` or `EV_BOARD_I2C_SCL_GPIO` are unavailable, preventing ambiguous `sda_gpio=-1`/`scl_gpio=-1` release logs.

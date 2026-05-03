@@ -86,6 +86,17 @@ except Exception:
 if tracked_local:
     errors.append("local USB-UART override profile is tracked: " + ", ".join(tracked_local))
 
+i2c_hil_c = ROOT / "adapters" / "esp8266_rtos_sdk" / "targets" / "atnel_air_esp_motherboard_i2c_hil" / "main" / "ev_i2c_hil.c"
+if i2c_hil_c.exists():
+    i2c_text = i2c_hil_c.read_text(encoding="utf-8", errors="ignore")
+    if '#include "board_profile.h"' not in i2c_text:
+        errors.append("atnel_air_esp_motherboard_i2c_hil: ev_i2c_hil.c must include board_profile.h for SDA/SCL diagnostics")
+    if "ATNEL I2C HIL requires EV_BOARD_I2C_SDA_GPIO" not in i2c_text:
+        errors.append("atnel_air_esp_motherboard_i2c_hil: missing hard guard for SDA/SCL diagnostic GPIOs")
+else:
+    errors.append("atnel_air_esp_motherboard_i2c_hil: missing ev_i2c_hil.c")
+
+
 if errors:
     for error in errors:
         print(f"error: {error}")

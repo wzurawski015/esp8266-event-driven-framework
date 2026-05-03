@@ -44,3 +44,8 @@ shows that base I2C gates passed, but `sda-stuck-low-containment` failed with
 incomplete SDA fault-injection coupling or a fixture that did not pull SDA/GPIO5
 low during the test window. It is not evidence of a general I2C transaction
 failure.
+
+
+## Diagnostic GPIO verification
+
+The firmware fault-fixture log must report `sda_gpio=5` and `scl_gpio=4`. If it reports `-1`, the HIL target was built without the board profile and the run is not useful for validating SDA/SCL coupling. OLED traffic proves the base I2C bus works; it does not prove GPIO12 pulls SDA low during the stuck-low fault window.

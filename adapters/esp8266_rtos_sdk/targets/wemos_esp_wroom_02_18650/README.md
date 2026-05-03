@@ -46,3 +46,24 @@ attaches after reset and misses those early lines, the monitor can accept a
 runtime-alive fallback based on increasing `diag actor: tick=` and
 `app actor: snapshot seq=` lines. The report identifies the PASS mode so marker
 PASS and fallback PASS are auditable.
+
+## Safe WiFi opt-in
+
+The default Wemos profile remains `minimal_runtime` with `EV_BOARD_HAS_NET=0U`.
+To test WiFi, copy `bsp/wemos_esp_wroom_02_18650/board_secrets.example.h` to
+`bsp/wemos_esp_wroom_02_18650/board_secrets.local.h`, fill in a 2.4 GHz WiFi
+SSID/password, and rebuild the Wemos SDK target. The target-local `component.mk`
+detects the local secrets file and adds `-DEV_BOARD_INCLUDE_LOCAL_SECRETS=1` only
+for this target. Do not use a global `CFLAGS=-DEV_BOARD_INCLUDE_LOCAL_SECRETS=1`;
+it overwrites host-build include flags and breaks portable tests.
+
+Example build flow:
+
+```sh
+export FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650
+export FW_ESPPORT=/dev/ttyUSB1
+./tools/fw sdk-defconfig
+./tools/fw sdk-build
+./tools/fw sdk-flash
+./tools/fw sdk-monitor
+```

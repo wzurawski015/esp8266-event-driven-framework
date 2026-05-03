@@ -47,3 +47,8 @@ lines, it may pass by runtime-alive fallback: at least three increasing diag
 actor ticks and three increasing app snapshot sequence numbers, with no reset or
 failure markers. The generated smoke report records whether PASS came from
 `markers` or `runtime_alive_fallback` mode.
+
+
+## WiFi opt-in note
+
+WiFi smoke or connectivity experiments require a local `board_secrets.local.h`. The target `component.mk` enables the local include only for the Wemos SDK build when that file exists; global `CFLAGS` must not be used.

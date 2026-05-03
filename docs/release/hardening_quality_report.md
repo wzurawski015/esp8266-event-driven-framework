@@ -17,3 +17,8 @@ The portable/hot-path static contract now detects `pvPortMalloc`, `vPortFree`, `
 ## Commit 2: adapter exception audit
 
 Bootstrap and HIL-only SDK primitives are audited by `tools/audit/adapter_exception_allowlist.def` and summarized in `docs/release/adapter_exception_audit.md`. Unapproved occurrences of `xSemaphoreCreateMutex`, `xSemaphoreCreateBinary`, `xTaskCreate`, `xTaskCreateStatic`, `tcpip_adapter_init`, `esp_wifi_init`, or `esp_mqtt_client_init` fail `make static-contracts`.
+
+
+## Commit 3: Wemos WiFi opt-in
+
+The Wemos target now supports target-local inclusion of `board_secrets.local.h` through its SDK `component.mk`. This keeps the default no-net minimal runtime unchanged while avoiding global `CFLAGS` overrides. A sanitized `board_secrets.example.h` documents the required local credentials file.

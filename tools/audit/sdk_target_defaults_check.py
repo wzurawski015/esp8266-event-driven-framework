@@ -62,6 +62,19 @@ for target_dir in sorted((ROOT / "adapters" / "esp8266_rtos_sdk" / "targets").it
         for macro in required_net_defaults:
             if macro not in board:
                 errors.append(f"wemos_esp_wroom_02_18650: board profile missing safe default for {macro}")
+        component_mk = target_dir / "main" / "component.mk"
+        component_text = component_mk.read_text(encoding="utf-8", errors="ignore") if component_mk.exists() else ""
+        if "board_secrets.local.h" not in component_text or "EV_BOARD_INCLUDE_LOCAL_SECRETS" not in component_text:
+            errors.append("wemos_esp_wroom_02_18650: component.mk must provide target-local board_secrets.local.h opt-in")
+        if "CFLAGS += -DEV_BOARD_INCLUDE_LOCAL_SECRETS=1" not in component_text:
+            errors.append("wemos_esp_wroom_02_18650: local secrets opt-in must not rely on global CFLAGS")
+        example = ROOT / "bsp" / "wemos_esp_wroom_02_18650" / "board_secrets.example.h"
+        if not example.exists():
+            errors.append("wemos_esp_wroom_02_18650: missing sanitized board_secrets.example.h")
+        else:
+            example_text = example.read_text(encoding="utf-8", errors="ignore")
+            if "your-2g4-ssid" not in example_text or "your-password" not in example_text:
+                errors.append("wemos_esp_wroom_02_18650: example secrets must contain placeholders, not real credentials")
 
 tracked_local = []
 try:

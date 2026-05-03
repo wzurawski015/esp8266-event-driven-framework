@@ -77,3 +77,7 @@ boundary.
 ## Log pending hook
 
 `ev_log_port_t.pending` is a non-blocking optional hook for buffered-log visibility. A NULL hook means zero observable pending records.
+
+## Adapter bootstrap exceptions
+
+Adapter/bootstrap SDK primitives are not allowed implicitly. `make static-contracts` validates `tools/audit/adapter_exception_allowlist.def`, rejects unapproved occurrences, and treats stale allowlist rows as errors. `xTaskCreate` is allowed only as a HIL bootstrap fallback; `xTaskCreateStatic` is classified as static-safe.

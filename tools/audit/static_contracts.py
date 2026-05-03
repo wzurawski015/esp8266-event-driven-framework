@@ -16,6 +16,18 @@ FORBIDDEN_BLOCK = re.compile(r"\b(portMAX_DELAY|vTaskDelay)\b")
 SDK_INCLUDE = re.compile(r'#\s*include\s*[<"](?:esp_|freertos/|FreeRTOS|driver/|gpio|i2c)')
 TODO = re.compile(r"\b(TODO|FIXME)\b")
 
+ADAPTER_BOOTSTRAP_CALLS = {
+    "xSemaphoreCreateMutex": re.compile(r"\bxSemaphoreCreateMutex\s*\("),
+    "xSemaphoreCreateBinary": re.compile(r"\bxSemaphoreCreateBinary\s*\("),
+    "xTaskCreateStatic": re.compile(r"\bxTaskCreateStatic\s*\("),
+    "xTaskCreate": re.compile(r"\bxTaskCreate\s*\("),
+    "esp_mqtt_client_init": re.compile(r"\besp_mqtt_client_init\s*\("),
+    "esp_wifi_init": re.compile(r"\besp_wifi_init\s*\("),
+    "tcpip_adapter_init": re.compile(r"\btcpip_adapter_init\s*\("),
+}
+ADAPTER_EXCEPTION_RE = re.compile(r"^\s*EV_ADAPTER_EXCEPTION\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^,]+)\s*,\s*(.*?)\s*\)\s*$")
+ADAPTER_EXCEPTION_CATEGORIES = {"bootstrap", "hil_bootstrap", "static_safe"}
+
 def strip_comments(text: str) -> str:
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
     text = re.sub(r"//.*", "", text)
@@ -44,6 +56,54 @@ for artifact in ROOT.rglob("*"):
         continue
     if artifact.is_file() and artifact.suffix in {".orig", ".rej"}:
         errors.append(f"patch conflict artifact must not be committed: {artifact.relative_to(ROOT).as_posix()}")
+
+
+def load_adapter_exception_allowlist() -> dict[tuple[str, str], tuple[str, str]]:
+    allowlist_path = ROOT / "tools" / "audit" / "adapter_exception_allowlist.def"
+    allowed: dict[tuple[str, str], tuple[str, str]] = {}
+    if not allowlist_path.exists():
+        errors.append("adapter exception allowlist missing: tools/audit/adapter_exception_allowlist.def")
+        return allowed
+    for line_no, raw in enumerate(allowlist_path.read_text(encoding="utf-8").splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith("//"):
+            continue
+        match = ADAPTER_EXCEPTION_RE.match(line)
+        if match is None:
+            errors.append(f"invalid adapter exception allowlist row at {line_no}")
+            continue
+        rel, symbol, category, rationale = (part.strip() for part in match.groups())
+        if symbol not in ADAPTER_BOOTSTRAP_CALLS:
+            errors.append(f"adapter exception allowlist row {line_no} uses unknown symbol {symbol}")
+            continue
+        if category not in ADAPTER_EXCEPTION_CATEGORIES:
+            errors.append(f"adapter exception allowlist row {line_no} uses invalid category {category}")
+            continue
+        if not rationale:
+            errors.append(f"adapter exception allowlist row {line_no} has empty rationale")
+            continue
+        if symbol == "xTaskCreate" and category != "hil_bootstrap":
+            errors.append(f"adapter exception allowlist row {line_no}: xTaskCreate must be HIL bootstrap only")
+            continue
+        if symbol == "xTaskCreateStatic" and category != "static_safe":
+            errors.append(f"adapter exception allowlist row {line_no}: xTaskCreateStatic must be static_safe")
+            continue
+        if symbol in {"xSemaphoreCreateMutex", "xSemaphoreCreateBinary", "esp_mqtt_client_init", "esp_wifi_init", "tcpip_adapter_init"} and category != "bootstrap":
+            errors.append(f"adapter exception allowlist row {line_no}: {symbol} must be bootstrap")
+            continue
+        if not (ROOT / rel).exists():
+            errors.append(f"adapter exception allowlist row {line_no} references missing file {rel}")
+            continue
+        key = (rel, symbol)
+        if key in allowed:
+            errors.append(f"duplicate adapter exception allowlist row for {rel}:{symbol}")
+            continue
+        allowed[key] = (category, rationale)
+    return allowed
+
+
+ADAPTER_EXCEPTION_ALLOWLIST = load_adapter_exception_allowlist()
+ADAPTER_EXCEPTION_OBSERVED: set[tuple[str, str]] = set()
 
 
 for subdir in ["core", "runtime", "modules", "drivers", "ports", "apps", "tests/host", "tests/property"]:
@@ -109,6 +169,23 @@ for p in (ROOT / "adapters").rglob("*"):
 
 if (ROOT / "app" / "ev_demo_app.c").exists():
     errors.append("legacy app/ev_demo_app.c remains outside apps/demo")
+
+for p in (ROOT / "adapters").rglob("*"):
+    if is_ignored_path(p):
+        continue
+    if p.suffix not in {".c", ".h"}:
+        continue
+    rel = p.relative_to(ROOT).as_posix()
+    code = strip_comments(p.read_text(encoding="utf-8", errors="ignore"))
+    for symbol, pattern in ADAPTER_BOOTSTRAP_CALLS.items():
+        if pattern.search(code):
+            key = (rel, symbol)
+            ADAPTER_EXCEPTION_OBSERVED.add(key)
+            if key not in ADAPTER_EXCEPTION_ALLOWLIST:
+                errors.append(f"unapproved adapter bootstrap/static primitive {symbol} in {rel}")
+
+for rel, symbol in sorted(set(ADAPTER_EXCEPTION_ALLOWLIST) - ADAPTER_EXCEPTION_OBSERVED):
+    errors.append(f"adapter exception allowlist entry is unused or stale: {rel}:{symbol}")
 
 
 # Hard demo runtime_graph migration contracts.

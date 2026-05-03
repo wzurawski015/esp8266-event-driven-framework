@@ -13,3 +13,7 @@ Baseline archive: `esp8266-event-driven_20260503_081356.tar.gz`.
 ## Commit 1: zero-heap audit extension
 
 The portable/hot-path static contract now detects `pvPortMalloc`, `vPortFree`, `heap_caps_malloc`, and `heap_caps_free` after comment stripping. The scan also covers host/property tests so framework fixtures cannot hide allocation regressions. Generated/build/log/docker trees remain excluded.
+
+## Commit 2: adapter exception audit
+
+Bootstrap and HIL-only SDK primitives are audited by `tools/audit/adapter_exception_allowlist.def` and summarized in `docs/release/adapter_exception_audit.md`. Unapproved occurrences of `xSemaphoreCreateMutex`, `xSemaphoreCreateBinary`, `xTaskCreate`, `xTaskCreateStatic`, `tcpip_adapter_init`, `esp_wifi_init`, or `esp_mqtt_client_init` fail `make static-contracts`.

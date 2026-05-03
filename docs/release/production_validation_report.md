@@ -1,6 +1,6 @@
 # Production validation report
 
-Baseline archive: `esp8266-event-driven_20260430_160807.tar.gz`.
+Baseline archive for the latest hardening review: `esp8266-event-driven_20260503_081356.tar.gz`.
 
 This report starts the production-validation iteration after no-legacy framework
 hardening. It intentionally separates host/docs validation from SDK build,
@@ -154,3 +154,10 @@ only failed case was `sda-stuck-low-containment`, with `stuck_status=OK` and
 not pull the real SDA/GPIO5 line low during the fault window. See
 `docs/release/hil_atnel_i2c_report.md` and
 `docs/hil/fixtures/atnel_i2c_fixture.md` for the wiring checklist.
+
+
+## Hardening quality follow-up
+
+The post-BSP-fix hardening pass strengthens static contracts and release evidence without changing runtime semantics. The additional checks cover FreeRTOS/vendor heap API spellings, adapter bootstrap exception allowlisting, Wemos target-local WiFi secrets opt-in, HIL flood stack high-water diagnostics, and hard failure when I2C HIL fault diagnostics cannot identify SDA/SCL GPIOs.
+
+SDK linker-map memory status must remain `NOT_RUN` unless `docs/release/sdk_memory_matrix_report.md` contains real non-zero `EV_MEM_*` values from SDK build logs. ATNEL I2C HIL remains `FAIL` until `sda-stuck-low-containment` produces the required serial PASS marker.

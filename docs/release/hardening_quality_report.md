@@ -32,3 +32,8 @@ I2C and OneWire IRQ flood HIL tasks emit `EV_HIL_STACK task=irq-flood high_water
 ## Commit 5: I2C HIL SDA/SCL diagnostics
 
 The ATNEL I2C HIL target now hard-requires board-profile SDA/SCL GPIO definitions for fault-fixture diagnostics. For this board the bus pins are SDA=GPIO5 and SCL=GPIO4; fault injection remains GPIO12/GPIO13 and the HIL failure status is not hidden.
+
+
+## Commit 6: release summary tightening
+
+The final release summary now includes a dedicated hardening-contract row and keeps SDK build, SDK memory and physical HIL statuses separate. SDK memory remains `NOT_RUN` when the source archive lacks real `EV_MEM_*` markers. ATNEL I2C HIL remains `FAIL`; OneWire HIL, WiFi HIL and Wemos smoke remain `NOT_RUN` until physical logs provide PASS markers.

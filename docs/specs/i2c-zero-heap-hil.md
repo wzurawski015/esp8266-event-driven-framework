@@ -115,3 +115,8 @@ For `sda-stuck-low-containment`, `fault_level=0` with `sda_level=1` during the
 fault window indicates that the fault output is not electrically coupled to the
 real SDA line. The run must remain FAIL until the fixture coupling is corrected
 and the final `EV_HIL_RESULT PASS failures=0 skipped=0` marker is observed.
+
+
+## Stack high-water marker
+
+The IRQ flood HIL task emits `EV_HIL_STACK task=irq-flood high_water_words=<n>` when `uxTaskGetStackHighWaterMark()` is available. This complements heap-delta checks and helps detect insufficient task stack margin during flood testing.

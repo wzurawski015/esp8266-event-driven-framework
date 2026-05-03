@@ -22,3 +22,8 @@ Bootstrap and HIL-only SDK primitives are audited by `tools/audit/adapter_except
 ## Commit 3: Wemos WiFi opt-in
 
 The Wemos target now supports target-local inclusion of `board_secrets.local.h` through its SDK `component.mk`. This keeps the default no-net minimal runtime unchanged while avoiding global `CFLAGS` overrides. A sanitized `board_secrets.example.h` documents the required local credentials file.
+
+
+## Commit 4: HIL stack high-water diagnostics
+
+I2C and OneWire IRQ flood HIL tasks emit `EV_HIL_STACK task=irq-flood high_water_words=<n>` when the FreeRTOS high-water API is enabled. The monitor scripts accept and self-test this marker without making it a hardware PASS substitute.

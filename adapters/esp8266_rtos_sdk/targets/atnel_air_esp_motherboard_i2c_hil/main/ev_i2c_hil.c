@@ -34,6 +34,10 @@
 #define configSUPPORT_STATIC_ALLOCATION 0
 #endif
 
+#if !defined(INCLUDE_uxTaskGetStackHighWaterMark)
+#define INCLUDE_uxTaskGetStackHighWaterMark 0
+#endif
+
 #ifndef EV_BOARD_I2C_SDA_GPIO
 #define EV_BOARD_I2C_SDA_GPIO (-1)
 #endif
@@ -58,6 +62,7 @@ static StaticTask_t s_ev_hil_irq_flood_tcb;
 static StackType_t s_ev_hil_irq_flood_stack[EV_HIL_IRQ_FLOOD_STACK_WORDS];
 #endif
 static ev_hil_irq_flood_ctx_t s_ev_hil_irq_flood_ctx;
+static TaskHandle_t s_ev_hil_irq_flood_task_handle;
 
 static const char *ev_hil_status_name(ev_i2c_status_t status)
 {
@@ -665,6 +670,24 @@ static uint32_t ev_hil_irq_drain(ev_irq_port_t *irq_port)
     return drained;
 }
 
+
+static void ev_hil_irq_flood_log_stack(const char *task_name)
+{
+#if (INCLUDE_uxTaskGetStackHighWaterMark == 1)
+    if (s_ev_hil_irq_flood_task_handle == NULL) {
+        ESP_LOGW(EV_HIL_I2C_TAG, "EV_HIL_STACK task=%s status=not_available", (task_name != NULL) ? task_name : "irq-flood");
+        return;
+    }
+    ESP_LOGI(EV_HIL_I2C_TAG,
+             "EV_HIL_STACK task=%s high_water_words=%u",
+             (task_name != NULL) ? task_name : "irq-flood",
+             (unsigned)uxTaskGetStackHighWaterMark(s_ev_hil_irq_flood_task_handle));
+#else
+    (void)task_name;
+    ESP_LOGW(EV_HIL_I2C_TAG, "EV_HIL_STACK task=irq-flood status=not_available");
+#endif
+}
+
 static void ev_hil_irq_flood_task(void *arg)
 {
     ev_hil_irq_flood_ctx_t *ctx = (ev_hil_irq_flood_ctx_t *)arg;
@@ -704,6 +727,7 @@ static bool ev_hil_irq_flood_start(int gpio)
                              tskIDLE_PRIORITY + 1U,
                              s_ev_hil_irq_flood_stack,
                              &s_ev_hil_irq_flood_tcb);
+    s_ev_hil_irq_flood_task_handle = task;
     return task != NULL;
 #else
     BaseType_t task_rc;
@@ -727,14 +751,19 @@ static bool ev_hil_irq_flood_start(int gpio)
                           EV_HIL_IRQ_FLOOD_STACK_WORDS,
                           &s_ev_hil_irq_flood_ctx,
                           tskIDLE_PRIORITY + 1U,
-                          NULL);
+                          &s_ev_hil_irq_flood_task_handle);
+    if (task_rc != pdPASS) {
+        s_ev_hil_irq_flood_task_handle = NULL;
+    }
     return task_rc == pdPASS;
 #endif
 }
 static void ev_hil_irq_flood_stop(void)
 {
+    ev_hil_irq_flood_log_stack("irq-flood");
     s_ev_hil_irq_flood_ctx.run = false;
     vTaskDelay(pdMS_TO_TICKS(20U));
+    s_ev_hil_irq_flood_task_handle = NULL;
 }
 
 static void ev_hil_test_irq_flood_during_i2c(const ev_esp8266_i2c_hil_config_t *cfg, ev_hil_suite_result_t *result)

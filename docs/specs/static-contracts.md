@@ -33,3 +33,8 @@ The static-contract checker fails if demo code reintroduces per-actor mailboxes,
 ## No-legacy demo contracts
 
 The static audit hard-fails reintroduction of demo-owned runtime primitives and, after no-legacy hardening, also hard-fails direct demo access to graph scheduler and timer internals or production actor initialization through `ev_demo_app_delivery`.
+
+
+## FreeRTOS/vendor heap APIs
+
+The heap deny-list covers standard C allocation APIs and FreeRTOS/vendor spellings: `pvPortMalloc`, `vPortFree`, `heap_caps_malloc`, and `heap_caps_free`. The scanner strips C/C++ comments before matching and scans host/property tests in addition to portable framework layers.

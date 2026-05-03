@@ -7,26 +7,52 @@ import re
 ROOT = Path(__file__).resolve().parents[2]
 errors: list[str] = []
 
-FORBIDDEN_HEAP = re.compile(r"\b(malloc|calloc|realloc|free|strdup)\s*\(")
+IGNORED_DIRS = {".git", "build", "logs", "log", "docker", "docs/generated", "__pycache__"}
+
+FORBIDDEN_HEAP = re.compile(
+    r"\b(malloc|calloc|realloc|free|strdup|pvPortMalloc|vPortFree|heap_caps_malloc|heap_caps_free)\s*\("
+)
 FORBIDDEN_BLOCK = re.compile(r"\b(portMAX_DELAY|vTaskDelay)\b")
 SDK_INCLUDE = re.compile(r'#\s*include\s*[<"](?:esp_|freertos/|FreeRTOS|driver/|gpio|i2c)')
 TODO = re.compile(r"\b(TODO|FIXME)\b")
-
-for artifact in ROOT.rglob("*"):
-    if artifact.is_file() and artifact.suffix in {".orig", ".rej"}:
-        errors.append(f"patch conflict artifact must not be committed: {artifact.relative_to(ROOT).as_posix()}")
-
 
 def strip_comments(text: str) -> str:
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
     text = re.sub(r"//.*", "", text)
     return text
 
-for subdir in ["core", "runtime", "modules", "drivers", "ports", "apps"]:
+
+def is_ignored_path(path: Path) -> bool:
+    rel = path.relative_to(ROOT).as_posix()
+    return any(rel == ignored or rel.startswith(f"{ignored}/") for ignored in IGNORED_DIRS)
+
+
+def static_contract_self_test() -> None:
+    for symbol in ["pvPortMalloc", "vPortFree", "heap_caps_malloc", "heap_caps_free"]:
+        sample = f"void *p = {symbol}(16);" if symbol.endswith("malloc") or symbol == "pvPortMalloc" else f"{symbol}(p);"
+        if FORBIDDEN_HEAP.search(strip_comments(sample)) is None:
+            errors.append(f"static-contract self-test failed: {symbol} was not detected")
+    comment_only = "/* pvPortMalloc(16); */\n// vPortFree(p);\n/* heap_caps_malloc(16, 0); */"
+    if FORBIDDEN_HEAP.search(strip_comments(comment_only)) is not None:
+        errors.append("static-contract self-test failed: heap API in comments was not ignored")
+
+
+static_contract_self_test()
+
+for artifact in ROOT.rglob("*"):
+    if is_ignored_path(artifact):
+        continue
+    if artifact.is_file() and artifact.suffix in {".orig", ".rej"}:
+        errors.append(f"patch conflict artifact must not be committed: {artifact.relative_to(ROOT).as_posix()}")
+
+
+for subdir in ["core", "runtime", "modules", "drivers", "ports", "apps", "tests/host", "tests/property"]:
     base = ROOT / subdir
     if not base.exists():
         continue
     for p in base.rglob("*"):
+        if is_ignored_path(p):
+            continue
         if p.suffix not in {".c", ".h"}:
             continue
         rel = p.relative_to(ROOT).as_posix()

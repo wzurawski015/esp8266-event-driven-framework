@@ -1225,8 +1225,11 @@ case "$cmd" in
     run_in_image "$DOCS_IMAGE" make docs
     ;;
   release-gate)
+    build_host_image
     build_docs_image
-    run_in_image "$DOCS_IMAGE" make release-gate
+    run_in_image "$HOST_IMAGE" make quality-gate
+    run_in_image "$DOCS_IMAGE" make docgen docs
+    echo "release-gate passed"
     ;;
   release-report)
     release_report

@@ -1,11 +1,38 @@
-FROM ubuntu:24.04
+ARG UBUNTU_IMAGE=ubuntu:24.04@sha256:d1e2e92c075e5ca139d51a140fff46f84315c0fdce203eab2807c7e495eff4f9
+FROM ${UBUNTU_IMAGE}
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    ca-certificates \
-    make \
-    python3 \
-    valgrind \
-    && rm -rf /var/lib/apt/lists/*
+ARG DEBIAN_FRONTEND=noninteractive
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+LABEL org.opencontainers.image.title="esp8266-event-driven host validation image"
+LABEL org.opencontainers.image.description="Pinned host-side C11 build, host-test, property-test and memory-budget validation environment."
+
+RUN set -eux; \
+    printf '%s\n' \
+      'Acquire::Retries "5";' \
+      'Acquire::http::Timeout "60";' \
+      'Acquire::https::Timeout "60";' \
+      'Acquire::ForceIPv4 "true";' \
+      > /etc/apt/apt.conf.d/80-ev-retries; \
+    for attempt in 1 2 3 4 5; do \
+      rm -rf /var/lib/apt/lists/*; \
+      apt-get update && \
+      apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        make \
+        python3 \
+        valgrind && \
+      break; \
+      if [ "$attempt" = "5" ]; then exit 1; fi; \
+      sleep $((attempt * 10)); \
+    done; \
+    rm -rf /var/lib/apt/lists/*; \
+    cc --version; \
+    python3 --version; \
+    make --version | head -n 1; \
+    valgrind --version
 
 WORKDIR /work
+CMD ["bash"]

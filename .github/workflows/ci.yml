@@ -12,6 +12,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Validate SDK target matrix metadata
+        run: ./tools/fw sdk-matrix-check
+
       - name: Generate static route table artifacts
         run: ./tools/fw routegen
 
@@ -21,11 +24,8 @@ jobs:
       - name: Verify generated artifacts are checked in
         run: git diff --exit-code
 
-      - name: Build and run host smoke tests
-        run: ./tools/fw host-test
-
-      - name: Build strict documentation site
-        run: ./tools/fw docs
+      - name: Run host release gate
+        run: ./tools/fw release-gate
 
   sdk-target-smoke:
     runs-on: ubuntu-latest

@@ -70,3 +70,39 @@ docs/      architecture, specs, and release reports
 ```
 
 The compatibility demo entry remains only under `apps/demo/ev_demo_app.c`; it is not the framework runtime root.
+
+## Runtime graph migration readiness
+
+This revision prepares `ev_runtime_graph_t` as the canonical framework kernel
+without yet deleting the compatibility composition root in `apps/demo`. Run:
+
+```sh
+make release-gate
+```
+
+to execute the host quality gate plus generated documentation checks.
+
+## Runtime graph migration status
+
+The demo application now uses `ev_runtime_graph_t` as the owner of runtime mailboxes, actor runtimes, registry and scheduler. Remaining production hardening work is tracked in `docs/release/demo_runtime_graph_migration_final_report.md`.
+
+## Production validation quick commands
+
+Host/docs validation:
+
+```sh
+make release-gate
+```
+
+Production evidence tooling:
+
+```sh
+./tools/fw sdk-matrix-check
+./tools/fw sdk-build-matrix-report
+make sdk-memory-matrix
+EV_HIL_RELEASE_MODE=not-run ./tools/fw hil-release-all
+./tools/fw wemos-smoke-not-run-report
+./tools/fw release-report
+```
+
+SDK/HIL/Wemos PASS is claimed only from real SDK build logs or serial monitor PASS markers.

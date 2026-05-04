@@ -8,6 +8,7 @@
 #ifndef EV_NETWORK_OUTBOX_CAPACITY
 #define EV_NETWORK_OUTBOX_CAPACITY 8U
 #endif
+#define EV_NETWORK_OUTBOX_MASK (EV_NETWORK_OUTBOX_CAPACITY - 1U)
 #ifndef EV_NETWORK_PAYLOAD_BYTES
 #define EV_NETWORK_PAYLOAD_BYTES 64U
 #endif
@@ -33,16 +34,28 @@ typedef struct {
 
 typedef struct {
     ev_network_outbox_item_t items[EV_NETWORK_OUTBOX_CAPACITY];
-    size_t head;
-    size_t count;
+    uint32_t write_seq;
+    uint32_t read_seq;
+    uint32_t high_water;
     size_t queued_by_category[EV_NETWORK_MSG_CATEGORY_COUNT];
     uint32_t accepted;
     uint32_t rejected;
     uint32_t dropped;
 } ev_network_outbox_t;
 
+typedef struct {
+    size_t pending;
+    uint32_t high_water;
+    uint32_t accepted;
+    uint32_t rejected;
+    uint32_t dropped;
+    size_t queued_by_category[EV_NETWORK_MSG_CATEGORY_COUNT];
+} ev_network_outbox_stats_t;
+
 void ev_network_outbox_init(ev_network_outbox_t *outbox);
 ev_result_t ev_network_outbox_push(ev_network_outbox_t *outbox, const ev_network_backpressure_policy_t *policy, ev_network_msg_category_t category, const uint8_t *payload, size_t size);
 ev_result_t ev_network_outbox_pop(ev_network_outbox_t *outbox, ev_network_outbox_item_t *out_item);
+size_t ev_network_outbox_pending(const ev_network_outbox_t *outbox);
+ev_result_t ev_network_outbox_stats(const ev_network_outbox_t *outbox, ev_network_outbox_stats_t *out_stats);
 
 #endif

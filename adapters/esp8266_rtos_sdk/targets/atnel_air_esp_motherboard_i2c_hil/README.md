@@ -39,3 +39,27 @@ lines.
 Override `EV_BOARD_HIL_I2C_SDA_FAULT_GPIO`,
 `EV_BOARD_HIL_I2C_SCL_FAULT_GPIO`, and `EV_BOARD_HIL_IRQ_FLOOD_OUTPUT_GPIO` only
 when those fixture wires are physically installed.
+
+## Fault-injection diagnostics
+
+The HIL firmware logs fault-fixture levels before, during and after the
+stuck-low window. For the tracked profile the expected coupling is:
+
+```text
+sda_fault_gpio=12 -> SDA/GPIO5
+scl_fault_gpio=13 -> SCL/GPIO4
+```
+
+A line such as:
+
+```text
+fault-fixture:sda-stuck-low-containment:during_fault fault_gpio=12 fault_level=0 sda_gpio=5 sda_level=1
+```
+
+means the fault output went low but the real SDA bus line did not. In that case
+the expected failure reason is `fault GPIO did not pull SDA low; check fixture
+coupling`; do not treat it as a firmware PASS.
+
+## Fault-fixture diagnostic note
+
+Successful OLED/RTC/MCP23008 traffic confirms the base I2C bus. It does not prove that the GPIO12 fault fixture pulls SDA/GPIO5 low. The fault-fixture log must show `sda_gpio=5` and `scl_gpio=4`; the `sda-stuck-low-containment` case remains FAIL until the serial log reports `EV_HIL_RESULT PASS failures=0 skipped=0`.

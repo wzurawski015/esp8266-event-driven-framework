@@ -1,0 +1,60 @@
+name: HIL self-hosted
+
+on:
+  workflow_dispatch:
+    inputs:
+      hil_target:
+        description: Hardware fixture to run
+        required: true
+        type: choice
+        options:
+          - atnel-i2c
+          - atnel-onewire
+          - atnel-wifi
+          - wemos-smoke
+      espport:
+        description: Serial device path, e.g. /dev/serial/by-id/...
+        required: true
+        type: string
+      hardware_attached:
+        description: Confirm physical hardware fixture is attached
+        required: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  hil:
+    runs-on: [self-hosted, esp8266-hil]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Reject unconfirmed hardware run
+        if: ${{ inputs.hardware_attached != true }}
+        run: |
+          echo "hardware_attached confirmation is required" >&2
+          exit 1
+
+      - name: Run selected HIL fixture
+        env:
+          FW_ESPPORT: ${{ inputs.espport }}
+        run: |
+          case "${{ inputs.hil_target }}" in
+            atnel-i2c) ./tools/fw hil-release-atnel-i2c ;;
+            atnel-onewire) ./tools/fw hil-release-atnel-onewire ;;
+            atnel-wifi) ./tools/fw hil-release-atnel-wifi ;;
+            wemos-smoke) ./tools/fw wemos-smoke-run ;;
+            *) echo "unknown HIL target" >&2; exit 2 ;;
+          esac
+
+      - name: Upload HIL logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hil-logs-${{ inputs.hil_target }}
+          path: |
+            logs/hil
+            docs/release/*hil*_report.md
+            docs/release/wemos_esp_wroom_02_18650_smoke_report.md

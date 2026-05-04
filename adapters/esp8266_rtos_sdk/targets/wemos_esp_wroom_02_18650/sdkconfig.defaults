@@ -1,4 +1,13 @@
-#
-# Stage 8 board-target defaults for Wemos ESP-WROOM-02 18650.
-#
+# Wemos ESP-WROOM-02 18650 minimal-runtime target defaults.
+# Hardware evidence: CP2102 USB-UART, ESP-WROOM-02 / ESP8266EX, default 2 MB / 16 Mbit flash.
+CONFIG_PROJECT_NAME="ev_wemos_wroom02_18650"
+CONFIG_EV_PLATFORM_ESP8266=y
 
+# Conservative flash defaults for the documented 2 MB board variant.
+CONFIG_ESPTOOLPY_FLASHSIZE_2MB=y
+CONFIG_ESPTOOLPY_FLASHFREQ_40M=y
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+
+# Console and monitor defaults.
+CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200
+CONFIG_MONITOR_BAUD=115200

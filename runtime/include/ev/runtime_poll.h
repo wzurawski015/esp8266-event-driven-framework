@@ -9,6 +9,7 @@
 typedef struct {
     size_t timers_published;
     size_t actors_pumped;
+    size_t domains_pumped;
     size_t messages_processed;
     ev_result_t last_result;
 } ev_runtime_poll_report_t;

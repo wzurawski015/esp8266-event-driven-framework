@@ -80,9 +80,9 @@ static ev_result_t ev_runtime_app_compute_wait_ms(const ev_demo_app_t *app,
         return EV_ERR_STATE;
     }
 
-    next_deadline_ms = app->next_tick_100ms_ms;
-    if ((int32_t)(app->next_tick_ms - next_deadline_ms) < 0) {
-        next_deadline_ms = app->next_tick_ms;
+    if (ev_demo_app_next_deadline_ms(app, &next_deadline_ms) != EV_OK) {
+        *out_wait_ms = EV_RUNTIME_APP_MAX_WAIT_MS;
+        return EV_OK;
     }
 
     until_deadline_ms = (int32_t)(next_deadline_ms - now_ms);

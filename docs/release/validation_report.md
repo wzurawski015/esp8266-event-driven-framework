@@ -1,115 +1,69 @@
 # Validation report
 
-Date: 2026-04-28
+Baseline archive: `esp8266-event-driven_20260430_080553.tar.gz`.
 
-Project: `esp8266_event_driven_framework`
+This report records the host-side validation state after the demo runtime-graph migration. The follow-up hardening series removes remaining compatibility seams around graph internals, poll orchestration, actor emission, diagnostics and quiescence log pending state.
 
-## Toolchain observed
+## Executed gates
 
-| Tool | Version |
-|---|---|
-| C compiler | `cc (Debian 14.2.0-19) 14.2.0` |
-| Python | `Python 3.13.5` |
-| Make | `GNU Make 4.4.1` |
-
-## Commands executed
-
-| Command | Status | Notes |
+| Command | Result | Notes |
 |---|---:|---|
-| `make clean` | pass | Removed host build artifacts and restored `docs/generated/.gitkeep`. |
-| `make routegen` | pass | Generated 53 route entries into `core/generated/include/ev/route_table_generated.h`. |
-| `make routegen-check` | pass | Confirmed generated route count matches `config/routes.def`. |
-| `make static-contracts` | pass | Checked SDK leakage, heap APIs, blocking APIs, routegen freshness, BSP profiles, pins schema, and source markers. |
-| `make memory-budget` | pass | Wrote `docs/release/memory_budget_report.md`. |
-| `make host-test` | pass | Original host tests plus new runtime-builder/timer/quiescence/fault/metrics/trace/delivery/command/network tests passed. |
-| `make property-test` | pass | Deterministic xorshift property test for mailbox, timer, and trace behavior passed. |
-| `make quality-gate` | pass | Serial release gate passed: clean, routegen-check, static-contracts, memory-budget, host-test, property-test. |
-| `make clean` | pass | Packaging cleanup after validation; source and generated route table remained intact. |
+| `make routegen-check PYTHON=python3` | PASS | 53 generated routes verified. |
+| `make static-contracts PYTHON=python3` | PASS | Demo runtime ownership blockers are hard failures after this migration. |
+| `make memory-budget PYTHON=python3` | PASS | Memory budget checker completed. |
+| `make host-test PYTHON=python3` | PASS | All host tests in `HOST_TESTS` passed, including the new golden tests. |
+| `make property-test PYTHON=python3` | PASS | Deterministic property tests passed. |
+| `make quality-gate PYTHON=python3` | PASS | Clean + routegen/static/memory/host/property completed. |
+| `make docgen PYTHON=python3` | PASS | Generated docs/catalog files. |
+| `make docs PYTHON=python3` | NOT PASSED IN THIS ENVIRONMENT | `doxygen` executable is not installed in this container. |
+| `make release-gate PYTHON=python3` | NOT PASSED IN THIS ENVIRONMENT | Depends on `make docs`; blocked by missing `doxygen`. |
 
-Detailed command logs are stored in `docs/release/validation_*.log`.
+## Targeted migration tests
 
-## Warning status
+The following new or migration-critical tests were built and executed as part of
+host validation:
 
-The host compiler was run with the preserved project warning profile:
+- `test_demo_app_boot_sequence_golden`
+- `test_demo_app_disabled_route_golden`
+- `test_demo_app_tick_order_golden`
+- `test_demo_app_sleep_guard_golden`
+- `test_demo_app_fairness_golden`
+- `test_demo_runtime_instances`
+- `test_demo_migration_blockers`
+- `test_runtime_graph_canonical_scheduler`
+- `test_runtime_timer_migration`
+- `test_runtime_quiescence_time_aware`
+- `test_runtime_disabled_routes`
+- `test_runtime_graph_publish_send`
 
-```text
--std=c11 -Wall -Wextra -O0 -g0 -pedantic
-```
+## SDK and HIL status
 
-No source-level warning suppressions were added for the new framework layer. Global `-Werror` was not enabled for the full preserved legacy codebase; see `docs/release/warning_exceptions.md`.
+ESP8266 SDK build validation and HIL validation were not executed in this
+environment. They must not be claimed until run on a configured SDK toolchain and
+physical/self-hosted hardware runner.
 
-## Static contract result
+## Remaining post-hardening work
 
-Status: pass.
+1. SDK build matrix for all targets.
+2. HIL for ATNEL I2C / OneWire / WiFi.
+3. Wemos minimal runtime smoke on a real board.
+4. Final memory budget from ESP8266 linker map.
+5. Release report with real SDK/HIL results.
+6. ADR wording review after hardware validation.
 
-The checker verified:
+## Final status for executed host gates
 
-- no forbidden heap calls in the configured portable/framework layers,
-- no `portMAX_DELAY`,
-- no runtime/actor `vTaskDelay`,
-- no ESP8266 SDK include leakage into portable layers,
-- generated route count freshness,
-- `faults.def` and `metrics.def` presence,
-- BSP board profile presence,
-- supported pins schema,
-- no production source `TODO`/`FIXME` markers.
+For the host-side gates actually executed above, there are zero known critical defects after the executed gates.
 
-## Memory budget result
 
-Status: pass.
+## No-legacy hardening status
 
-Summary from `docs/release/memory_budget_report.md`:
+This report is updated by the hardening patch series. SDK and HIL validation are
+not claimed unless run in a configured environment.
 
-- `ev_runtime_graph_t`: 26840 bytes
-- `ev_msg_t`: 72 bytes
-- `ev_mailbox_t`: 88 bytes
-- `ev_actor_runtime_t`: 96 bytes
-- `ev_timer_service_t`: 396 bytes
-- `ev_trace_ring_t`: 1048 bytes
-- `ev_fault_registry_t`: 664 bytes
-- `ev_metric_registry_t`: 152 bytes
-- `ev_network_outbox_t`: 640 bytes
-- `mailbox_storage`: 19584 bytes
+## Production validation tooling update
 
-This is a host static-size probe. ESP8266 linker-map memory validation requires the SDK/toolchain.
-
-## Generated artifact freshness
-
-Status: pass.
-
-`tools/routegen/routegen.py` generated the route table from `config/routes.def`; `tools/audit/routegen_check.py` confirmed the generated count.
-
-## SDK and HIL validation
-
-Status: not executed.
-
-Reason:
-
-- no ESP8266 RTOS SDK installation was available,
-- no Xtensa ESP8266 compiler toolchain was available,
-- no physical HIL board or serial profile was attached.
-
-This is also recorded in `docs/release/sdk_validation_not_run.md`.
-
-## Environment note
-
-Python invocations in this notebook environment emitted a non-project startup message from `presentation_artifact_tool` spreadsheet warmup. Those messages appeared on stderr but did not change the return codes of routegen or audit commands. Commands were accepted only by process exit status.
-
-## Archive verification status
-
-Status: pass after packaging.
-
-The final packaging step verifies:
-
-```sh
-tar -tzf esp8266_event_driven_framework.tar.gz | head
-tar -tzf esp8266_event_driven_framework.tar.gz | grep '^esp8266_event_driven_framework/README.md$'
-tar -tzf esp8266_event_driven_framework.tar.gz | grep '^esp8266_event_driven_framework/Makefile$'
-tar -tzf esp8266_event_driven_framework.tar.gz | grep '^esp8266_event_driven_framework/docs/release/validation_report.md$'
-```
-
-## Result
-
-Quality gate: pass.
-
-Conclusion: zero known critical defects after the executed gates.
+The production-validation patch adds SDK target matrix tooling, SDK memory matrix
+reporting, ATNEL HIL release runners and Wemos minimal-runtime smoke reporting.
+In this patch build, SDK/HIL/Wemos physical execution is not claimed unless the
+corresponding report contains real logs and PASS markers.

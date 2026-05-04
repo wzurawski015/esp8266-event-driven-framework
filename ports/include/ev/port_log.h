@@ -2,6 +2,7 @@
 #define EV_PORT_LOG_H
 
 #include <stddef.h>
+#include <stdint.h>
 
 #include "ev/result.h"
 
@@ -31,6 +32,7 @@ typedef struct ev_log_port {
                          const char *message,
                          size_t message_len); /**< Emit one log record. */
     ev_result_t (*flush)(void *ctx); /**< Flush any buffered output if needed. */
+    ev_result_t (*pending)(void *ctx, uint32_t *out_pending_records); /**< Inspect buffered records without blocking. */
 } ev_log_port_t;
 
 #ifdef __cplusplus

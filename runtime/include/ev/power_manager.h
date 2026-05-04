@@ -27,6 +27,7 @@ typedef struct {
 } ev_power_manager_t;
 
 void ev_power_manager_init(ev_power_manager_t *manager, const ev_power_policy_t *policy);
+ev_result_t ev_power_manager_can_sleep_at(struct ev_runtime_graph *graph, ev_power_manager_t *manager, uint32_t now_ms, uint32_t requested_sleep_ms, const ev_quiescence_policy_t *quiescence_policy, ev_quiescence_report_t *out_report);
 ev_result_t ev_power_manager_can_sleep(struct ev_runtime_graph *graph, ev_power_manager_t *manager, uint32_t requested_sleep_ms, ev_quiescence_report_t *out_report);
 
 #endif

@@ -1,0 +1,41 @@
+name: SDK matrix
+
+on:
+  pull_request:
+  push:
+    branches: [ main, dev ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sdk-matrix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Validate SDK target matrix metadata
+        run: ./tools/fw sdk-matrix-check
+
+      - name: Validate USB-UART target profiles
+        run: ./tools/fw target-usb-profile-check
+
+      - name: Validate serial port override resolver
+        run: ./tools/fw sdk-port-resolve-test
+
+      - name: Validate pinned SDK toolchain contract
+        run: ./tools/fw sdk-check
+
+      - name: Build SDK target matrix
+        run: ./tools/fw sdk-build-matrix
+
+      - name: Upload SDK logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-matrix-logs
+          path: |
+            logs/sdk
+            docs/release/sdk_build_matrix_report.md

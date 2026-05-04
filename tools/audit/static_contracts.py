@@ -7,21 +7,112 @@ import re
 ROOT = Path(__file__).resolve().parents[2]
 errors: list[str] = []
 
-FORBIDDEN_HEAP = re.compile(r"\b(malloc|calloc|realloc|free|strdup)\s*\(")
+IGNORED_DIRS = {".git", "build", "logs", "log", "docker", "docs/generated", "__pycache__"}
+
+FORBIDDEN_HEAP = re.compile(
+    r"\b(malloc|calloc|realloc|free|strdup|pvPortMalloc|vPortFree|heap_caps_malloc|heap_caps_free)\s*\("
+)
 FORBIDDEN_BLOCK = re.compile(r"\b(portMAX_DELAY|vTaskDelay)\b")
 SDK_INCLUDE = re.compile(r'#\s*include\s*[<"](?:esp_|freertos/|FreeRTOS|driver/|gpio|i2c)')
 TODO = re.compile(r"\b(TODO|FIXME)\b")
+
+ADAPTER_BOOTSTRAP_CALLS = {
+    "xSemaphoreCreateMutex": re.compile(r"\bxSemaphoreCreateMutex\s*\("),
+    "xSemaphoreCreateBinary": re.compile(r"\bxSemaphoreCreateBinary\s*\("),
+    "xTaskCreateStatic": re.compile(r"\bxTaskCreateStatic\s*\("),
+    "xTaskCreate": re.compile(r"\bxTaskCreate\s*\("),
+    "esp_mqtt_client_init": re.compile(r"\besp_mqtt_client_init\s*\("),
+    "esp_wifi_init": re.compile(r"\besp_wifi_init\s*\("),
+    "tcpip_adapter_init": re.compile(r"\btcpip_adapter_init\s*\("),
+}
+ADAPTER_EXCEPTION_RE = re.compile(r"^\s*EV_ADAPTER_EXCEPTION\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^,]+)\s*,\s*(.*?)\s*\)\s*$")
+ADAPTER_EXCEPTION_CATEGORIES = {"bootstrap", "hil_bootstrap", "static_safe"}
 
 def strip_comments(text: str) -> str:
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
     text = re.sub(r"//.*", "", text)
     return text
 
-for subdir in ["core", "runtime", "modules", "drivers", "ports", "apps"]:
+
+def is_ignored_path(path: Path) -> bool:
+    rel = path.relative_to(ROOT).as_posix()
+    return any(rel == ignored or rel.startswith(f"{ignored}/") for ignored in IGNORED_DIRS)
+
+
+def static_contract_self_test() -> None:
+    for symbol in ["pvPortMalloc", "vPortFree", "heap_caps_malloc", "heap_caps_free"]:
+        sample = f"void *p = {symbol}(16);" if symbol.endswith("malloc") or symbol == "pvPortMalloc" else f"{symbol}(p);"
+        if FORBIDDEN_HEAP.search(strip_comments(sample)) is None:
+            errors.append(f"static-contract self-test failed: {symbol} was not detected")
+    comment_only = "/* pvPortMalloc(16); */\n// vPortFree(p);\n/* heap_caps_malloc(16, 0); */"
+    if FORBIDDEN_HEAP.search(strip_comments(comment_only)) is not None:
+        errors.append("static-contract self-test failed: heap API in comments was not ignored")
+
+
+static_contract_self_test()
+
+for artifact in ROOT.rglob("*"):
+    if is_ignored_path(artifact):
+        continue
+    if artifact.is_file() and artifact.suffix in {".orig", ".rej"}:
+        errors.append(f"patch conflict artifact must not be committed: {artifact.relative_to(ROOT).as_posix()}")
+
+
+def load_adapter_exception_allowlist() -> dict[tuple[str, str], tuple[str, str]]:
+    allowlist_path = ROOT / "tools" / "audit" / "adapter_exception_allowlist.def"
+    allowed: dict[tuple[str, str], tuple[str, str]] = {}
+    if not allowlist_path.exists():
+        errors.append("adapter exception allowlist missing: tools/audit/adapter_exception_allowlist.def")
+        return allowed
+    for line_no, raw in enumerate(allowlist_path.read_text(encoding="utf-8").splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith("//"):
+            continue
+        match = ADAPTER_EXCEPTION_RE.match(line)
+        if match is None:
+            errors.append(f"invalid adapter exception allowlist row at {line_no}")
+            continue
+        rel, symbol, category, rationale = (part.strip() for part in match.groups())
+        if symbol not in ADAPTER_BOOTSTRAP_CALLS:
+            errors.append(f"adapter exception allowlist row {line_no} uses unknown symbol {symbol}")
+            continue
+        if category not in ADAPTER_EXCEPTION_CATEGORIES:
+            errors.append(f"adapter exception allowlist row {line_no} uses invalid category {category}")
+            continue
+        if not rationale:
+            errors.append(f"adapter exception allowlist row {line_no} has empty rationale")
+            continue
+        if symbol == "xTaskCreate" and category != "hil_bootstrap":
+            errors.append(f"adapter exception allowlist row {line_no}: xTaskCreate must be HIL bootstrap only")
+            continue
+        if symbol == "xTaskCreateStatic" and category != "static_safe":
+            errors.append(f"adapter exception allowlist row {line_no}: xTaskCreateStatic must be static_safe")
+            continue
+        if symbol in {"xSemaphoreCreateMutex", "xSemaphoreCreateBinary", "esp_mqtt_client_init", "esp_wifi_init", "tcpip_adapter_init"} and category != "bootstrap":
+            errors.append(f"adapter exception allowlist row {line_no}: {symbol} must be bootstrap")
+            continue
+        if not (ROOT / rel).exists():
+            errors.append(f"adapter exception allowlist row {line_no} references missing file {rel}")
+            continue
+        key = (rel, symbol)
+        if key in allowed:
+            errors.append(f"duplicate adapter exception allowlist row for {rel}:{symbol}")
+            continue
+        allowed[key] = (category, rationale)
+    return allowed
+
+
+ADAPTER_EXCEPTION_ALLOWLIST = load_adapter_exception_allowlist()
+ADAPTER_EXCEPTION_OBSERVED: set[tuple[str, str]] = set()
+
+
+for subdir in ["core", "runtime", "modules", "drivers", "ports", "apps", "tests/host", "tests/property"]:
     base = ROOT / subdir
     if not base.exists():
         continue
     for p in base.rglob("*"):
+        if is_ignored_path(p):
+            continue
         if p.suffix not in {".c", ".h"}:
             continue
         rel = p.relative_to(ROOT).as_posix()
@@ -78,6 +169,64 @@ for p in (ROOT / "adapters").rglob("*"):
 
 if (ROOT / "app" / "ev_demo_app.c").exists():
     errors.append("legacy app/ev_demo_app.c remains outside apps/demo")
+
+for p in (ROOT / "adapters").rglob("*"):
+    if is_ignored_path(p):
+        continue
+    if p.suffix not in {".c", ".h"}:
+        continue
+    rel = p.relative_to(ROOT).as_posix()
+    code = strip_comments(p.read_text(encoding="utf-8", errors="ignore"))
+    for symbol, pattern in ADAPTER_BOOTSTRAP_CALLS.items():
+        if pattern.search(code):
+            key = (rel, symbol)
+            ADAPTER_EXCEPTION_OBSERVED.add(key)
+            if key not in ADAPTER_EXCEPTION_ALLOWLIST:
+                errors.append(f"unapproved adapter bootstrap/static primitive {symbol} in {rel}")
+
+for rel, symbol in sorted(set(ADAPTER_EXCEPTION_ALLOWLIST) - ADAPTER_EXCEPTION_OBSERVED):
+    errors.append(f"adapter exception allowlist entry is unused or stale: {rel}:{symbol}")
+
+
+# Hard demo runtime_graph migration contracts.
+demo_h = ROOT / "apps" / "demo" / "include" / "ev" / "demo_app.h"
+demo_c = ROOT / "apps" / "demo" / "ev_demo_app.c"
+adapter_c = ROOT / "adapters" / "esp8266_rtos_sdk" / "components" / "ev_platform" / "ev_runtime_app.c"
+if demo_h.exists():
+    demo_h_text = strip_comments(demo_h.read_text(encoding="utf-8", errors="ignore"))
+    forbidden_demo_header_tokens = {
+        "ev_mailbox_t": "demo header must not own per-actor mailboxes",
+        "ev_actor_runtime_t": "demo header must not own per-actor runtimes",
+        "ev_actor_registry_t": "demo header must not own actor registry",
+        "ev_domain_pump_t": "demo header must not own domain pump",
+        "ev_system_pump_t": "demo header must not own system pump",
+        "next_tick_ms": "demo header must not own legacy tick deadline",
+        "next_tick_100ms_ms": "demo header must not own legacy fast tick deadline",
+    }
+    for token, message in forbidden_demo_header_tokens.items():
+        if token in demo_h_text:
+            errors.append(message)
+if demo_c.exists():
+    demo_c_text = strip_comments(demo_c.read_text(encoding="utf-8", errors="ignore"))
+    for token, message in {
+        "ev_actor_registry_bind": "demo app must not manually bind actor registry",
+        "ev_domain_pump_init": "demo app must not initialize domain pumps as composition root",
+        "ev_system_pump_init": "demo app must not initialize system pump as composition root",
+        "ev_system_pump_run": "demo app poll must not run system pump directly",
+        "app->graph.scheduler": "demo app must not access runtime graph scheduler internals",
+        "app->graph.timer_service": "demo app must not access runtime graph timer internals",
+        ".scheduler.system": "demo app must not access runtime graph system-pump internals",
+        ".scheduler.domains": "demo app must not access runtime graph domain-pump internals",
+        "ev_demo_app_delivery": "demo app must not use the application delivery callback as actor emission path",
+        "ev_runtime_scheduler_poll_once": "demo app poll must use runtime_loop instead of polling scheduler directly",
+        "ev_timer_publish_due": "demo app poll must use runtime_loop/graph APIs instead of publishing timers directly",
+    }.items():
+        if token in demo_c_text:
+            errors.append(message)
+if adapter_c.exists():
+    adapter_text = strip_comments(adapter_c.read_text(encoding="utf-8", errors="ignore"))
+    if "next_tick_ms" in adapter_text or "next_tick_100ms_ms" in adapter_text:
+        errors.append("ESP8266 runtime adapter must not read legacy demo tick fields")
 
 if errors:
     for error in errors:

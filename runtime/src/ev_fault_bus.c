@@ -66,3 +66,33 @@ size_t ev_fault_pending_count(const ev_fault_registry_t *registry)
 {
     return (registry != NULL) ? registry->count : 0U;
 }
+
+
+size_t ev_fault_drain(ev_fault_registry_t *registry, ev_fault_payload_t *out_records, size_t max_records)
+{
+    size_t n;
+    size_t remaining;
+
+    if ((registry == NULL) || ((out_records == NULL) && (max_records > 0U))) {
+        return 0U;
+    }
+    n = (registry->count < max_records) ? registry->count : max_records;
+    if (n > 0U) {
+        (void)memcpy(out_records, registry->records, n * sizeof(registry->records[0]));
+    }
+    remaining = registry->count - n;
+    if (remaining > 0U) {
+        (void)memmove(registry->records, &registry->records[n], remaining * sizeof(registry->records[0]));
+    }
+    registry->count = remaining;
+    return n;
+}
+
+ev_result_t ev_fault_ack_all(ev_fault_registry_t *registry)
+{
+    if (registry == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+    registry->count = 0U;
+    return EV_OK;
+}

@@ -1,0 +1,11 @@
+// Approved bootstrap/static-safe adapter exceptions.
+// Format: EV_ADAPTER_EXCEPTION(path, symbol, category, rationale)
+EV_ADAPTER_EXCEPTION(adapters/esp8266_rtos_sdk/components/ev_platform/ev_i2c_adapter.c, xSemaphoreCreateMutex, bootstrap, boot-time I2C bus mutex; runtime I2C hot path remains zero-heap)
+EV_ADAPTER_EXCEPTION(adapters/esp8266_rtos_sdk/components/ev_platform/ev_irq_adapter.c, xSemaphoreCreateBinary, bootstrap, boot-time IRQ wait semaphore; ISR/ring hot path remains zero-heap)
+EV_ADAPTER_EXCEPTION(adapters/esp8266_rtos_sdk/components/ev_platform/ev_net_adapter.c, tcpip_adapter_init, bootstrap, network stack initialization only)
+EV_ADAPTER_EXCEPTION(adapters/esp8266_rtos_sdk/components/ev_platform/ev_net_adapter.c, esp_wifi_init, bootstrap, WiFi driver initialization only)
+EV_ADAPTER_EXCEPTION(adapters/esp8266_rtos_sdk/components/ev_platform/ev_net_adapter.c, esp_mqtt_client_init, bootstrap, MQTT client initialization only when MQTT URI is configured)
+EV_ADAPTER_EXCEPTION(adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_i2c_hil/main/ev_i2c_hil.c, xTaskCreateStatic, static_safe, preferred static IRQ flood HIL task)
+EV_ADAPTER_EXCEPTION(adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_i2c_hil/main/ev_i2c_hil.c, xTaskCreate, hil_bootstrap, HIL-only dynamic fallback if static task API is unavailable)
+EV_ADAPTER_EXCEPTION(adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_onewire_hil/main/ev_onewire_hil.c, xTaskCreateStatic, static_safe, preferred static IRQ flood HIL task)
+EV_ADAPTER_EXCEPTION(adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_onewire_hil/main/ev_onewire_hil.c, xTaskCreate, hil_bootstrap, HIL-only dynamic fallback if static task API is unavailable)

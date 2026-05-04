@@ -3,8 +3,10 @@
 #include <string.h>
 
 #include "ev/demo_app.h"
+#include "ev/actor_runtime.h"
 #include "ev/dispose.h"
 #include "ev/publish.h"
+#include "ev/runtime_graph.h"
 #include "fakes/fake_board_profile.h"
 #include "fakes/fake_i2c_port.h"
 #include "fakes/fake_irq_port.h"
@@ -181,7 +183,7 @@ static ev_result_t publish_sleep(ev_demo_app_t *app, uint32_t duration_ms)
         rc = ev_msg_set_inline_payload(&msg, &cmd, sizeof(cmd));
     }
     if (rc == EV_OK) {
-        rc = ev_publish(&msg, ev_actor_registry_delivery, &app->registry, NULL);
+        rc = ev_runtime_graph_publish(&app->graph, &msg, NULL);
     }
     dispose_rc = ev_msg_dispose(&msg);
     return (rc == EV_OK) ? dispose_rc : rc;
@@ -195,7 +197,7 @@ static ev_result_t publish_diag_request(ev_demo_app_t *app)
 
     rc = ev_msg_init_publish(&msg, EV_DIAG_SNAPSHOT_REQ, ACT_APP);
     if (rc == EV_OK) {
-        rc = ev_publish(&msg, ev_actor_registry_delivery, &app->registry, NULL);
+        rc = ev_runtime_graph_publish(&app->graph, &msg, NULL);
     }
     dispose_rc = ev_msg_dispose(&msg);
     return (rc == EV_OK) ? dispose_rc : rc;
@@ -209,7 +211,11 @@ static void test_sleep_accepted_only_when_quiescent(void)
     drive_until_quiescent(&fx);
     assert(ev_demo_app_pending(&fx.app) == 0U);
     assert(publish_sleep(&fx.app, 42U) == EV_OK);
-    assert(ev_actor_runtime_step(&fx.app.power_runtime) == EV_OK);
+    {
+        ev_actor_runtime_t *power_runtime = ev_runtime_graph_get_runtime(&fx.app.graph, ACT_POWER);
+        assert(power_runtime != NULL);
+        assert(ev_actor_runtime_step(power_runtime) == EV_OK);
+    }
     assert(fx.fake_system.prepare_for_sleep_calls == 1U);
     assert(fx.fake_system.deep_sleep_calls == 1U);
     assert(fx.app.power_ctx.sleep_requests_accepted == 1U);
@@ -224,7 +230,11 @@ static void test_sleep_rejected_when_mailbox_work_pending(void)
     drive_until_quiescent(&fx);
     assert(publish_diag_request(&fx.app) == EV_OK);
     assert(publish_sleep(&fx.app, 42U) == EV_OK);
-    assert(ev_actor_runtime_step(&fx.app.power_runtime) == EV_ERR_STATE);
+    {
+        ev_actor_runtime_t *power_runtime = ev_runtime_graph_get_runtime(&fx.app.graph, ACT_POWER);
+        assert(power_runtime != NULL);
+        assert(ev_actor_runtime_step(power_runtime) == EV_ERR_STATE);
+    }
     assert(fx.fake_system.prepare_for_sleep_calls == 0U);
     assert(fx.fake_system.deep_sleep_calls == 0U);
     assert(fx.app.power_ctx.sleep_requests_rejected == 1U);
@@ -246,7 +256,11 @@ static void test_sleep_rejected_when_irq_sample_pending(void)
     drive_until_quiescent(&fx);
     assert(fake_irq_port_push(&fx.fake_irq, &sample) == EV_OK);
     assert(publish_sleep(&fx.app, 42U) == EV_OK);
-    assert(ev_actor_runtime_step(&fx.app.power_runtime) == EV_ERR_STATE);
+    {
+        ev_actor_runtime_t *power_runtime = ev_runtime_graph_get_runtime(&fx.app.graph, ACT_POWER);
+        assert(power_runtime != NULL);
+        assert(ev_actor_runtime_step(power_runtime) == EV_ERR_STATE);
+    }
     assert(fx.fake_system.prepare_for_sleep_calls == 0U);
     assert(fx.fake_system.deep_sleep_calls == 0U);
     assert(fx.app.power_ctx.sleep_requests_rejected == 1U);

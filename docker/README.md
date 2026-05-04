@@ -1,48 +1,33 @@
-# Docker images
+# Corrected Dockerfiles for esp8266-event-driven-framework
 
-This directory hosts the pinned, reproducible images for:
+These files harden the CI Docker build path against two observed failure classes:
 
-- host-side test execution,
-- documentation generation,
-- ESP8266 RTOS SDK build-toolchain validation and target-side bring-up.
+1. transient Ubuntu APT mirror/network failures during image build;
+2. `./tools/fw release-gate` running `memory-budget` in the docs image without a C compiler.
 
-## Policy
+## Files
 
-All developer-facing validation must run through `./tools/fw` and Docker.
-Do not treat the host machine toolchain as part of the trusted build contract.
+- `Dockerfile.host` — host C11 validation image with compiler, make, Python and valgrind.
+- `Dockerfile.docs` — documentation image with Doxygen/Graphviz and `build-essential` so the current `release-gate` contract can run `memory-budget` if it is invoked inside the docs image.
+- `Dockerfile.sdk` — pinned ESP8266 RTOS SDK v3.4 image with retry-hardened APT, toolchain download, SDK clone/submodules and pip bootstrap.
 
-## Current images
+## Recommended placement
 
-- `Dockerfile.host` — host-side compilation, smoke tests, and documentation helpers.
-- `Dockerfile.docs` — Doxygen + Graphviz documentation generation.
-- `Dockerfile.sdk` — pinned ESP8266 RTOS SDK toolchain baseline for target-side work.
+Copy them into the project as:
 
-## Stage 2A policy
-
-For ESP8266 target work, the canonical baseline remains the SDK-native GNU Make workflow inside the SDK image.
-CMake may exist in the image for investigation and future migration evaluation, but it is not yet the release-defining target build path.
-
-The SDK image also contains a narrow compatibility workaround for the broken legacy tinydtls submodule URL still present in ESP8266 RTOS SDK v3.4. The image rewrites that exact dead URL to the active GitHub mirror before recursive submodule checkout.
-
-## Canonical entry points
-
-```bash
-./tools/fw host-test
-./tools/fw docgen
-./tools/fw docs
-
-./tools/fw sdk-image
-./tools/fw sdk-check
-./tools/fw sdk-defconfig
-./tools/fw sdk-build
-./tools/fw sdk-clean-target
-./tools/fw sdk-distclean
-
-FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-flash
-FW_ESPPORT=/dev/ttyUSB0 ./tools/fw sdk-monitor
-
-./tools/fw shell-sdk
+```text
+docker/Dockerfile.host
+docker/Dockerfile.docs
+docker/Dockerfile.sdk
 ```
 
+Then validate:
 
-The generic target is also exercised in CI through sdk-image -> sdk-check -> sdk-defconfig -> sdk-build.
+```bash
+./tools/fw host-image
+./tools/fw docs-image
+./tools/fw sdk-check
+./tools/fw release-gate
+```
+
+A stronger long-term architecture is to update `tools/fw release-gate` so that `make quality-gate` runs in the host image and only `make docgen docs` runs in the docs image. These Dockerfiles are still compatible with the current release-gate behavior.

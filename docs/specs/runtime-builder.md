@@ -16,3 +16,19 @@ ev_result_t ev_runtime_graph_stats(const ev_runtime_graph_t *graph, ev_runtime_g
 ```
 
 The builder initializes static mailbox storage, actor runtimes, module callbacks, diagnostic services, timer service, ingress service, trace ring, power manager, and route delivery state. Capability mismatches are rejected deterministically with `EV_ERR_NO_CAPABILITY`.
+
+## Runtime graph preparation API
+
+The builder now supports injected runtime ports, board-profile snapshots and
+concrete actor instance descriptors. `ev_runtime_builder_add_module()` remains a
+compatibility wrapper; new framework applications should prefer concrete actor
+instances once the demo migration begins.
+
+## Demo migration completion
+
+The demo compatibility runtime is built through `ev_runtime_builder_add_instance()`, active route binding and the graph scheduler. The demo header must not own mailbox, actor-runtime, registry or pump primitives.
+
+
+## No-legacy hardening boundary
+
+After the demo runtime-graph migration, applications must use public runtime graph APIs for scheduling, timers, route delivery and diagnostics. Direct access to `graph.scheduler` or `graph.timer_service` from `apps/demo` is treated as a compatibility seam and is removed by the no-legacy hardening iteration.

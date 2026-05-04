@@ -44,3 +44,34 @@ uint32_t ev_trace_dropped(const ev_trace_ring_t *ring)
 {
     return (ring != NULL) ? ring->dropped : 0U;
 }
+
+
+size_t ev_trace_drain(ev_trace_ring_t *ring, ev_trace_record_t *out_records, size_t max_records)
+{
+#if EV_TRACE_ENABLE
+    size_t drained = 0U;
+    if ((ring == NULL) || ((out_records == NULL) && (max_records > 0U))) {
+        return 0U;
+    }
+    while ((drained < max_records) && (ring->count > 0U)) {
+        out_records[drained] = ring->records[ring->head];
+        ring->head = (ring->head + 1U) % EV_TRACE_RING_CAPACITY;
+        ring->count--;
+        drained++;
+    }
+    return drained;
+#else
+    (void)ring;
+    (void)out_records;
+    (void)max_records;
+    return 0U;
+#endif
+}
+
+void ev_trace_clear(ev_trace_ring_t *ring)
+{
+    if (ring != NULL) {
+        ring->head = 0U;
+        ring->count = 0U;
+    }
+}

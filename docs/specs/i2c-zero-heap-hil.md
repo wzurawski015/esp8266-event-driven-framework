@@ -76,3 +76,52 @@ i2c zero-heap HIL completed successfully
 Any skipped fixture gate makes the final suite return `EV_ERR_STATE`.  This is
 intentional: the HIL target is an acceptance binary, not a best-effort smoke
 test.
+
+## ATNEL fixture coupling checklist
+
+For the tracked ATNEL I2C HIL profile, the I2C bus pins are:
+
+```text
+PIN_I2C0_SCL = GPIO4
+PIN_I2C0_SDA = GPIO5
+EV_BOARD_I2C_SCL_GPIO = EV_BOARD_PIN_I2C0_SCL
+EV_BOARD_I2C_SDA_GPIO = EV_BOARD_PIN_I2C0_SDA
+```
+
+The fault-injection pins are supplied by the HIL target `main/component.mk`:
+
+```text
+EV_BOARD_HIL_I2C_SDA_FAULT_GPIO = GPIO12
+EV_BOARD_HIL_I2C_SCL_FAULT_GPIO = GPIO13
+```
+
+A valid `sda-stuck-low-containment` run requires GPIO12 to pull the real
+SDA/GPIO5 bus line low through an open-drain-safe or series-resistor-limited
+coupling. If the log shows `stuck_status=OK` and `recovery_status=OK`, the first
+thing to verify is fixture coupling: the fault GPIO may have gone low without
+pulling the real SDA line low.
+
+## Fault-injection diagnostic log contract
+
+The HIL firmware logs fixture levels around each stuck-low window:
+
+```text
+fault-fixture:<case>:before_fault fault_gpio=<n> fault_level=<0|1> sda_gpio=5 sda_level=<0|1> scl_gpio=4 scl_level=<0|1>
+fault-fixture:<case>:during_fault fault_gpio=<n> fault_level=<0|1> sda_gpio=5 sda_level=<0|1> scl_gpio=4 scl_level=<0|1>
+fault-fixture:<case>:after_release fault_gpio=<n> fault_level=<0|1> sda_gpio=5 sda_level=<0|1> scl_gpio=4 scl_level=<0|1>
+```
+
+For `sda-stuck-low-containment`, `fault_level=0` with `sda_level=1` during the
+fault window indicates that the fault output is not electrically coupled to the
+real SDA line. The run must remain FAIL until the fixture coupling is corrected
+and the final `EV_HIL_RESULT PASS failures=0 skipped=0` marker is observed.
+
+
+## Stack high-water marker
+
+The IRQ flood HIL task emits `EV_HIL_STACK task=irq-flood high_water_words=<n>` when `uxTaskGetStackHighWaterMark()` is available. This complements heap-delta checks and helps detect insufficient task stack margin during flood testing.
+
+
+## Board GPIO diagnostics
+
+ATNEL I2C HIL fault diagnostics require real board GPIO definitions. The target fails at compile time if `EV_BOARD_I2C_SDA_GPIO` or `EV_BOARD_I2C_SCL_GPIO` are unavailable, preventing ambiguous `sda_gpio=-1`/`scl_gpio=-1` release logs.

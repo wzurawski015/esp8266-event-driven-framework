@@ -21,6 +21,9 @@ typedef struct {
     size_t dropped;
     ev_result_t first_error;
     ev_actor_id_t first_failed_actor;
+    size_t optional_disabled_routes;
+    size_t optional_disabled_watchdog_routes;
+    size_t optional_disabled_network_routes;
 } ev_delivery_report_t;
 
 void ev_delivery_service_init(ev_delivery_service_t *svc, struct ev_runtime_graph *graph);

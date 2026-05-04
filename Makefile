@@ -37,12 +37,17 @@ CORE_SRCS := \
 
 RUNTIME_SRCS := \
     runtime/src/ev_actor_modules.c \
+    runtime/src/ev_actor_instance.c \
+    runtime/src/ev_active_route_table.c \
     runtime/src/ev_runtime_graph.c \
+    runtime/src/ev_runtime_scheduler.c \
+    runtime/src/ev_actor_publish_port.c \
     runtime/src/ev_timer_service.c \
     runtime/src/ev_ingress_service.c \
     runtime/src/ev_quiescence_service.c \
     runtime/src/ev_delivery_service.c \
     runtime/src/ev_runtime_poll.c \
+    runtime/src/ev_runtime_loop.c \
     runtime/src/ev_power_manager.c \
     runtime/src/ev_fault_bus.c \
     runtime/src/ev_metrics_registry.c \
@@ -57,7 +62,8 @@ DRIVER_SRCS := \
     drivers/src/ev_driver_layer.c
 
 APP_SRCS := \
-    apps/demo/ev_demo_app.c
+    apps/demo/ev_demo_app.c \
+    apps/demo/ev_demo_runtime_instances.c
 
 TEST_SUPPORT_SRCS := \
     tests/host/fakes/fake_i2c_port.c \
@@ -90,14 +96,32 @@ HOST_TESTS := \
     test_demo_app_sleep_quiescence \
     test_irq_observability \
     test_bsp_runtime_profile \
+    test_demo_app_boot_sequence_golden \
+    test_demo_app_disabled_route_golden \
+    test_demo_app_tick_order_golden \
+    test_demo_app_sleep_guard_golden \
+    test_demo_app_fairness_golden \
     test_demo_app_contract \
     test_demo_app_fault_contract \
     test_app_starvation \
     test_app_fairness \
     test_network_isolation \
     test_command_actor_contract \
+    test_runtime_actor_instance_descriptors \
+    test_runtime_builder_route_validation \
+    test_runtime_disabled_routes \
+    test_runtime_graph_publish_send \
+    test_actor_publish_port \
+    test_runtime_graph_canonical_scheduler \
+    test_runtime_loop \
     test_runtime_builder_framework \
     test_timer_quiescence_framework \
+    test_runtime_quiescence_time_aware \
+    test_runtime_sequence_ingress \
+    test_runtime_sequence_network_outbox \
+    test_wemos_runtime_profile \
+    test_demo_runtime_instances \
+    test_demo_migration_blockers \
     test_fault_metrics_trace_framework \
     test_delivery_command_network_framework
 
@@ -108,7 +132,8 @@ PROPERTY_TESTS := \
 
 PROPERTY_TEST_BINS := $(addprefix $(PROPERTY_BUILD_DIR)/,$(PROPERTY_TESTS))
 
-.PHONY: all host-test property-test routegen routegen-check static-contracts memory-budget quality-gate docgen docs clean
+.PHONY: all host-test property-test routegen routegen-check static-contracts memory-budget sdk-matrix-check sdk-memory-matrix production-release-gate quality-gate release-gate docgen docs clean
+.SECONDARY: $(COMMON_OBJS)
 
 all: host-test
 
@@ -148,9 +173,25 @@ static-contracts: routegen
 memory-budget: routegen
 	$(PYTHON) tools/audit/memory_budget.py
 
+sdk-matrix-check:
+	$(PYTHON) tools/audit/sdk_matrix_check.py
+	$(PYTHON) tools/audit/sdk_target_defaults_check.py
+
+sdk-memory-matrix:
+	$(PYTHON) tools/sdk_memory_report.py --self-test
+	$(PYTHON) tools/sdk_memory_matrix.py --self-test
+	$(PYTHON) tools/sdk_memory_matrix.py
+
 .NOTPARALLEL: quality-gate
 quality-gate: clean routegen-check static-contracts memory-budget host-test property-test
 	@echo "quality-gate passed"
+
+release-gate: quality-gate docgen docs
+	@echo "release-gate passed"
+
+production-release-gate: release-gate sdk-matrix-check sdk-memory-matrix
+	$(PYTHON) tools/release_report.py
+	@echo "production-release-gate host/docs/matrix checks passed; HIL remains opt-in unless EV_REQUIRE_HIL=1 is handled by external runner"
 
 docgen: routegen
 	$(PYTHON) tools/docgen/docgen.py

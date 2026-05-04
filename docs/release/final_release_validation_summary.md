@@ -17,7 +17,7 @@ This summary must not collapse `NOT_RUN` into `PASS`.
 | SDK linker-map memory matrix: HIL SDK targets | PASS | HIL SDK memory rows are separate from non-HIL memory matrix. |
 | ATNEL I2C HIL | FAIL | Current failure is isolated to sda-stuck-low-containment fixture/fault-injection coupling. |
 | ATNEL OneWire HIL | NOT_RUN | Requires physical fixture and serial PASS marker. |
-| ATNEL WiFi HIL | NOT_RUN | Requires physical fixture and serial PASS marker. |
+| ATNEL WiFi HIL | FAIL | Requires physical fixture and serial PASS marker. |
 | Wemos minimal runtime smoke | NOT_RUN | Requires physical board and marker-based or runtime-alive-fallback PASS. |
 | Wemos board constraints | PASS | Constrained to minimal runtime and 2 MB default flash. |
 

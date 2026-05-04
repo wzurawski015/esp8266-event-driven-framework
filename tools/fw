@@ -85,6 +85,19 @@ Usage:
   ./tools/fw sdk-monitor
   ./tools/fw sdk-simple-monitor
 
+  ./tools/fw wifi-secrets-status
+  ./tools/fw wifi-secrets-atnel
+  ./tools/fw wifi-secrets-wemos
+  ./tools/fw wifi-secrets-all
+  ./tools/fw atnel-wifi-build
+  ./tools/fw atnel-wifi-flash
+  ./tools/fw atnel-wifi-monitor
+  ./tools/fw atnel-wifi-run
+  ./tools/fw wemos-wifi-build
+  ./tools/fw wemos-wifi-flash
+  ./tools/fw wemos-wifi-monitor
+  ./tools/fw wemos-wifi-run
+
   ./tools/fw hil-i2c-build
   ./tools/fw hil-i2c-flash
   ./tools/fw hil-i2c-monitor
@@ -124,6 +137,8 @@ Notes:
   - FW_ESPPORT/ESPPORT manual overrides always win. If unset, the wrapper
     resolves the serial port from the selected target USB-UART profile, preferring
     /dev/serial/by-id and VID/PID matches. Ambiguous matches fail safely.
+  - For WiFi secrets, prefer EV_WIFI_PASSWORD or interactive prompt over shell
+    history. Local board_secrets.local.h files are ignored by git.
 USAGE
 }
 
@@ -756,6 +771,71 @@ run_in_sdk_with_device_i() {
   fi
 }
 
+wifi_secrets_status() {
+  python3 "$ROOT_DIR/tools/wifi_secrets.py" status --target all
+}
+
+wifi_secrets_write() {
+  target="$1"
+  ssid="${EV_WIFI_SSID:-${FW_WIFI_SSID:-}}"
+  if [ -z "$ssid" ]; then
+    echo "error: set EV_WIFI_SSID or FW_WIFI_SSID before creating WiFi secrets" >&2
+    echo "example: EV_WIFI_SSID=your-ssid EV_WIFI_PASSWORD=... ./tools/fw wifi-secrets-atnel" >&2
+    exit 1
+  fi
+  if [ -n "${EV_WIFI_PASSWORD:-${FW_WIFI_PASSWORD:-}}" ]; then
+    password_env="EV_WIFI_PASSWORD"
+    if [ -z "${EV_WIFI_PASSWORD:-}" ]; then
+      export EV_WIFI_PASSWORD="$FW_WIFI_PASSWORD"
+    fi
+    python3 "$ROOT_DIR/tools/wifi_secrets.py" write --target "$target" --ssid "$ssid" --password-env "$password_env" --force
+  else
+    python3 "$ROOT_DIR/tools/wifi_secrets.py" write --target "$target" --ssid "$ssid" --force
+  fi
+}
+
+wifi_target_command() {
+  project="$1"
+  action="$2"
+  FW_SDK_PROJECT_DIR="$project" "$0" "$action"
+}
+
+atnel_wifi_build() {
+  wifi_target_command adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard sdk-build
+}
+
+atnel_wifi_flash() {
+  wifi_target_command adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard sdk-flash
+}
+
+atnel_wifi_monitor() {
+  wifi_target_command adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard sdk-monitor
+}
+
+atnel_wifi_run() {
+  atnel_wifi_build
+  atnel_wifi_flash
+  atnel_wifi_monitor
+}
+
+wemos_wifi_build() {
+  wifi_target_command adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650 sdk-build
+}
+
+wemos_wifi_flash() {
+  wifi_target_command adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650 sdk-flash
+}
+
+wemos_wifi_monitor() {
+  wifi_target_command adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650 sdk-monitor
+}
+
+wemos_wifi_run() {
+  wemos_wifi_build
+  wemos_wifi_flash
+  wemos_wifi_monitor
+}
+
 routegen() {
   python_bin="${FW_PYTHON:-}"
   if [ -z "$python_bin" ]; then
@@ -1326,6 +1406,42 @@ case "$cmd" in
     ;;
   sdk-simple-monitor)
     sdk_simple_monitor
+    ;;
+  wifi-secrets-status)
+    wifi_secrets_status
+    ;;
+  wifi-secrets-atnel)
+    wifi_secrets_write atnel
+    ;;
+  wifi-secrets-wemos)
+    wifi_secrets_write wemos
+    ;;
+  wifi-secrets-all)
+    wifi_secrets_write all
+    ;;
+  atnel-wifi-build)
+    atnel_wifi_build
+    ;;
+  atnel-wifi-flash)
+    atnel_wifi_flash
+    ;;
+  atnel-wifi-monitor)
+    atnel_wifi_monitor
+    ;;
+  atnel-wifi-run)
+    atnel_wifi_run
+    ;;
+  wemos-wifi-build)
+    wemos_wifi_build
+    ;;
+  wemos-wifi-flash)
+    wemos_wifi_flash
+    ;;
+  wemos-wifi-monitor)
+    wemos_wifi_monitor
+    ;;
+  wemos-wifi-run)
+    wemos_wifi_run
     ;;
   hil-i2c-build)
     hil_i2c_build

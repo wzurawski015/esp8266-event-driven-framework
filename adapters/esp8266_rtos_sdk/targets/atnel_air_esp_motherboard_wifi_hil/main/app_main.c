@@ -73,6 +73,22 @@ static const ev_esp8266_net_config_t k_wifi_hil_net_cfg = {
     .mqtt_client_id = EV_BOARD_NET_MQTT_CLIENT_ID,
 };
 
+
+static unsigned ev_hil_safe_strlen(const char *value)
+{
+    return (value != NULL) ? (unsigned)strlen(value) : 0U;
+}
+
+static void ev_hil_log_config(void)
+{
+    ESP_LOGI(EV_HIL_WIFI_TAG,
+             "EV_HIL_CONFIG has_net=%u ssid_len=%u auth_mode=%u mqtt_uri_len=%u",
+             (unsigned)EV_BOARD_HAS_NET,
+             ev_hil_safe_strlen(k_wifi_hil_net_cfg.wifi_ssid),
+             (unsigned)k_wifi_hil_net_cfg.wifi_auth_mode,
+             ev_hil_safe_strlen(k_wifi_hil_net_cfg.mqtt_broker_uri));
+}
+
 static void ev_hil_pass(ev_hil_suite_result_t *result, const char *name)
 {
     if (result != NULL) {
@@ -429,9 +445,15 @@ static ev_result_t ev_wifi_hil_run(ev_wifi_hil_runtime_t *runtime)
 
     memset(&result, 0, sizeof(result));
     ESP_LOGI(EV_HIL_WIFI_TAG, "EV_HIL_START wifi-reconnect board=%s", EV_BOARD_PROFILE_NAME);
+    ev_hil_log_config();
 
     rc = ev_hil_runtime_init(runtime);
     if (rc != EV_OK) {
+        ESP_LOGE(EV_HIL_WIFI_TAG,
+                 "EV_HIL_RUNTIME_INIT rc=%d has_net=%u ssid_len=%u",
+                 (int)rc,
+                 (unsigned)EV_BOARD_HAS_NET,
+                 ev_hil_safe_strlen(k_wifi_hil_net_cfg.wifi_ssid));
         ev_hil_fail(&result, "runtime-init", "runtime_init_failed");
         goto done;
     }

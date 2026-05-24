@@ -107,6 +107,7 @@ HOST_TESTS := \
     test_app_fairness \
     test_network_isolation \
     test_command_actor_contract \
+    test_actor_module_descriptor_consistency \
     test_runtime_actor_instance_descriptors \
     test_runtime_builder_route_validation \
     test_runtime_disabled_routes \
@@ -132,7 +133,7 @@ PROPERTY_TESTS := \
 
 PROPERTY_TEST_BINS := $(addprefix $(PROPERTY_BUILD_DIR)/,$(PROPERTY_TESTS))
 
-.PHONY: all host-test property-test routegen routegen-check static-contracts memory-budget sdk-matrix-check sdk-memory-matrix production-release-gate quality-gate release-gate docgen docs clean
+.PHONY: all host-test property-test routegen routegen-check static-contracts actor-module-consistency memory-budget sdk-matrix-check sdk-memory-matrix production-release-gate quality-gate release-gate docgen docs clean
 .SECONDARY: $(COMMON_OBJS)
 
 all: host-test
@@ -170,6 +171,9 @@ routegen-check: routegen
 static-contracts: routegen
 	$(PYTHON) tools/audit/static_contracts.py
 
+actor-module-consistency: routegen
+	$(PYTHON) tools/audit/actor_module_descriptor_consistency.py
+
 memory-budget: routegen
 	$(PYTHON) tools/audit/memory_budget.py
 
@@ -183,7 +187,7 @@ sdk-memory-matrix:
 	$(PYTHON) tools/sdk_memory_matrix.py
 
 .NOTPARALLEL: quality-gate
-quality-gate: clean routegen-check static-contracts memory-budget host-test property-test
+quality-gate: clean routegen-check static-contracts actor-module-consistency memory-budget host-test property-test
 	@echo "quality-gate passed"
 
 release-gate: quality-gate docgen docs

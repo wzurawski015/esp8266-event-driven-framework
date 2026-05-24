@@ -3,10 +3,26 @@
 #include <string.h>
 
 #include "ev/actor_catalog.h"
+#include "ev/compiler.h"
 #include "ev/event_catalog.h"
 #include "ev/metrics_registry.h"
 #include "ev/runtime_ports.h"
 #include "ev/runtime_board_profile.h"
+
+EV_STATIC_ASSERT(EV_ACTOR_MAILBOX_LAYOUT_GENERATED_COUNT == EV_ACTOR_COUNT,
+                 "actor mailbox layout count mismatch");
+EV_STATIC_ASSERT(EV_RUNTIME_MAILBOX_TOTAL_CAPACITY > 0U,
+                 "runtime mailbox storage must not be empty");
+EV_STATIC_ASSERT(EV_RUNTIME_MAILBOX_TOTAL_CAPACITY <= ((size_t)EV_ACTOR_COUNT * EV_RUNTIME_MAILBOX_CAPACITY_MAX),
+                 "runtime mailbox layout exceeds maximum envelope");
+EV_STATIC_ASSERT(sizeof(((ev_runtime_graph_t *)0)->mailbox_storage) ==
+                     (EV_RUNTIME_MAILBOX_TOTAL_CAPACITY * sizeof(ev_msg_t)),
+                 "runtime mailbox storage size mismatch");
+
+static int ev_runtime_mailbox_capacity_is_power_of_two(size_t capacity)
+{
+    return (capacity != 0U) && ((capacity & (capacity - 1U)) == 0U);
+}
 
 ev_result_t ev_runtime_graph_init(ev_runtime_graph_t *graph, ev_capability_mask_t board_caps, ev_capability_mask_t runtime_caps)
 {
@@ -357,6 +373,39 @@ static uint32_t ev_runtime_builder_active_domain_mask(const ev_runtime_builder_t
     return mask;
 }
 
+static ev_result_t ev_runtime_mailbox_storage_for_actor(ev_runtime_graph_t *graph,
+                                                        ev_actor_id_t actor_id,
+                                                        const ev_actor_meta_t *meta,
+                                                        ev_msg_t **out_storage,
+                                                        size_t *out_capacity)
+{
+    ev_actor_mailbox_layout_entry_t layout;
+    size_t expected_capacity;
+
+    if ((graph == NULL) || (meta == NULL) || (out_storage == NULL) || (out_capacity == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if (ev_actor_mailbox_layout_lookup(actor_id, &layout) == 0) {
+        return EV_ERR_CONTRACT;
+    }
+
+    expected_capacity = ev_mailbox_kind_capacity(meta->mailbox_kind);
+    if ((layout.actor_id != actor_id) ||
+        (layout.mailbox_kind != meta->mailbox_kind) ||
+        (layout.capacity != expected_capacity) ||
+        (expected_capacity == 0U) ||
+        (layout.capacity > EV_RUNTIME_MAILBOX_CAPACITY_MAX) ||
+        (layout.offset > EV_RUNTIME_MAILBOX_TOTAL_CAPACITY) ||
+        (layout.capacity > (EV_RUNTIME_MAILBOX_TOTAL_CAPACITY - layout.offset)) ||
+        (ev_runtime_mailbox_capacity_is_power_of_two(layout.capacity) == 0)) {
+        return EV_ERR_CONTRACT;
+    }
+
+    *out_storage = &graph->mailbox_storage[layout.offset];
+    *out_capacity = layout.capacity;
+    return EV_OK;
+}
+
 ev_result_t ev_runtime_builder_build(ev_runtime_builder_t *builder)
 {
     size_t i;
@@ -377,16 +426,17 @@ ev_result_t ev_runtime_builder_build(ev_runtime_builder_t *builder)
             const ev_actor_meta_t *meta = ev_actor_meta(actor_id);
             const ev_actor_module_descriptor_t *descriptor = ev_actor_module_find(actor_id);
             size_t cap;
+            ev_msg_t *mailbox_storage;
             ev_result_t rc;
 
             if ((meta == NULL) || (descriptor == NULL)) {
                 builder->last_error = EV_ERR_NOT_FOUND;
                 return builder->last_error;
             }
-            cap = ev_mailbox_kind_capacity(meta->mailbox_kind);
-            if ((cap == 0U) || (cap > EV_RUNTIME_MAILBOX_CAPACITY_MAX)) {
-                builder->last_error = EV_ERR_CONTRACT;
-                return builder->last_error;
+            rc = ev_runtime_mailbox_storage_for_actor(builder->graph, actor_id, meta, &mailbox_storage, &cap);
+            if (rc != EV_OK) {
+                builder->last_error = rc;
+                return rc;
             }
 
             void *actor_context = &builder->graph->actor_contexts[i];
@@ -400,7 +450,7 @@ ev_result_t ev_runtime_builder_build(ev_runtime_builder_t *builder)
                     handler_fn = instance->handler_fn;
                 }
             }
-            rc = ev_mailbox_init(&builder->graph->mailboxes[i], meta->mailbox_kind, builder->graph->mailbox_storage[i], cap);
+            rc = ev_mailbox_init(&builder->graph->mailboxes[i], meta->mailbox_kind, mailbox_storage, cap);
             if (rc != EV_OK) {
                 builder->last_error = rc;
                 return rc;

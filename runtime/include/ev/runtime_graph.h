@@ -8,6 +8,7 @@
 #include "ev/delivery_service.h"
 #include "ev/actor_instance.h"
 #include "ev/actor_module.h"
+#include "ev/actor_mailbox_layout_generated.h"
 #include "ev/actor_runtime.h"
 #include "ev/capabilities.h"
 #include "ev/fault_bus.h"
@@ -43,7 +44,7 @@ typedef struct ev_runtime_graph {
     ev_actor_registry_t registry;
     ev_actor_runtime_t actor_runtimes[EV_ACTOR_COUNT];
     ev_mailbox_t mailboxes[EV_ACTOR_COUNT];
-    ev_msg_t mailbox_storage[EV_ACTOR_COUNT][EV_RUNTIME_MAILBOX_CAPACITY_MAX];
+    ev_msg_t mailbox_storage[EV_RUNTIME_MAILBOX_TOTAL_CAPACITY];
     ev_runtime_actor_context_t actor_contexts[EV_ACTOR_COUNT];
     const ev_actor_module_descriptor_t *descriptors[EV_ACTOR_COUNT];
     ev_actor_instance_descriptor_t instances[EV_ACTOR_COUNT];

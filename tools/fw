@@ -896,6 +896,7 @@ routegen() {
     fi
   fi
   "$python_bin" "$ROOT_DIR/tools/routegen/routegen.py"
+  "$python_bin" "$ROOT_DIR/tools/routegen/mailbox_layoutgen.py"
 }
 
 sdk_target_list() {

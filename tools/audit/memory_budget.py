@@ -32,6 +32,8 @@ int main(void)
     printf("ev_fault_registry_t %zu\n", sizeof(ev_fault_registry_t));
     printf("ev_metric_registry_t %zu\n", sizeof(ev_metric_registry_t));
     printf("ev_network_outbox_t %zu\n", sizeof(ev_network_outbox_t));
+    printf("mailbox_configured_slots %zu\n", (size_t)EV_RUNTIME_MAILBOX_TOTAL_CAPACITY);
+    printf("mailbox_allocated_slots %zu\n", sizeof(((ev_runtime_graph_t *)0)->mailbox_storage) / sizeof(ev_msg_t));
     printf("mailbox_storage %zu\n", sizeof(((ev_runtime_graph_t *)0)->mailbox_storage));
     printf("adapter_static_buffers %u\n", 0U);
     return 0;
@@ -61,11 +63,22 @@ if sizes["ev_runtime_graph_t"] > 131072:
     print("ev_runtime_graph_t exceeds host static budget")
     raise SystemExit(1)
 
+if sizes["mailbox_allocated_slots"] != sizes["mailbox_configured_slots"]:
+    print("mailbox allocated slot count differs from generated mailbox layout")
+    raise SystemExit(1)
+
 report = ROOT / "docs" / "release" / "memory_budget_report.md"
 report.parent.mkdir(parents=True, exist_ok=True)
+
+def format_report_line(name: str, size: int) -> str:
+    if name.endswith("_slots"):
+        return f"- {name}: {size} slots"
+    return f"- {name}: {size} bytes"
+
+
 report.write_text(
     "# Memory budget report\n\n"
-    + "\n".join(f"- {name}: {size} bytes" for name, size in sizes.items())
+    + "\n".join(format_report_line(name, size) for name, size in sizes.items())
     + "\n\nBudget gate: pass for host static-size probe. ESP8266 linker-map validation requires the SDK/toolchain.\n",
     encoding="utf-8",
 )

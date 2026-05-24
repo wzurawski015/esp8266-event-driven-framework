@@ -108,6 +108,7 @@ HOST_TESTS := \
     test_network_isolation \
     test_command_actor_contract \
     test_actor_module_descriptor_consistency \
+    test_runtime_mailbox_layout \
     test_runtime_actor_instance_descriptors \
     test_runtime_builder_route_validation \
     test_runtime_disabled_routes \
@@ -133,7 +134,7 @@ PROPERTY_TESTS := \
 
 PROPERTY_TEST_BINS := $(addprefix $(PROPERTY_BUILD_DIR)/,$(PROPERTY_TESTS))
 
-.PHONY: all host-test property-test routegen routegen-check static-contracts actor-module-consistency memory-budget sdk-matrix-check sdk-memory-matrix production-release-gate quality-gate release-gate docgen docs clean
+.PHONY: all host-test property-test routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency memory-budget sdk-matrix-check sdk-memory-matrix production-release-gate quality-gate release-gate docgen docs clean
 .SECONDARY: $(COMMON_OBJS)
 
 all: host-test
@@ -164,8 +165,15 @@ property-test: routegen $(PROPERTY_TEST_BINS)
 
 routegen:
 	$(PYTHON) tools/routegen/routegen.py
+	$(PYTHON) tools/routegen/mailbox_layoutgen.py
 
-routegen-check: routegen
+mailbox-layoutgen:
+	$(PYTHON) tools/routegen/mailbox_layoutgen.py
+
+mailbox-layoutgen-check:
+	$(PYTHON) tools/routegen/mailbox_layoutgen.py --check
+
+routegen-check: mailbox-layoutgen-check
 	$(PYTHON) tools/audit/routegen_check.py
 
 static-contracts: routegen

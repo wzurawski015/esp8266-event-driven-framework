@@ -1,0 +1,18 @@
+# Wemos ESP-WROOM-02 18650 explicit 4 MB flash variant.
+#
+# Select this file through tools/fw instead of changing sdkconfig.defaults:
+#   EV_WEMOS_FLASH_VARIANT=4mb ./tools/fw wemos-smoke-build
+#   EV_WEMOS_FLASH_VARIANT=4mb ./tools/fw wemos-wifi-build
+#
+# This keeps the release matrix on the conservative 2 MB default while allowing
+# verified 4 MB modules to be flashed with a matching image header.
+CONFIG_PROJECT_NAME="ev_wemos_wroom02_18650"
+CONFIG_EV_PLATFORM_ESP8266=y
+
+CONFIG_ESPTOOLPY_FLASHFREQ_40M=y
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+
+CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200
+CONFIG_MONITOR_BAUD=115200

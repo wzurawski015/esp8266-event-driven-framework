@@ -18,9 +18,9 @@ used by other ESP8266 targets.
 
 This target is classified as `physical_smoke` in `config/sdk_targets.def`.
 The default SDK flash size is 2 MB / 16 Mbit because the supplied board
-documentation identifies that as the practical default. 4 MB variants must be
-selected explicitly by a documented local/variant configuration; the release
-configuration does not assume them.
+documentation identifies that as the practical default. Verified 4 MB modules are
+supported only through the explicit `sdkconfig.flash_4mb.defaults` selector; the
+release configuration does not assume them.
 
 The target remains `minimal_runtime`. It does not claim DS18B20, RTC, OLED,
 MCP23008, network or watchdog hardware without external wiring and HIL evidence.
@@ -67,3 +67,21 @@ export FW_ESPPORT=/dev/ttyUSB1
 ./tools/fw sdk-flash
 ./tools/fw sdk-monitor
 ```
+
+For a verified 4 MB ESP-WROOM-02 module, select the flash variant explicitly and
+regenerate `sdkconfig` before building:
+
+```sh
+export FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650
+export FW_ESPPORT=/dev/ttyUSB1
+export EV_WEMOS_FLASH_VARIANT=4mb
+./tools/fw sdk-distclean
+./tools/fw sdk-defconfig
+./tools/fw sdk-build
+./tools/fw sdk-flash
+./tools/fw sdk-simple-monitor
+```
+
+`EV_WEMOS_FLASH_VARIANT=4mb` may also be used with `wemos-smoke-*` and
+`wemos-wifi-*` helper commands. Leave the variable unset for release-matrix
+validation so CI continues to exercise the conservative 2 MB default.

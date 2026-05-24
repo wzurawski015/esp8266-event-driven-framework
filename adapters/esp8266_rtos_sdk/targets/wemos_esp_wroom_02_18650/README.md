@@ -47,15 +47,19 @@ runtime-alive fallback based on increasing `diag actor: tick=` and
 `app actor: snapshot seq=` lines. The report identifies the PASS mode so marker
 PASS and fallback PASS are auditable.
 
-## Safe WiFi opt-in
+## Private-lab WiFi profile
 
-The default Wemos profile remains `minimal_runtime` with `EV_BOARD_HAS_NET=0U`.
-To test WiFi, copy `bsp/wemos_esp_wroom_02_18650/board_secrets.example.h` to
-`bsp/wemos_esp_wroom_02_18650/board_secrets.local.h`, fill in a 2.4 GHz WiFi
-SSID/password, and rebuild the Wemos SDK target. The target-local `component.mk`
-detects the local secrets file and adds `-DEV_BOARD_INCLUDE_LOCAL_SECRETS=1` only
-for this target. Do not use a global `CFLAGS=-DEV_BOARD_INCLUDE_LOCAL_SECRETS=1`;
-it overwrites host-build include flags and breaks portable tests.
+The board profile itself keeps the safe fallback of `EV_BOARD_HAS_NET=0U` when no
+secrets header is present. This private repository snapshot intentionally tracks
+`bsp/wemos_esp_wroom_02_18650/board_secrets.local.h`, so Wemos WiFi is enabled
+in a normal checkout and survives `git clean -fdx`. The target-local
+`component.mk` detects that file and adds `-DEV_BOARD_INCLUDE_LOCAL_SECRETS=1`
+only for this target. Do not use a global
+`CFLAGS=-DEV_BOARD_INCLUDE_LOCAL_SECRETS=1`; it overwrites host-build include
+flags and breaks portable tests.
+
+Before publishing or sharing the repository, delete the tracked local secrets
+header and remove the `.gitignore` exception for it.
 
 Example build flow:
 

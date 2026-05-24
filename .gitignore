@@ -12,6 +12,10 @@
 
 # Developer-local board secrets
 /bsp/*/board_secrets.local.h
+# Private-lab override: this repository intentionally tracks the Wemos
+# WiFi credentials so git clean -fdx does not remove the active lab profile.
+# Do not keep this exception in a public or shared repository.
+!/bsp/wemos_esp_wroom_02_18650/board_secrets.local.h
 
 # Generated documentation
 /docs/generated/*

@@ -10,11 +10,44 @@ sdk_default_monitor_baud() {
     adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard|\
     adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_i2c_hil|\
     adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_onewire_hil|\
-    adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_wifi_hil)
+    adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_wifi_hil|\
+    adapters/esp8266_rtos_sdk/targets/wemos_d1_mini|\
+    adapters/esp8266_rtos_sdk/targets/wemos_d1_mini_zy8266|\
+    adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650)
       printf '%s\n' '115200'
       ;;
     *)
       printf '%s\n' '74880'
+      ;;
+  esac
+}
+
+sdkconfig_defaults_for_project() {
+  project="$1"
+  wemos_variant="${EV_WEMOS_FLASH_VARIANT:-${FW_WEMOS_FLASH_VARIANT:-}}"
+
+  case "$project" in
+    adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650)
+      case "$wemos_variant" in
+        ""|2|2m|2M|2mb|2MB)
+          printf '%s\n' 'sdkconfig.defaults'
+          ;;
+        4|4m|4M|4mb|4MB)
+          if [ ! -f "$ROOT_DIR/$project/sdkconfig.flash_4mb.defaults" ]; then
+            echo "error: missing Wemos 4 MB variant defaults: $project/sdkconfig.flash_4mb.defaults" >&2
+            exit 1
+          fi
+          printf '%s\n' 'sdkconfig.flash_4mb.defaults'
+          ;;
+        *)
+          echo "error: invalid EV_WEMOS_FLASH_VARIANT/FW_WEMOS_FLASH_VARIANT='$wemos_variant'" >&2
+          echo "error: expected one of: 2mb, 4mb" >&2
+          exit 1
+          ;;
+      esac
+      ;;
+    *)
+      printf '%s\n' 'sdkconfig.defaults'
       ;;
   esac
 }
@@ -131,6 +164,7 @@ Notes:
   - Set DOCKER_BIN, FW_HOST_IMAGE, FW_DOCS_IMAGE, FW_SDK_IMAGE, FW_RUN_USER,
     FW_SDK_PROJECT_DIR, FW_ESPPORT, FW_MONITOR_BAUD, FW_FLASH_BEFORE,
     FW_FLASH_AFTER, FW_FLASH_RETRIES, FW_FLASH_RETRY_DELAY_S,
+    EV_WEMOS_FLASH_VARIANT/FW_WEMOS_FLASH_VARIANT,
     EV_ESP8266_NET_ENABLE_MQTT, EV_SDK_IRAM_LIMIT_BYTES,
     EV_SDK_DRAM_LIMIT_BYTES, EV_SDK_MAX_BSS_BYTES, or
     EV_SDK_MAX_DATA_BYTES to override defaults.
@@ -617,6 +651,8 @@ run_in_sdk() {
     EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
     ESPPORT="$SDK_SERIAL_PORT" \
     MONITORBAUD="$SDK_MONITOR_BAUD" \
+    EV_SDKCONFIG_DEFAULTS="$(sdkconfig_defaults_for_project "$SDK_PROJECT_DIR_REL")" \
+    EV_WEMOS_FLASH_VARIANT="${EV_WEMOS_FLASH_VARIANT:-${FW_WEMOS_FLASH_VARIANT:-}}" \
     EV_ESP8266_NET_ENABLE_MQTT="${EV_ESP8266_NET_ENABLE_MQTT:-0}" \
     EV_SDK_IRAM_LIMIT_BYTES="${EV_SDK_IRAM_LIMIT_BYTES:-}" \
     EV_SDK_DRAM_LIMIT_BYTES="${EV_SDK_DRAM_LIMIT_BYTES:-}" \
@@ -634,6 +670,8 @@ run_in_sdk_it() {
     EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
     ESPPORT="$SDK_SERIAL_PORT" \
     MONITORBAUD="$SDK_MONITOR_BAUD" \
+    EV_SDKCONFIG_DEFAULTS="$(sdkconfig_defaults_for_project "$SDK_PROJECT_DIR_REL")" \
+    EV_WEMOS_FLASH_VARIANT="${EV_WEMOS_FLASH_VARIANT:-${FW_WEMOS_FLASH_VARIANT:-}}" \
     EV_ESP8266_NET_ENABLE_MQTT="${EV_ESP8266_NET_ENABLE_MQTT:-0}" \
     EV_SDK_IRAM_LIMIT_BYTES="${EV_SDK_IRAM_LIMIT_BYTES:-}" \
     EV_SDK_DRAM_LIMIT_BYTES="${EV_SDK_DRAM_LIMIT_BYTES:-}" \
@@ -661,6 +699,8 @@ run_in_sdk_with_device() {
       EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
       ESPPORT="$SDK_SERIAL_PORT" \
       MONITORBAUD="$SDK_MONITOR_BAUD" \
+      EV_SDKCONFIG_DEFAULTS="$(sdkconfig_defaults_for_project "$SDK_PROJECT_DIR_REL")" \
+      EV_WEMOS_FLASH_VARIANT="${EV_WEMOS_FLASH_VARIANT:-${FW_WEMOS_FLASH_VARIANT:-}}" \
       FLASH_BEFORE="${FLASH_BEFORE:-$SDK_FLASH_BEFORE}" \
       FLASH_AFTER="${FLASH_AFTER:-$SDK_FLASH_AFTER}" \
       FLASH_RETRIES="${FLASH_RETRIES:-$SDK_FLASH_RETRIES}" \
@@ -677,6 +717,8 @@ run_in_sdk_with_device() {
       EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
       ESPPORT="$SDK_SERIAL_PORT" \
       MONITORBAUD="$SDK_MONITOR_BAUD" \
+      EV_SDKCONFIG_DEFAULTS="$(sdkconfig_defaults_for_project "$SDK_PROJECT_DIR_REL")" \
+      EV_WEMOS_FLASH_VARIANT="${EV_WEMOS_FLASH_VARIANT:-${FW_WEMOS_FLASH_VARIANT:-}}" \
       FLASH_BEFORE="${FLASH_BEFORE:-$SDK_FLASH_BEFORE}" \
       FLASH_AFTER="${FLASH_AFTER:-$SDK_FLASH_AFTER}" \
       FLASH_RETRIES="${FLASH_RETRIES:-$SDK_FLASH_RETRIES}" \
@@ -704,6 +746,8 @@ run_in_sdk_with_device_it() {
       EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
       ESPPORT="$SDK_SERIAL_PORT" \
       MONITORBAUD="$SDK_MONITOR_BAUD" \
+      EV_SDKCONFIG_DEFAULTS="$(sdkconfig_defaults_for_project "$SDK_PROJECT_DIR_REL")" \
+      EV_WEMOS_FLASH_VARIANT="${EV_WEMOS_FLASH_VARIANT:-${FW_WEMOS_FLASH_VARIANT:-}}" \
       FLASH_BEFORE="${FLASH_BEFORE:-$SDK_FLASH_BEFORE}" \
       FLASH_AFTER="${FLASH_AFTER:-$SDK_FLASH_AFTER}" \
       FLASH_RETRIES="${FLASH_RETRIES:-$SDK_FLASH_RETRIES}" \
@@ -720,6 +764,8 @@ run_in_sdk_with_device_it() {
       EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
       ESPPORT="$SDK_SERIAL_PORT" \
       MONITORBAUD="$SDK_MONITOR_BAUD" \
+      EV_SDKCONFIG_DEFAULTS="$(sdkconfig_defaults_for_project "$SDK_PROJECT_DIR_REL")" \
+      EV_WEMOS_FLASH_VARIANT="${EV_WEMOS_FLASH_VARIANT:-${FW_WEMOS_FLASH_VARIANT:-}}" \
       FLASH_BEFORE="${FLASH_BEFORE:-$SDK_FLASH_BEFORE}" \
       FLASH_AFTER="${FLASH_AFTER:-$SDK_FLASH_AFTER}" \
       FLASH_RETRIES="${FLASH_RETRIES:-$SDK_FLASH_RETRIES}" \
@@ -747,6 +793,8 @@ run_in_sdk_with_device_i() {
       EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
       ESPPORT="$SDK_SERIAL_PORT" \
       MONITORBAUD="$SDK_MONITOR_BAUD" \
+      EV_SDKCONFIG_DEFAULTS="$(sdkconfig_defaults_for_project "$SDK_PROJECT_DIR_REL")" \
+      EV_WEMOS_FLASH_VARIANT="${EV_WEMOS_FLASH_VARIANT:-${FW_WEMOS_FLASH_VARIANT:-}}" \
       FLASH_BEFORE="${FLASH_BEFORE:-$SDK_FLASH_BEFORE}" \
       FLASH_AFTER="${FLASH_AFTER:-$SDK_FLASH_AFTER}" \
       FLASH_RETRIES="${FLASH_RETRIES:-$SDK_FLASH_RETRIES}" \
@@ -763,6 +811,8 @@ run_in_sdk_with_device_i() {
       EV_SDK_PROJECT="$SDK_PROJECT_DIR_REL" \
       ESPPORT="$SDK_SERIAL_PORT" \
       MONITORBAUD="$SDK_MONITOR_BAUD" \
+      EV_SDKCONFIG_DEFAULTS="$(sdkconfig_defaults_for_project "$SDK_PROJECT_DIR_REL")" \
+      EV_WEMOS_FLASH_VARIANT="${EV_WEMOS_FLASH_VARIANT:-${FW_WEMOS_FLASH_VARIANT:-}}" \
       FLASH_BEFORE="${FLASH_BEFORE:-$SDK_FLASH_BEFORE}" \
       FLASH_AFTER="${FLASH_AFTER:-$SDK_FLASH_AFTER}" \
       FLASH_RETRIES="${FLASH_RETRIES:-$SDK_FLASH_RETRIES}" \
@@ -915,7 +965,7 @@ sdk_defconfig() {
   run_in_sdk \
     sh -lc '
       set -eu
-      make -C "$EV_SDK_PROJECT" SDKCONFIG_DEFAULTS=sdkconfig.defaults defconfig
+      make -C "$EV_SDK_PROJECT" SDKCONFIG_DEFAULTS="${EV_SDKCONFIG_DEFAULTS:-sdkconfig.defaults}" defconfig
     '
 }
 
@@ -924,7 +974,7 @@ sdk_build() {
     sh -lc '
       set -eu
       if [ ! -f "$EV_SDK_PROJECT/sdkconfig" ]; then
-        make -C "$EV_SDK_PROJECT" SDKCONFIG_DEFAULTS=sdkconfig.defaults defconfig
+        make -C "$EV_SDK_PROJECT" SDKCONFIG_DEFAULTS="${EV_SDKCONFIG_DEFAULTS:-sdkconfig.defaults}" defconfig
       fi
       jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
       make -C "$EV_SDK_PROJECT" -j"$jobs"
@@ -986,7 +1036,7 @@ sdk_menuconfig() {
     sh -lc '
       set -eu
       if [ ! -f "$EV_SDK_PROJECT/sdkconfig" ]; then
-        make -C "$EV_SDK_PROJECT" SDKCONFIG_DEFAULTS=sdkconfig.defaults defconfig
+        make -C "$EV_SDK_PROJECT" SDKCONFIG_DEFAULTS="${EV_SDKCONFIG_DEFAULTS:-sdkconfig.defaults}" defconfig
       fi
       make -C "$EV_SDK_PROJECT" menuconfig
     '
@@ -997,7 +1047,7 @@ sdk_flash_common() {
     sh -lc '
       set -eu
       if [ ! -f "$EV_SDK_PROJECT/sdkconfig" ]; then
-        make -C "$EV_SDK_PROJECT" SDKCONFIG_DEFAULTS=sdkconfig.defaults defconfig
+        make -C "$EV_SDK_PROJECT" SDKCONFIG_DEFAULTS="${EV_SDKCONFIG_DEFAULTS:-sdkconfig.defaults}" defconfig
       fi
 
       attempt=1
@@ -1065,7 +1115,7 @@ sdk_flash_manual() {
     sh -lc '
       set -eu
       if [ ! -f "$EV_SDK_PROJECT/sdkconfig" ]; then
-        make -C "$EV_SDK_PROJECT" SDKCONFIG_DEFAULTS=sdkconfig.defaults defconfig
+        make -C "$EV_SDK_PROJECT" SDKCONFIG_DEFAULTS="${EV_SDKCONFIG_DEFAULTS:-sdkconfig.defaults}" defconfig
       fi
 
       jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
@@ -1090,13 +1140,18 @@ sdk_flash_manual() {
         fi
       done
 
+      flash_size=$(sed -n "s/^CONFIG_ESPTOOLPY_FLASHSIZE=\"\\([^\"]*\\)\"/\\1/p" "$EV_SDK_PROJECT/sdkconfig" | tail -n 1)
+      if [ -z "$flash_size" ]; then
+        flash_size=2MB
+      fi
+
       python3 "$IDF_PATH/components/esptool_py/esptool/esptool.py" \
         --chip esp8266 \
         --port "$ESPPORT" \
         --baud 115200 \
         --before no_reset \
         --after no_reset \
-        write_flash -z --flash_mode dio --flash_freq 40m --flash_size 2MB \
+        write_flash -z --flash_mode dio --flash_freq 40m --flash_size "$flash_size" \
         0x0 "$boot_bin" \
         0x10000 "$app_bin" \
         0x8000 "$part_bin"

@@ -39,8 +39,19 @@ for target_dir in sorted((ROOT / "adapters" / "esp8266_rtos_sdk" / "targets").it
             errors.append(f"{target_dir.name}: sdkconfig.defaults is empty")
     if target_dir.name == "wemos_esp_wroom_02_18650":
         text = sdkconfig.read_text(encoding="utf-8", errors="ignore") if sdkconfig.exists() else ""
-        if "CONFIG_ESPTOOLPY_FLASHSIZE_2MB=y" not in text and "EV_WEMOS_FLASH_VARIANT" not in text:
-            errors.append("wemos_esp_wroom_02_18650: default flash size must be 2MB or an explicit variant selector")
+        if "CONFIG_ESPTOOLPY_FLASHSIZE_2MB=y" not in text:
+            errors.append("wemos_esp_wroom_02_18650: default flash size must remain 2MB")
+        if "CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y" in text:
+            errors.append("wemos_esp_wroom_02_18650: 4MB flash must be selected through sdkconfig.flash_4mb.defaults")
+        variant_4mb = target_dir / "sdkconfig.flash_4mb.defaults"
+        if not variant_4mb.exists():
+            errors.append("wemos_esp_wroom_02_18650: missing explicit 4MB flash variant defaults")
+        else:
+            variant_text = variant_4mb.read_text(encoding="utf-8", errors="ignore")
+            if "CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y" not in variant_text or 'CONFIG_ESPTOOLPY_FLASHSIZE="4MB"' not in variant_text:
+                errors.append("wemos_esp_wroom_02_18650: 4MB flash variant defaults must select 4MB explicitly")
+            if "EV_WEMOS_FLASH_VARIANT=4mb" not in variant_text:
+                errors.append("wemos_esp_wroom_02_18650: 4MB flash variant defaults must document EV_WEMOS_FLASH_VARIANT=4mb")
         board = (ROOT / "bsp" / "wemos_esp_wroom_02_18650" / "board_profile.h").read_text(encoding="utf-8", errors="ignore")
         if "EV_BOARD_RUNTIME_PROFILE_FULL 0U" not in board:
             errors.append("wemos_esp_wroom_02_18650: board profile must not claim full runtime by default")
@@ -79,8 +90,10 @@ for target_dir in sorted((ROOT / "adapters" / "esp8266_rtos_sdk" / "targets").it
 tracked_local = []
 try:
     import subprocess
-    completed = subprocess.run(["git", "-C", str(ROOT), "ls-files", "adapters/esp8266_rtos_sdk/targets/*/target_usb_uart.local.profile"], stdout=subprocess.PIPE, text=True, check=False)
-    tracked_local = [line for line in completed.stdout.splitlines() if line.strip()]
+    is_git = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--is-inside-work-tree"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+    if is_git.returncode == 0:
+        completed = subprocess.run(["git", "-C", str(ROOT), "ls-files", "adapters/esp8266_rtos_sdk/targets/*/target_usb_uart.local.profile"], stdout=subprocess.PIPE, text=True, check=False)
+        tracked_local = [line for line in completed.stdout.splitlines() if line.strip()]
 except Exception:
     tracked_local = []
 if tracked_local:

@@ -82,6 +82,8 @@ Desktop.ini
 # Patch files and system artifacts
 # *.patch
 *.diff
+*.bak
+*.bak.*
 *.orig
 *.rej
 *:Zone.Identifier

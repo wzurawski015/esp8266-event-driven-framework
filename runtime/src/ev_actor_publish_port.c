@@ -11,6 +11,7 @@ static const ev_active_route_t *ev_actor_publish_find_route(ev_runtime_graph_t *
                                                             ev_actor_id_t target_actor)
 {
     const ev_active_route_table_t *routes;
+    ev_route_span_t span;
     size_t i;
 
     if (graph == NULL) {
@@ -20,8 +21,9 @@ static const ev_active_route_t *ev_actor_publish_find_route(ev_runtime_graph_t *
     if (routes == NULL) {
         return NULL;
     }
-    for (i = 0U; i < routes->count; ++i) {
-        const ev_active_route_t *entry = ev_active_route_at(routes, i);
+    span = ev_active_route_table_span_for_event(routes, event_id);
+    for (i = 0U; i < span.count; ++i) {
+        const ev_active_route_t *entry = ev_active_route_at(routes, span.start_index + i);
         if ((entry != NULL) &&
             (entry->route.event_id == event_id) &&
             (entry->route.target_actor == target_actor)) {

@@ -1,6 +1,6 @@
 # Memory budget report
 
-- ev_runtime_graph_t: 22704 bytes
+- ev_runtime_graph_t: 23336 bytes
 - ev_msg_t: 72 bytes
 - ev_mailbox_t: 88 bytes
 - ev_actor_runtime_t: 96 bytes

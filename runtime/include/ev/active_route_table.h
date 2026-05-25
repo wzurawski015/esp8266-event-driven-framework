@@ -31,14 +31,18 @@ typedef struct {
 
 typedef struct {
     ev_active_route_t entries[EV_ACTIVE_ROUTE_TABLE_CAPACITY];
+    ev_route_span_t spans[EV_EVENT_COUNT];
     size_t count;
     size_t active_count;
     size_t optional_disabled_count;
     size_t rejected_count;
+    uint8_t spans_finalized;
 } ev_active_route_table_t;
 
 void ev_active_route_table_init(ev_active_route_table_t *table);
 ev_result_t ev_active_route_table_add(ev_active_route_table_t *table, const ev_route_t *route, ev_active_route_state_t state, ev_result_t reason);
+ev_result_t ev_active_route_table_finalize_spans(ev_active_route_table_t *table);
+ev_route_span_t ev_active_route_table_span_for_event(const ev_active_route_table_t *table, ev_event_id_t event_id);
 const ev_active_route_t *ev_active_route_at(const ev_active_route_table_t *table, size_t index);
 const char *ev_active_route_state_name(ev_active_route_state_t state);
 int ev_route_qos_is_valid(ev_route_qos_t qos);

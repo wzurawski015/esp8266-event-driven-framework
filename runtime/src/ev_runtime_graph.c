@@ -317,6 +317,7 @@ ev_result_t ev_runtime_builder_bind_routes(ev_runtime_builder_t *builder)
         return EV_ERR_INVALID_ARG;
     }
 
+    builder->graph->active_routes_bound = 0U;
     ev_active_route_table_init(&builder->graph->active_routes);
     for (i = 0U; i < ev_route_count(); ++i) {
         const ev_route_t *route = ev_route_at(i);
@@ -349,6 +350,13 @@ ev_result_t ev_runtime_builder_bind_routes(ev_runtime_builder_t *builder)
             }
         }
     }
+
+    rc = ev_active_route_table_finalize_spans(&builder->graph->active_routes);
+    if (rc != EV_OK) {
+        builder->last_error = rc;
+        return rc;
+    }
+
     builder->graph->active_routes_bound = 1U;
     return EV_OK;
 }

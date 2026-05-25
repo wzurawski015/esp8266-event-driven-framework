@@ -107,11 +107,12 @@ static ev_result_t ev_delivery_deliver_one(ev_runtime_graph_t *graph, const ev_r
 
 static ev_result_t ev_delivery_publish_active(ev_runtime_graph_t *graph, const ev_msg_t *msg, ev_delivery_report_t *local)
 {
+    ev_route_span_t span = ev_active_route_table_span_for_event(&graph->active_routes, msg->event_id);
     size_t i;
     ev_result_t final_rc = EV_OK;
 
-    for (i = 0U; i < graph->active_routes.count; ++i) {
-        const ev_active_route_t *entry = ev_active_route_at(&graph->active_routes, i);
+    for (i = 0U; i < span.count; ++i) {
+        const ev_active_route_t *entry = ev_active_route_at(&graph->active_routes, span.start_index + i);
         ev_result_t rc;
         if ((entry == NULL) || (entry->route.event_id != msg->event_id)) {
             continue;

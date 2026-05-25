@@ -3,6 +3,7 @@
 ## Architecture
 
 - [System overview](architecture/overview.md)
+- [Hard layering contract](architecture/layering-contract.md)
 - [Memory model](specs/memory-model.md)
 - [Event model](specs/event-model.md)
 - [Message lifecycle](specs/message-lifecycle.md)

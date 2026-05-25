@@ -1,15 +1,7 @@
 # Static contracts
 
-`tools/audit/static_contracts.py` checks:
-
-- no heap APIs in forbidden layers,
-- no `portMAX_DELAY` or actor/runtime `vTaskDelay`,
-- no ESP8266 SDK include leakage into portable layers,
-- generated route count freshness,
-- fault and metrics catalog presence,
-- BSP profile presence,
-- pins schema,
-- production source markers.
+`tools/audit/static_contracts.py` checks repository-wide invariants that are safe
+to enforce without changing runtime semantics.
 
 Run:
 
@@ -17,24 +9,78 @@ Run:
 make static-contracts
 ```
 
+## Rules already enforced
+
+- No heap APIs in forbidden portable/test layers.
+- No `portMAX_DELAY` or actor/runtime `vTaskDelay` in portable runtime layers.
+- No ESP8266 SDK include leakage into portable layers.
+- Generated route count freshness against `config/routes.def`.
+- Fault, metrics, module, and capability SSOT file presence.
+- BSP profile presence and `pins.def` schema.
+- No production `TODO`/`FIXME` markers in scanned C/H sources.
+- No patch conflict artifacts such as `.orig` or `.rej`.
+- Adapter bootstrap/static primitives are allowlisted and stale allowlist rows fail.
+- Demo runtime migration blockers do not reappear: demo-owned mailbox/runtime
+  storage, direct scheduler/timer graph access, legacy demo tick fields, and old
+  delivery-callback actor initialization remain forbidden.
+- Actor/module descriptor consistency is checked by the dedicated
+  `tools/audit/actor_module_descriptor_consistency.py` gate.
+- Exact mailbox layout freshness is checked by `tools/routegen/mailbox_layoutgen.py
+  --check`.
+- The hard layering contract document exists and preserves the main layer
+  sections: config/codegen, core kernel, runtime, actor descriptors/module
+  registry, device actors, drivers, ports, apps, adapters, bsp, tests, tools, and
+  docs.
+
+## Rules planned but not yet enforced
+
+- `ev_runtime_graph_t` should become opaque to apps, adapters, and tests except
+  through public accessors.
+- Runtime graph access should be audited by positive accessor usage rather than
+  by ad-hoc token scans.
+- Device actors should move out of `core/` after graph accessors and route policy
+  contracts are hardened.
+- Delivery trace records should timestamp events from the monotonic clock port.
+- Route delivery QoS should be enforced end to end and checked by focused host
+  tests.
+- Release builds should grow stack-usage and map-budget gates after the current
+  memory-budget checks.
+
+## Known temporary exceptions
+
+- Concrete device actors are still in `core/src` and their headers still live in
+  `core/include/ev`.
+- `ev_runtime_graph_t` is still public.
+- Delivery trace currently sets `timestamp_us = 0U`.
+- The Wemos ESP-WROOM-02 18650 BSP has a private, deliberately tracked
+  `board_secrets.local.h`. This is a private lab exception to normal secret
+  hygiene and must not be generalized.
+
 ## Migration blocker contract status
 
-The preparation-era `MIGRATION_BLOCKER_REPORTED` mode is no longer the release posture.
-After the demo migration and no-legacy hardening, the static-contract checker
-hard-fails reintroduction of demo-owned runtime primitives, direct demo access to
-`runtime_graph` scheduler/timer internals, and production actor initialization
-through the old demo delivery callback.
+The preparation-era `MIGRATION_BLOCKER_REPORTED` mode is no longer the release
+posture. After the demo migration and no-legacy hardening, the static-contract
+checker hard-fails reintroduction of demo-owned runtime primitives, direct demo
+access to `runtime_graph` scheduler/timer internals, and production actor
+initialization through the old demo delivery callback.
 
 ## Demo runtime ownership contract
 
-The static-contract checker fails if demo code reintroduces per-actor mailboxes, per-actor actor runtimes, actor registry ownership, domain/system pump ownership, legacy tick fields or adapter reads of those legacy fields. Compatibility wrappers are allowed only when they delegate to `runtime_graph`.
-
+The static-contract checker fails if demo code reintroduces per-actor mailboxes,
+per-actor actor runtimes, actor registry ownership, domain/system pump ownership,
+legacy tick fields, or adapter reads of those legacy fields. Compatibility
+wrappers are allowed only when they delegate to `runtime_graph`.
 
 ## No-legacy demo contracts
 
-The static audit hard-fails reintroduction of demo-owned runtime primitives and, after no-legacy hardening, also hard-fails direct demo access to graph scheduler and timer internals or production actor initialization through `ev_demo_app_delivery`.
-
+The static audit hard-fails reintroduction of demo-owned runtime primitives and,
+after no-legacy hardening, also hard-fails direct demo access to graph scheduler
+and timer internals or production actor initialization through
+`ev_demo_app_delivery`.
 
 ## FreeRTOS/vendor heap APIs
 
-The heap deny-list covers standard C allocation APIs and FreeRTOS/vendor spellings: `pvPortMalloc`, `vPortFree`, `heap_caps_malloc`, and `heap_caps_free`. The scanner strips C/C++ comments before matching and scans host/property tests in addition to portable framework layers.
+The heap deny-list covers standard C allocation APIs and FreeRTOS/vendor
+spellings: `pvPortMalloc`, `vPortFree`, `heap_caps_malloc`, and `heap_caps_free`.
+The scanner strips C/C++ comments before matching and scans host/property tests
+in addition to portable framework layers.

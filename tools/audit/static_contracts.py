@@ -28,6 +28,33 @@ ADAPTER_BOOTSTRAP_CALLS = {
 ADAPTER_EXCEPTION_RE = re.compile(r"^\s*EV_ADAPTER_EXCEPTION\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^,]+)\s*,\s*(.*?)\s*\)\s*$")
 ADAPTER_EXCEPTION_CATEGORIES = {"bootstrap", "hil_bootstrap", "static_safe"}
 
+REQUIRED_LAYERING_CONTRACT_SECTIONS = [
+    "config/codegen",
+    "core kernel",
+    "runtime",
+    "actor descriptors / module registry",
+    "device actors",
+    "drivers",
+    "ports",
+    "apps",
+    "adapters",
+    "bsp",
+    "tests",
+    "tools",
+    "docs",
+]
+
+def validate_layering_contract_document() -> None:
+    contract_path = ROOT / "docs" / "architecture" / "layering-contract.md"
+    if not contract_path.exists():
+        errors.append("layering contract missing: docs/architecture/layering-contract.md")
+        return
+    contract = contract_path.read_text(encoding="utf-8", errors="ignore")
+    for section in REQUIRED_LAYERING_CONTRACT_SECTIONS:
+        if re.search(rf"^##\s+{re.escape(section)}\s*$", contract, flags=re.MULTILINE) is None:
+            errors.append(f"layering contract missing section: {section}")
+
+
 def strip_comments(text: str) -> str:
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
     text = re.sub(r"//.*", "", text)
@@ -50,6 +77,7 @@ def static_contract_self_test() -> None:
 
 
 static_contract_self_test()
+validate_layering_contract_document()
 
 for artifact in ROOT.rglob("*"):
     if is_ignored_path(artifact):

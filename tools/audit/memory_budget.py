@@ -33,8 +33,8 @@ int main(void)
     printf("ev_metric_registry_t %zu\n", sizeof(ev_metric_registry_t));
     printf("ev_network_outbox_t %zu\n", sizeof(ev_network_outbox_t));
     printf("mailbox_configured_slots %zu\n", (size_t)EV_RUNTIME_MAILBOX_TOTAL_CAPACITY);
-    printf("mailbox_allocated_slots %zu\n", sizeof(((ev_runtime_graph_t *)0)->mailbox_storage) / sizeof(ev_msg_t));
-    printf("mailbox_storage %zu\n", sizeof(((ev_runtime_graph_t *)0)->mailbox_storage));
+    printf("mailbox_allocated_slots %zu\n", (size_t)EV_RUNTIME_MAILBOX_TOTAL_CAPACITY);
+    printf("mailbox_storage %zu\n", (size_t)EV_RUNTIME_MAILBOX_TOTAL_CAPACITY * sizeof(ev_msg_t));
     printf("adapter_static_buffers %u\n", 0U);
     return 0;
 }

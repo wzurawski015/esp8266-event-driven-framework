@@ -14,13 +14,13 @@ int main(void)
     assert(ev_runtime_builder_add_module(&builder, ACT_FAULT) == EV_OK);
     assert(ev_runtime_builder_add_module(&builder, ACT_METRICS) == EV_OK);
     assert(ev_runtime_builder_build(&builder) == EV_OK);
-    assert(ev_system_pump_bound_count(&graph.scheduler.system) > 0U);
+    assert(ev_runtime_graph_system_pump_bound_count(&graph) > 0U);
 
     assert(ev_msg_init_send(&msg, EV_COMMAND_ACCEPTED, ACT_APP, ACT_METRICS) == EV_OK);
     assert(ev_runtime_graph_send(&graph, ACT_METRICS, &msg) == EV_OK);
     assert(ev_runtime_poll_once(&graph, 0U, 1U, &report) == EV_OK);
     assert(report.domains_pumped > 0U);
     assert(report.messages_processed == 1U);
-    assert(graph.scheduler.poll_calls == 1U);
+    assert(ev_runtime_graph_scheduler_poll_count(&graph) == 1U);
     return 0;
 }

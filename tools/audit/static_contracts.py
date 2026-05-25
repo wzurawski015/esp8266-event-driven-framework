@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import re
 
 ROOT = Path(__file__).resolve().parents[2]
 errors: list[str] = []
 
 IGNORED_DIRS = {".git", "build", "logs", "log", "docker", "docs/generated", "__pycache__"}
+IGNORED_DIR_NAMES = {entry for entry in IGNORED_DIRS if "/" not in entry}
+IGNORED_PATH_PREFIXES = {entry for entry in IGNORED_DIRS if "/" in entry}
 
 FORBIDDEN_HEAP = re.compile(
     r"\b(malloc|calloc|realloc|free|strdup|pvPortMalloc|vPortFree|heap_caps_malloc|heap_caps_free)\s*\("
@@ -62,8 +65,83 @@ def strip_comments(text: str) -> str:
 
 
 def is_ignored_path(path: Path) -> bool:
-    rel = path.relative_to(ROOT).as_posix()
-    return any(rel == ignored or rel.startswith(f"{ignored}/") for ignored in IGNORED_DIRS)
+    rel_path = path.relative_to(ROOT)
+    rel_parts = rel_path.parts
+    rel = rel_path.as_posix()
+    if any(part in IGNORED_DIR_NAMES for part in rel_parts):
+        return True
+    return any(rel == ignored or rel.startswith(f"{ignored}/") for ignored in IGNORED_PATH_PREFIXES)
+
+
+def iter_repo_files(base: Path = ROOT):
+    for dirpath, dirnames, filenames in os.walk(base):
+        current = Path(dirpath)
+        dirnames[:] = [name for name in dirnames if not is_ignored_path(current / name)]
+        for filename in filenames:
+            candidate = current / filename
+            if not is_ignored_path(candidate):
+                yield candidate
+
+
+GRAPH_INTERNAL_FIELDS = [
+    "registry",
+    "actor_runtimes",
+    "mailboxes",
+    "mailbox_storage",
+    "actor_contexts",
+    "descriptors",
+    "instances",
+    "instance_bound",
+    "lifecycle",
+    "actor_enabled",
+    "timer_service",
+    "ingress_service",
+    "quiescence_service",
+    "faults",
+    "metrics",
+    "trace_ring",
+    "active_routes",
+    "delivery_service",
+    "scheduler",
+    "active_routes_bound",
+    "board_capabilities",
+    "runtime_capabilities",
+    "ports",
+    "board_profile",
+]
+GRAPH_INTERNAL_FIELD_ALT = "|".join(re.escape(field) for field in GRAPH_INTERNAL_FIELDS)
+GRAPH_INTERNAL_ACCESS_RE = re.compile(
+    rf"(?:\bgraph\s*(?:->|\.)|(?:\.|->)\s*graph\s*(?:->|\.))\s*({GRAPH_INTERNAL_FIELD_ALT})\b"
+)
+GRAPH_NULL_CAST_ACCESS_RE = re.compile(
+    rf"\(\s*\(\s*ev_runtime_graph_t\s*\*\s*\)\s*0\s*\)\s*->\s*({GRAPH_INTERNAL_FIELD_ALT})\b"
+)
+GRAPH_ACCESS_AUDIT_ROOTS = ("apps", "adapters", "core", "modules", "drivers", "ports", "tests", "tools", "runtime/include")
+GRAPH_ACCESS_ALLOWLIST = {"runtime/include/ev/runtime_graph.h", "tools/audit/static_contracts.py"}
+
+
+def is_graph_audit_path(rel: str) -> bool:
+    return any(rel == root or rel.startswith(f"{root}/") for root in GRAPH_ACCESS_AUDIT_ROOTS)
+
+
+def graph_access_is_allowlisted(rel: str) -> bool:
+    return rel.startswith("runtime/src/") or rel in GRAPH_ACCESS_ALLOWLIST
+
+
+def validate_runtime_graph_access_boundary() -> None:
+    for p in iter_repo_files(ROOT):
+        if p.suffix not in {".c", ".h", ".py"}:
+            continue
+        rel = p.relative_to(ROOT).as_posix()
+        if not is_graph_audit_path(rel) or graph_access_is_allowlisted(rel):
+            continue
+        code = strip_comments(p.read_text(encoding="utf-8", errors="ignore"))
+        for pattern in (GRAPH_INTERNAL_ACCESS_RE, GRAPH_NULL_CAST_ACCESS_RE):
+            for match in pattern.finditer(code):
+                line_no = code.count("\n", 0, match.start()) + 1
+                errors.append(
+                    f"runtime graph internal field access outside runtime boundary: {rel}:{line_no} uses {match.group(1)}"
+                )
 
 
 def static_contract_self_test() -> None:
@@ -78,8 +156,9 @@ def static_contract_self_test() -> None:
 
 static_contract_self_test()
 validate_layering_contract_document()
+validate_runtime_graph_access_boundary()
 
-for artifact in ROOT.rglob("*"):
+for artifact in iter_repo_files(ROOT):
     if is_ignored_path(artifact):
         continue
     if artifact.is_file() and artifact.suffix in {".orig", ".rej"}:
@@ -138,7 +217,7 @@ for subdir in ["core", "runtime", "modules", "drivers", "ports", "apps", "tests/
     base = ROOT / subdir
     if not base.exists():
         continue
-    for p in base.rglob("*"):
+    for p in iter_repo_files(base):
         if is_ignored_path(p):
             continue
         if p.suffix not in {".c", ".h"}:
@@ -185,7 +264,7 @@ for rel in ["config/faults.def", "config/metrics.def", "config/modules.def", "co
     if not (ROOT / rel).exists():
         errors.append(f"required SSOT file missing: {rel}")
 
-for p in (ROOT / "adapters").rglob("*"):
+for p in iter_repo_files(ROOT / "adapters"):
     if p.suffix not in {".c", ".h"}:
         continue
     text = p.read_text(encoding="utf-8", errors="ignore")
@@ -198,7 +277,7 @@ for p in (ROOT / "adapters").rglob("*"):
 if (ROOT / "app" / "ev_demo_app.c").exists():
     errors.append("legacy app/ev_demo_app.c remains outside apps/demo")
 
-for p in (ROOT / "adapters").rglob("*"):
+for p in iter_repo_files(ROOT / "adapters"):
     if is_ignored_path(p):
         continue
     if p.suffix not in {".c", ".h"}:

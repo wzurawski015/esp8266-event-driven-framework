@@ -90,6 +90,25 @@ ev_result_t ev_runtime_builder_add_module(ev_runtime_builder_t *builder, ev_acto
 ev_result_t ev_runtime_builder_add_instance(ev_runtime_builder_t *builder, const ev_actor_instance_descriptor_t *instance);
 ev_result_t ev_runtime_builder_set_route_validation_flags(ev_runtime_builder_t *builder, uint32_t flags);
 const ev_active_route_table_t *ev_runtime_graph_active_routes(const ev_runtime_graph_t *graph);
+size_t ev_runtime_graph_mailbox_storage_slots(void);
+size_t ev_runtime_graph_mailbox_storage_bytes(void);
+ev_result_t ev_runtime_graph_actor_mailbox_storage_offset(const ev_runtime_graph_t *graph,
+                                                            ev_actor_id_t actor_id,
+                                                            size_t *out_offset);
+size_t ev_runtime_graph_actor_mailbox_capacity(const ev_runtime_graph_t *graph, ev_actor_id_t actor_id);
+uint32_t ev_runtime_graph_metric_value(const ev_runtime_graph_t *graph, ev_metric_id_t metric_id);
+size_t ev_runtime_graph_system_pump_bound_count(const ev_runtime_graph_t *graph);
+uint32_t ev_runtime_graph_scheduler_poll_count(const ev_runtime_graph_t *graph);
+ev_result_t ev_runtime_graph_schedule_oneshot(ev_runtime_graph_t *graph,
+                                              uint32_t now_ms,
+                                              uint32_t delay_ms,
+                                              ev_actor_id_t target_actor,
+                                              ev_event_id_t event_id,
+                                              uint32_t arg0,
+                                              ev_timer_token_t *out_token);
+size_t ev_runtime_graph_timer_pending_count(const ev_runtime_graph_t *graph);
+ev_result_t ev_runtime_graph_trace_record(ev_runtime_graph_t *graph, const ev_trace_record_t *record);
+void ev_runtime_graph_trace_clear(ev_runtime_graph_t *graph);
 ev_result_t ev_runtime_graph_publish(ev_runtime_graph_t *graph, const ev_msg_t *msg, ev_delivery_report_t *out_report);
 ev_result_t ev_runtime_graph_send(ev_runtime_graph_t *graph, ev_actor_id_t target_actor, const ev_msg_t *msg);
 ev_result_t ev_runtime_graph_post_event(ev_runtime_graph_t *graph, ev_event_id_t event_id, ev_actor_id_t source_actor, const void *payload, size_t payload_size);

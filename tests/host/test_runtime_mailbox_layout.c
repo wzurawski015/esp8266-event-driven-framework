@@ -15,7 +15,8 @@ static void assert_layout_contract(void)
 
     assert(EV_ACTOR_MAILBOX_LAYOUT_GENERATED_COUNT == EV_ACTOR_COUNT);
     assert(EV_RUNTIME_MAILBOX_TOTAL_CAPACITY == 144U);
-    assert(sizeof(((ev_runtime_graph_t *)0)->mailbox_storage) ==
+    assert(ev_runtime_graph_mailbox_storage_slots() == EV_RUNTIME_MAILBOX_TOTAL_CAPACITY);
+    assert(ev_runtime_graph_mailbox_storage_bytes() ==
            (EV_RUNTIME_MAILBOX_TOTAL_CAPACITY * sizeof(ev_msg_t)));
 
     for (i = 0U; i < (size_t)EV_ACTOR_COUNT; ++i) {
@@ -74,11 +75,18 @@ static void assert_builder_uses_generated_offsets(void)
     assert(ev_runtime_builder_add_module(&builder, ACT_STREAM) == EV_OK);
     assert(ev_runtime_builder_build(&builder) == EV_OK);
 
-    assert(graph.mailboxes[ACT_BOOT].storage == &graph.mailbox_storage[boot_layout.offset]);
-    assert(graph.mailboxes[ACT_BOOT].storage_count == boot_layout.capacity);
-    assert(graph.mailboxes[ACT_STREAM].storage == &graph.mailbox_storage[stream_layout.offset]);
-    assert(graph.mailboxes[ACT_STREAM].storage_count == 16U);
-    assert(graph.mailboxes[ACT_STREAM].storage_count == stream_layout.capacity);
+    {
+        size_t boot_offset = 0U;
+        size_t stream_offset = 0U;
+
+        assert(ev_runtime_graph_actor_mailbox_storage_offset(&graph, ACT_BOOT, &boot_offset) == EV_OK);
+        assert(ev_runtime_graph_actor_mailbox_storage_offset(&graph, ACT_STREAM, &stream_offset) == EV_OK);
+        assert(boot_offset == boot_layout.offset);
+        assert(ev_runtime_graph_actor_mailbox_capacity(&graph, ACT_BOOT) == boot_layout.capacity);
+        assert(stream_offset == stream_layout.offset);
+        assert(ev_runtime_graph_actor_mailbox_capacity(&graph, ACT_STREAM) == 16U);
+        assert(ev_runtime_graph_actor_mailbox_capacity(&graph, ACT_STREAM) == stream_layout.capacity);
+    }
 }
 
 int main(void)

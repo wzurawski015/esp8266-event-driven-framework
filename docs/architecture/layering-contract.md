@@ -97,9 +97,12 @@ Each layer section uses the same fields:
   scheduler, delivery, ingress, timer, trace, metrics, and outbox code are runtime
   hot path.
 - **Current technical exceptions**: `ev_runtime_graph_t` remains a public structure
-  and delivery trace records still set `timestamp_us = 0U`.
-- **Migration direction**: next refactor should hide graph internals behind public
-  accessors, then timestamp trace delivery records from the monotonic clock port.
+  for static storage ownership, but direct field access outside `runtime/src` is
+  now a static-contract violation. Delivery trace records still set
+  `timestamp_us = 0U`.
+- **Migration direction**: make `ev_runtime_graph_t` fully opaque after the static
+  storage contract is explicit, then timestamp trace delivery records from the
+  monotonic clock port.
 
 ## actor descriptors / module registry
 
@@ -200,10 +203,11 @@ Each layer section uses the same fields:
 - **Hot path**: yes for app actor handlers and policy callbacks.
 - **Bootstrap-only**: composition code is bootstrap-only; actor behavior is runtime
   code.
-- **Current technical exceptions**: demo code still depends on public
-  `ev_runtime_graph_t` fields because the graph is not opaque yet.
+- **Current technical exceptions**: demo code still embeds public
+  `ev_runtime_graph_t` storage because the graph is not fully opaque yet, but it
+  must not inspect graph internals directly.
 - **Migration direction**: reduce demo code to composition root and example policy
-  after graph internals are hidden behind accessors.
+  after the graph storage boundary becomes opaque.
 
 ## adapters
 
@@ -322,7 +326,8 @@ The following exceptions are intentionally named instead of hidden:
 
 1. Concrete device actors are still located in `core/src` and exported from
    `core/include/ev`.
-2. `ev_runtime_graph_t` is still a public structure.
+2. `ev_runtime_graph_t` is still a public structure for static storage ownership,
+   but direct non-runtime field access is now an enforced violation.
 3. Delivery trace records still write `timestamp_us = 0U`.
 4. The Wemos ESP-WROOM-02 18650 BSP has a private, deliberately tracked
    `board_secrets.local.h`; this is not a general policy and must not be copied
@@ -332,7 +337,7 @@ The following exceptions are intentionally named instead of hidden:
 
 1. Keep `tools/audit/static_contracts.py` checking that this document exists and
    preserves the main layer sections.
-2. Hide `ev_runtime_graph_t` internals behind public accessors.
+2. Make the `ev_runtime_graph_t` storage contract explicit or fully opaque.
 3. Enforce route delivery policies end to end.
 4. Add host microbenchmarks for publish and runtime polling.
 5. Move concrete device actors out of `core/` only after the public runtime graph

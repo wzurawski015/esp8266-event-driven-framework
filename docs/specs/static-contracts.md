@@ -23,6 +23,14 @@ make static-contracts
 - Demo runtime migration blockers do not reappear: demo-owned mailbox/runtime
   storage, direct scheduler/timer graph access, legacy demo tick fields, and old
   delivery-callback actor initialization remain forbidden.
+- Direct access to `ev_runtime_graph_t` internal fields is forbidden outside the
+  runtime boundary. The type may still be embedded by applications for static
+  storage, but fields such as `scheduler`, `timer_service`, `mailboxes`,
+  `mailbox_storage`, `metrics`, `trace_ring`, and `active_routes` must be reached
+  through public graph accessors. Embedded C probes in Python audit tools are
+  included in this boundary check.
+- Repository scans prune ignored generated/build/log/docker/git directories
+  before walking, so quality gates do not depend on a clean workspace.
 - Actor/module descriptor consistency is checked by the dedicated
   `tools/audit/actor_module_descriptor_consistency.py` gate.
 - Exact mailbox layout freshness is checked by `tools/routegen/mailbox_layoutgen.py
@@ -34,10 +42,10 @@ make static-contracts
 
 ## Rules planned but not yet enforced
 
-- `ev_runtime_graph_t` should become opaque to apps, adapters, and tests except
-  through public accessors.
-- Runtime graph access should be audited by positive accessor usage rather than
-  by ad-hoc token scans.
+- `ev_runtime_graph_t` should become fully opaque after the static-storage model
+  has an explicit public allocation/size contract.
+- Runtime graph access should eventually move from field-token denial to a
+  stronger positive accessor-usage model.
 - Device actors should move out of `core/` after graph accessors and route policy
   contracts are hardened.
 - Delivery trace records should timestamp events from the monotonic clock port.
@@ -50,7 +58,8 @@ make static-contracts
 
 - Concrete device actors are still in `core/src` and their headers still live in
   `core/include/ev`.
-- `ev_runtime_graph_t` is still public.
+- `ev_runtime_graph_t` is still public for static storage ownership, but direct
+  external field access is now rejected by `tools/audit/static_contracts.py`.
 - Delivery trace currently sets `timestamp_us = 0U`.
 - The Wemos ESP-WROOM-02 18650 BSP has a private, deliberately tracked
   `board_secrets.local.h`. This is a private lab exception to normal secret

@@ -24,6 +24,6 @@ int main(void)
     assert(ev_msg_init_send(&msg, EV_TICK_1S, ACT_APP, ACT_NETWORK) == EV_OK);
     assert(ev_actor_send(&port, ACT_NETWORK, &msg) == EV_OK);
     assert(port.stats.optional_disabled_routes == 1U);
-    assert(graph.metrics.values[EV_METRIC_ROUTE_DISABLED_SKIPPED] > 0U);
+    assert(ev_runtime_graph_metric_value(&graph, EV_METRIC_ROUTE_DISABLED_SKIPPED) > 0U);
     return 0;
 }

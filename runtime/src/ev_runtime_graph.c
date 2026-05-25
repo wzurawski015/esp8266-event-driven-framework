@@ -567,6 +567,110 @@ const ev_active_route_table_t *ev_runtime_graph_active_routes(const ev_runtime_g
     return (graph != NULL) ? &graph->active_routes : NULL;
 }
 
+size_t ev_runtime_graph_mailbox_storage_slots(void)
+{
+    return EV_RUNTIME_MAILBOX_TOTAL_CAPACITY;
+}
+
+size_t ev_runtime_graph_mailbox_storage_bytes(void)
+{
+    return EV_RUNTIME_MAILBOX_TOTAL_CAPACITY * sizeof(ev_msg_t);
+}
+
+ev_result_t ev_runtime_graph_actor_mailbox_storage_offset(const ev_runtime_graph_t *graph,
+                                                                 ev_actor_id_t actor_id,
+                                                                 size_t *out_offset)
+{
+    ev_actor_mailbox_layout_entry_t layout;
+
+    if ((graph == NULL) || (out_offset == NULL) || !ev_actor_id_is_valid(actor_id)) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if (graph->actor_enabled[actor_id] == 0U) {
+        return EV_ERR_STATE;
+    }
+    if (ev_actor_mailbox_layout_lookup(actor_id, &layout) == 0) {
+        return EV_ERR_CONTRACT;
+    }
+    if ((layout.offset >= EV_RUNTIME_MAILBOX_TOTAL_CAPACITY) ||
+        (layout.capacity > (EV_RUNTIME_MAILBOX_TOTAL_CAPACITY - layout.offset)) ||
+        (graph->mailboxes[actor_id].storage != &graph->mailbox_storage[layout.offset]) ||
+        (graph->mailboxes[actor_id].storage_count != layout.capacity)) {
+        return EV_ERR_CONTRACT;
+    }
+
+    *out_offset = layout.offset;
+    return EV_OK;
+}
+
+size_t ev_runtime_graph_actor_mailbox_capacity(const ev_runtime_graph_t *graph, ev_actor_id_t actor_id)
+{
+    if ((graph == NULL) || !ev_actor_id_is_valid(actor_id) || (graph->actor_enabled[actor_id] == 0U)) {
+        return 0U;
+    }
+    return graph->mailboxes[actor_id].storage_count;
+}
+
+uint32_t ev_runtime_graph_metric_value(const ev_runtime_graph_t *graph, ev_metric_id_t metric_id)
+{
+    ev_metric_sample_t sample;
+
+    if ((graph == NULL) || (ev_metric_read(&graph->metrics, metric_id, &sample) != EV_OK)) {
+        return 0U;
+    }
+    return sample.value;
+}
+
+size_t ev_runtime_graph_system_pump_bound_count(const ev_runtime_graph_t *graph)
+{
+    return (graph != NULL) ? ev_system_pump_bound_count(&graph->scheduler.system) : 0U;
+}
+
+uint32_t ev_runtime_graph_scheduler_poll_count(const ev_runtime_graph_t *graph)
+{
+    return (graph != NULL) ? graph->scheduler.poll_calls : 0U;
+}
+
+ev_result_t ev_runtime_graph_schedule_oneshot(ev_runtime_graph_t *graph,
+                                              uint32_t now_ms,
+                                              uint32_t delay_ms,
+                                              ev_actor_id_t target_actor,
+                                              ev_event_id_t event_id,
+                                              uint32_t arg0,
+                                              ev_timer_token_t *out_token)
+{
+    if ((graph == NULL) || (out_token == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+    return ev_timer_schedule_oneshot(&graph->timer_service,
+                                     now_ms,
+                                     delay_ms,
+                                     target_actor,
+                                     event_id,
+                                     arg0,
+                                     out_token);
+}
+
+size_t ev_runtime_graph_timer_pending_count(const ev_runtime_graph_t *graph)
+{
+    return (graph != NULL) ? ev_timer_pending_count(&graph->timer_service) : 0U;
+}
+
+ev_result_t ev_runtime_graph_trace_record(ev_runtime_graph_t *graph, const ev_trace_record_t *record)
+{
+    if ((graph == NULL) || (record == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+    return ev_trace_record(&graph->trace_ring, record);
+}
+
+void ev_runtime_graph_trace_clear(ev_runtime_graph_t *graph)
+{
+    if (graph != NULL) {
+        ev_trace_clear(&graph->trace_ring);
+    }
+}
+
 ev_result_t ev_runtime_graph_schedule_periodic(ev_runtime_graph_t *graph,
                                                uint32_t now_ms,
                                                uint32_t period_ms,

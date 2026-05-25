@@ -35,6 +35,10 @@ make static-contracts
   `tools/audit/actor_module_descriptor_consistency.py` gate.
 - Exact mailbox layout freshness is checked by `tools/routegen/mailbox_layoutgen.py
   --check`.
+- Route delivery QoS failure behavior is centralized in the delivery-service
+  policy API and covered by focused host tests. The static audit also rejects
+  reintroduction of the old hand-coded strict QoS disjunction in the delivery
+  service.
 - The hard layering contract document exists and preserves the main layer
   sections: config/codegen, core kernel, runtime, actor descriptors/module
   registry, device actors, drivers, ports, apps, adapters, bsp, tests, tools, and
@@ -49,8 +53,8 @@ make static-contracts
 - Device actors should move out of `core/` after graph accessors and route policy
   contracts are hardened.
 - Delivery trace records should timestamp events from the monotonic clock port.
-- Route delivery QoS should be enforced end to end and checked by focused host
-  tests.
+- `route_policy_flags` should be renamed or split after the route policy model is
+  migrated from a single historical class field to a true policy descriptor.
 - Release builds should grow stack-usage and map-budget gates after the current
   memory-budget checks.
 
@@ -61,6 +65,8 @@ make static-contracts
 - `ev_runtime_graph_t` is still public for static storage ownership, but direct
   external field access is now rejected by `tools/audit/static_contracts.py`.
 - Delivery trace currently sets `timestamp_us = 0U`.
+- `route_policy_flags` is still a historical name: it behaves like a single
+  accepted route QoS class with compatibility allowances, not a true bitset.
 - The Wemos ESP-WROOM-02 18650 BSP has a private, deliberately tracked
   `board_secrets.local.h`. This is a private lab exception to normal secret
   hygiene and must not be generalized.

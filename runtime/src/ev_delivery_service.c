@@ -64,13 +64,32 @@ static void ev_delivery_trace(ev_runtime_graph_t *graph, const ev_route_t *route
     }
 }
 
-static int ev_delivery_route_failure_is_drop(ev_route_qos_t qos)
+ev_delivery_qos_failure_policy_t ev_delivery_qos_failure_policy(ev_route_qos_t qos)
 {
-    return (qos == EV_ROUTE_QOS_LOSSY) ||
-           (qos == EV_ROUTE_QOS_BEST_EFFORT) ||
-           (qos == EV_ROUTE_QOS_TELEMETRY) ||
-           (qos == EV_ROUTE_QOS_LATEST_ONLY) ||
-           (qos == EV_ROUTE_QOS_COALESCED);
+    switch (qos) {
+    case EV_ROUTE_QOS_BEST_EFFORT:
+    case EV_ROUTE_QOS_LOSSY:
+    case EV_ROUTE_QOS_COALESCED:
+    case EV_ROUTE_QOS_LATEST_ONLY:
+    case EV_ROUTE_QOS_TELEMETRY:
+        return EV_DELIVERY_QOS_FAILURE_DROP;
+
+    case EV_ROUTE_QOS_CRITICAL:
+    case EV_ROUTE_QOS_WAKEUP_CRITICAL:
+    case EV_ROUTE_QOS_COMMAND:
+    default:
+        return EV_DELIVERY_QOS_FAILURE_STRICT;
+    }
+}
+
+int ev_delivery_qos_failure_is_drop(ev_route_qos_t qos)
+{
+    return ev_delivery_qos_failure_policy(qos) == EV_DELIVERY_QOS_FAILURE_DROP;
+}
+
+int ev_delivery_qos_failure_is_strict(ev_route_qos_t qos)
+{
+    return ev_delivery_qos_failure_policy(qos) == EV_DELIVERY_QOS_FAILURE_STRICT;
 }
 
 static ev_result_t ev_delivery_deliver_one(ev_runtime_graph_t *graph, const ev_route_t *route, const ev_msg_t *msg, ev_delivery_report_t *local)
@@ -93,7 +112,7 @@ static ev_result_t ev_delivery_deliver_one(ev_runtime_graph_t *graph, const ev_r
 
     local->dropped++;
     (void)ev_metric_increment(&graph->metrics, EV_METRIC_DELIVERY_FAILED, 1U);
-    if (ev_delivery_route_failure_is_drop(route->qos) != 0) {
+    if (ev_delivery_qos_failure_is_drop(route->qos) != 0) {
         (void)ev_metric_increment(&graph->metrics, EV_METRIC_POST_DROPPED, 1U);
         return EV_OK;
     }
@@ -147,7 +166,7 @@ static ev_result_t ev_delivery_publish_active(ev_runtime_graph_t *graph, const e
         rc = ev_delivery_deliver_one(graph, &entry->route, msg, local);
         if (rc != EV_OK) {
             final_rc = rc;
-            if (entry->route.qos == EV_ROUTE_QOS_CRITICAL || entry->route.qos == EV_ROUTE_QOS_WAKEUP_CRITICAL || entry->route.qos == EV_ROUTE_QOS_COMMAND) {
+            if (ev_delivery_qos_failure_is_strict(entry->route.qos) != 0) {
                 break;
             }
         }
@@ -171,7 +190,7 @@ static ev_result_t ev_delivery_publish_static(ev_runtime_graph_t *graph, const e
         rc = ev_delivery_deliver_one(graph, route, msg, local);
         if (rc != EV_OK) {
             final_rc = rc;
-            if (route->qos == EV_ROUTE_QOS_CRITICAL || route->qos == EV_ROUTE_QOS_WAKEUP_CRITICAL || route->qos == EV_ROUTE_QOS_COMMAND) {
+            if (ev_delivery_qos_failure_is_strict(route->qos) != 0) {
                 break;
             }
         }

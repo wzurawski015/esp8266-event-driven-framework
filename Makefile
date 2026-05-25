@@ -83,6 +83,7 @@ HOST_TESTS := \
     test_route_table \
     test_route_spans \
     test_active_route_table_spans \
+    test_route_qos_delivery_policy \
     test_dispatch_contract \
     test_mailbox_contract \
     test_actor_runtime \

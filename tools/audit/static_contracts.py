@@ -154,9 +154,27 @@ def static_contract_self_test() -> None:
         errors.append("static-contract self-test failed: heap API in comments was not ignored")
 
 
+
+def validate_route_qos_contract() -> None:
+    report_path = ROOT / "docs" / "release" / "route_qos_enforcement_report.md"
+    if not report_path.exists():
+        errors.append("route QoS enforcement report missing: docs/release/route_qos_enforcement_report.md")
+
+    delivery_path = ROOT / "runtime" / "src" / "ev_delivery_service.c"
+    if delivery_path.exists():
+        code = strip_comments(delivery_path.read_text(encoding="utf-8", errors="ignore"))
+        if re.search(
+            r"EV_ROUTE_QOS_CRITICAL\s*\|\|[^;{}]*"
+            r"EV_ROUTE_QOS_WAKEUP_CRITICAL\s*\|\|[^;{}]*"
+            r"EV_ROUTE_QOS_COMMAND",
+            code,
+        ) is not None:
+            errors.append("delivery service reintroduced hand-coded strict QoS disjunction")
+
 static_contract_self_test()
 validate_layering_contract_document()
 validate_runtime_graph_access_boundary()
+validate_route_qos_contract()
 
 for artifact in iter_repo_files(ROOT):
     if is_ignored_path(artifact):

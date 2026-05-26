@@ -4,10 +4,12 @@ PYTHON ?= python3
 CFLAGS ?= -std=c11 -Wall -Wextra -O0 -g0 -pedantic -DEV_HOST_BUILD \
     -Icore/include -Icore/generated/include -Iruntime/include -Imodules/include -Idrivers/include \
     -Iports/include -Iapps/demo/include -Iconfig
+BENCH_CFLAGS ?= $(filter-out -O0,$(CFLAGS)) -O2 -D_POSIX_C_SOURCE=200809L
 LDFLAGS ?=
 
 BUILD_DIR := build/host
 PROPERTY_BUILD_DIR := build/property
+BENCH_BUILD_DIR := build/bench
 DOC_SITE_DIR := docs/generated/site
 
 CORE_SRCS := \
@@ -136,8 +138,16 @@ PROPERTY_TESTS := \
 
 PROPERTY_TEST_BINS := $(addprefix $(PROPERTY_BUILD_DIR)/,$(PROPERTY_TESTS))
 
-.PHONY: all host-test property-test routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency memory-budget sdk-matrix-check sdk-memory-matrix production-release-gate quality-gate release-gate docgen docs clean
-.SECONDARY: $(COMMON_OBJS)
+BENCH_SRCS := $(COMMON_SRCS)
+BENCH_COMMON_OBJS := $(patsubst %.c,$(BENCH_BUILD_DIR)/obj/%.o,$(BENCH_SRCS))
+BENCH_TESTS := \
+    bench_runtime_publish \
+    bench_runtime_poll
+BENCH_BINS := $(addprefix $(BENCH_BUILD_DIR)/,$(BENCH_TESTS))
+BENCH_RESULTS := $(BENCH_BUILD_DIR)/results.txt
+
+.PHONY: all host-test property-test bench perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency memory-budget sdk-matrix-check sdk-memory-matrix production-release-gate quality-gate release-gate docgen docs clean
+.SECONDARY: $(COMMON_OBJS) $(BENCH_COMMON_OBJS)
 
 all: host-test
 
@@ -146,6 +156,9 @@ $(BUILD_DIR):
 
 $(PROPERTY_BUILD_DIR):
 	mkdir -p $(PROPERTY_BUILD_DIR)
+
+$(BENCH_BUILD_DIR):
+	mkdir -p $(BENCH_BUILD_DIR)
 
 $(BUILD_DIR)/obj/%.o: %.c | $(BUILD_DIR)
 	mkdir -p $(dir $@)
@@ -157,6 +170,13 @@ $(BUILD_DIR)/%: tests/host/%.c $(COMMON_OBJS) | $(BUILD_DIR)
 $(PROPERTY_BUILD_DIR)/%: tests/property/%.c $(COMMON_OBJS) | $(PROPERTY_BUILD_DIR)
 	$(CC) $(CFLAGS) $(COMMON_OBJS) $< $(LDFLAGS) -o $@
 
+$(BENCH_BUILD_DIR)/obj/%.o: %.c | $(BENCH_BUILD_DIR)
+	mkdir -p $(dir $@)
+	$(CC) $(BENCH_CFLAGS) -c $< -o $@
+
+$(BENCH_BUILD_DIR)/%: tests/bench/%.c $(BENCH_COMMON_OBJS) | $(BENCH_BUILD_DIR)
+	$(CC) $(BENCH_CFLAGS) $(BENCH_COMMON_OBJS) $< $(LDFLAGS) -o $@
+
 host-test: routegen $(HOST_TEST_BINS)
 	@set -e; for t in $(HOST_TEST_BINS); do ./$$t; done
 	@echo "host tests passed"
@@ -164,6 +184,16 @@ host-test: routegen $(HOST_TEST_BINS)
 property-test: routegen $(PROPERTY_TEST_BINS)
 	@set -e; for t in $(PROPERTY_TEST_BINS); do ./$$t; done
 	@echo "property tests passed"
+
+bench: routegen $(BENCH_BINS)
+	@mkdir -p $(BENCH_BUILD_DIR)
+	@: > $(BENCH_RESULTS)
+	@set -e; for t in $(BENCH_BINS); do ./$$t | tee -a $(BENCH_RESULTS); done
+	@$(PYTHON) tools/bench_report.py $(BENCH_RESULTS)
+	@echo "bench passed"
+
+perf-gate: bench
+	@echo "perf-gate passed (report-only baseline)"
 
 routegen:
 	$(PYTHON) tools/routegen/routegen.py

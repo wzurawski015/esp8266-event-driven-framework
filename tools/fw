@@ -166,8 +166,9 @@ Notes:
     FW_FLASH_AFTER, FW_FLASH_RETRIES, FW_FLASH_RETRY_DELAY_S,
     EV_WEMOS_FLASH_VARIANT/FW_WEMOS_FLASH_VARIANT,
     EV_ESP8266_NET_ENABLE_MQTT, EV_SDK_IRAM_LIMIT_BYTES,
-    EV_SDK_DRAM_LIMIT_BYTES, EV_SDK_MAX_BSS_BYTES, or
-    EV_SDK_MAX_DATA_BYTES to override defaults.
+    EV_SDK_DRAM_LIMIT_BYTES, EV_SDK_MAX_BSS_BYTES,
+    EV_SDK_MAX_DATA_BYTES, EV_SDK_MAX_APP_BIN_BYTES, or
+    EV_SDK_MAX_STACK_FRAME_BYTES to override defaults.
   - FW_ESPPORT/ESPPORT manual overrides always win. If unset, the wrapper
     resolves the serial port from the selected target USB-UART profile, preferring
     /dev/serial/by-id and VID/PID matches. Ambiguous matches fail safely.
@@ -658,6 +659,8 @@ run_in_sdk() {
     EV_SDK_DRAM_LIMIT_BYTES="${EV_SDK_DRAM_LIMIT_BYTES:-}" \
     EV_SDK_MAX_BSS_BYTES="${EV_SDK_MAX_BSS_BYTES:-}" \
     EV_SDK_MAX_DATA_BYTES="${EV_SDK_MAX_DATA_BYTES:-}" \
+    EV_SDK_MAX_APP_BIN_BYTES="${EV_SDK_MAX_APP_BIN_BYTES:-}" \
+    EV_SDK_MAX_STACK_FRAME_BYTES="${EV_SDK_MAX_STACK_FRAME_BYTES:-}" \
     sh -lc "$(sdk_static_config_wrapper_script)" sh "$@"
 }
 
@@ -677,6 +680,8 @@ run_in_sdk_it() {
     EV_SDK_DRAM_LIMIT_BYTES="${EV_SDK_DRAM_LIMIT_BYTES:-}" \
     EV_SDK_MAX_BSS_BYTES="${EV_SDK_MAX_BSS_BYTES:-}" \
     EV_SDK_MAX_DATA_BYTES="${EV_SDK_MAX_DATA_BYTES:-}" \
+    EV_SDK_MAX_APP_BIN_BYTES="${EV_SDK_MAX_APP_BIN_BYTES:-}" \
+    EV_SDK_MAX_STACK_FRAME_BYTES="${EV_SDK_MAX_STACK_FRAME_BYTES:-}" \
     sh -lc "$(sdk_static_config_wrapper_script)" sh "$@"
 }
 

@@ -146,7 +146,7 @@ BENCH_TESTS := \
 BENCH_BINS := $(addprefix $(BENCH_BUILD_DIR)/,$(BENCH_TESTS))
 BENCH_RESULTS := $(BENCH_BUILD_DIR)/results.txt
 
-.PHONY: all host-test property-test bench perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency memory-budget sdk-matrix-check sdk-memory-matrix production-release-gate quality-gate release-gate docgen docs clean
+.PHONY: all host-test property-test bench perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate production-release-gate quality-gate release-gate docgen docs clean
 .SECONDARY: $(COMMON_OBJS) $(BENCH_COMMON_OBJS)
 
 all: host-test
@@ -225,6 +225,11 @@ sdk-memory-matrix:
 	$(PYTHON) tools/sdk_memory_report.py --self-test
 	$(PYTHON) tools/sdk_memory_matrix.py --self-test
 	$(PYTHON) tools/sdk_memory_matrix.py
+
+sdk-memory-release-gate:
+	$(PYTHON) tools/sdk_memory_report.py --self-test
+	$(PYTHON) tools/sdk_memory_matrix.py --self-test
+	EV_SDK_MEMORY_REQUIRE_PASS=1 $(PYTHON) tools/sdk_memory_matrix.py
 
 .NOTPARALLEL: quality-gate
 quality-gate: clean routegen-check static-contracts actor-module-consistency memory-budget host-test property-test

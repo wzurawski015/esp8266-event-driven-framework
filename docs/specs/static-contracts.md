@@ -55,8 +55,9 @@ make static-contracts
 - Delivery trace records should timestamp events from the monotonic clock port.
 - `route_policy_flags` should be renamed or split after the route policy model is
   migrated from a single historical class field to a true policy descriptor.
-- Release builds should grow stack-usage and map-budget gates after the current
-  memory-budget checks.
+- SDK release memory checks now include app-bin matrix budgeting and a report-only
+  `.su` stack max-frame baseline; a future gate may add a dedicated stack budget
+  field once `.su` generation is standardized across SDK targets.
 
 ## Known temporary exceptions
 

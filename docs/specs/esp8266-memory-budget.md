@@ -1,7 +1,7 @@
 # ESP8266 SDK memory budget report
 
 The network-enabled ESP8266 firmware must be built with a reproducible memory
-report before MQTT payload pools, telemetry, or remote commands are added.  The
+report before MQTT payload pools, telemetry, or remote commands are added. The
 report is a build-time gate only; it does not claim WiFi, MQTT, flash, or HIL
 success.
 
@@ -14,7 +14,7 @@ export FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atnel_air_esp_mother
 ./tools/fw sdk-network-build-gate
 ```
 
-The default gate is WiFi-only.  It passes `EV_ESP8266_NET_ENABLE_MQTT=0` unless
+The default gate is WiFi-only. It passes `EV_ESP8266_NET_ENABLE_MQTT=0` unless
 MQTT is explicitly requested by the caller.
 
 Existing build artifacts can be inspected without rebuilding:
@@ -29,6 +29,25 @@ A build followed by a report can be requested with:
 ./tools/fw sdk-build-report
 ```
 
+The repository-level matrix remains report-only by default:
+
+```sh
+make sdk-memory-matrix
+```
+
+Strict release mode is explicit and is intended for release jobs that have real
+SDK build logs containing `EV_MEM_*` markers:
+
+```sh
+EV_SDK_MEMORY_REQUIRE_PASS=1 make sdk-memory-matrix
+make sdk-memory-release-gate
+```
+
+On a host-only checkout without SDK build logs, `make sdk-memory-matrix` should
+record `NOT_RUN` rows. That is an honest status, not a parser failure. Strict
+mode may fail in that same checkout because there is no build evidence to prove
+release memory budgets.
+
 ## Thresholds
 
 The report supports optional environment thresholds:
@@ -38,12 +57,15 @@ EV_SDK_IRAM_LIMIT_BYTES=... \
 EV_SDK_DRAM_LIMIT_BYTES=... \
 EV_SDK_MAX_BSS_BYTES=... \
 EV_SDK_MAX_DATA_BYTES=... \
+EV_SDK_MAX_APP_BIN_BYTES=... \
+EV_SDK_MAX_STACK_FRAME_BYTES=... \
 ./tools/fw sdk-network-build-gate
 ```
 
 If a threshold is unset, the corresponding category is reported as unchecked or
-unknown rather than guessed.  The tool must not invent free IRAM/DRAM numbers
-when the ELF/map data cannot prove them.
+unknown rather than guessed. The tool must not invent free IRAM/DRAM numbers,
+application binary sizes, or stack facts when the build artifacts cannot prove
+them.
 
 ## Output markers
 
@@ -56,16 +78,25 @@ EV_MEM_IRAM used=<bytes> limit=<bytes|unchecked> free=<bytes|unknown> status=<ok
 EV_MEM_DRAM used=<bytes> limit=<bytes|unchecked> free=<bytes|unknown> status=<ok|fail|unchecked>
 EV_MEM_BSS size=<bytes> limit=<bytes|unchecked> status=<ok|fail|unchecked>
 EV_MEM_DATA size=<bytes> limit=<bytes|unchecked> status=<ok|fail|unchecked>
-EV_MEM_STACK status=not_available source=elf_section_report
+EV_MEM_APP_BIN size=<bytes|0> limit=<bytes|unchecked> status=<ok|fail|unchecked|not_available> source=<path|not_found>
+EV_MEM_STACK_USAGE status=<ok|fail|unchecked|not_available> files=<n> entries=<n> max_frame=<bytes|0> limit=<bytes|unchecked> function=<name|unknown> qualifier=<kind|unknown> source=<path|not_found>
 EV_MEM_REPORT_RESULT PASS failures=0 warnings=<N>
 ```
 
-Stack usage is reported as unavailable unless a later tool can derive it from
-map/ELF data without guessing.
+`EV_MEM_APP_BIN` is derived only from the application `.bin` that matches the
+application ELF basename. If that relation cannot be proven, the marker reports
+`not_available`; the matrix must not convert that state into PASS.
+
+`EV_MEM_STACK_USAGE` is a per-function GCC `.su` max-frame baseline. It reports
+how many `.su` files and entries were parsed, plus the function with the largest
+single frame. It is deliberately **not** a call-chain worst-case stack proof.
+
+The legacy `EV_MEM_STACK` marker is kept only as a compatibility breadcrumb and
+points consumers to `EV_MEM_STACK_USAGE`.
 
 ## Secret handling
 
-The memory report never prints compiler command lines or build flags.  Local
+The memory report never prints compiler command lines or build flags. Local
 network credentials from `board_secrets.local.h` or compile-time overrides must
 not appear in the report.
 
@@ -87,3 +118,13 @@ thresholds without inspecting `EV_MEM_*` output.
 The release SDK memory gate uses `config/sdk_memory_budgets.def` and
 `tools/sdk_memory_matrix.py`. Host `make memory-budget` remains a host static-size
 gate; it is not a substitute for ESP8266 ELF/linker-map validation.
+
+The matrix checks host-independent release evidence:
+
+- ESP8266 ELF section budgets: IRAM, DRAM, BSS and DATA.
+- Application binary size budget: `max_app_bin_bytes`.
+- Stack `.su` baseline availability and max frame as report-only evidence.
+
+The matrix default is report-only so host CI does not pretend that SDK artifacts
+were built. Strict mode is opt-in and fails when non-metadata targets have no
+PASS evidence.

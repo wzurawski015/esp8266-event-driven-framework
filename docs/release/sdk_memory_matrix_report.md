@@ -16,4 +16,4 @@ Strict release mode is enabled with `EV_SDK_MEMORY_REQUIRE_PASS=1` and fails on 
 | `wemos_esp_wroom_02_18650` | `physical_smoke` | NOT_RUN | 0 | 0 | 0 | 0 | 0 | N/A | no EV_MEM markers found |
 | `adafruit_feather_huzzah_esp8266` | `metadata_only` | NOT_APPLICABLE | 0 | 0 | 0 | 0 | 0 | N/A | metadata-only target |
 
-Report-only mode: non-PASS rows are recorded but do not fail this target.
+Strict mode: FAIL

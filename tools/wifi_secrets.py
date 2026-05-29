@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Create ignored board_secrets.local.h files for WiFi-capable ESP8266 targets.
+"""Create board-local board_secrets.local.h files for WiFi-capable ESP8266 targets.
 
-The tool intentionally writes only developer-local files ignored by git.  It does
-not modify tracked BSP headers and it never prints the WiFi password.
+The tool writes board-local secret headers. Most generated files remain ignored by
+git; an explicit private-lab repository may intentionally track an allowlisted
+BSP-local header. The tool never prints the WiFi password.
 """
 from __future__ import annotations
 
@@ -168,7 +169,7 @@ def self_test() -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Create local ignored WiFi board_secrets.local.h files")
+    parser = argparse.ArgumentParser(description="Create local WiFi board_secrets.local.h files")
     parser.add_argument("--self-test", action="store_true", help="run parser/rendering self-test and exit")
     sub = parser.add_subparsers(dest="cmd")
 

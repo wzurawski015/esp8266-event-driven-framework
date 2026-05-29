@@ -146,7 +146,7 @@ BENCH_TESTS := \
 BENCH_BINS := $(addprefix $(BENCH_BUILD_DIR)/,$(BENCH_TESTS))
 BENCH_RESULTS := $(BENCH_BUILD_DIR)/results.txt
 
-.PHONY: all host-test property-test bench perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate production-release-gate quality-gate release-gate docgen docs clean
+.PHONY: all host-test property-test bench perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate production-release-gate quality-gate release-gate docgen docs clean
 .SECONDARY: $(COMMON_OBJS) $(BENCH_COMMON_OBJS)
 
 all: host-test
@@ -214,6 +214,18 @@ static-contracts: routegen
 actor-module-consistency: routegen
 	$(PYTHON) tools/audit/actor_module_descriptor_consistency.py
 
+descriptor-contracts: actor-module-consistency
+	@echo "descriptor-contracts passed"
+
+private-repo-secrets-policy:
+	$(PYTHON) tools/audit/private_repo_secrets_policy.py
+
+release-evidence-contracts:
+	$(PYTHON) tools/audit/release_evidence_contracts.py
+
+public-release-safety-gate:
+	PUBLIC_RELEASE=1 $(PYTHON) tools/audit/private_repo_secrets_policy.py
+
 memory-budget: routegen
 	$(PYTHON) tools/audit/memory_budget.py
 
@@ -232,7 +244,7 @@ sdk-memory-release-gate:
 	EV_SDK_MEMORY_REQUIRE_PASS=1 $(PYTHON) tools/sdk_memory_matrix.py
 
 .NOTPARALLEL: quality-gate
-quality-gate: clean routegen-check static-contracts actor-module-consistency memory-budget host-test property-test
+quality-gate: clean routegen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts memory-budget host-test property-test
 	@echo "quality-gate passed"
 
 release-gate: quality-gate docgen docs

@@ -1,8 +1,12 @@
 # Local WiFi credentials workflow
 
-This project keeps WiFi credentials out of tracked files.  Supported WiFi-capable
-SDK targets read a developer-local `board_secrets.local.h` from the relevant BSP
-folder when the target-local `component.mk` opts in with
+This project supports two credential modes. In private/lab mode, the repository
+owner may intentionally track the Wemos BSP-local `board_secrets.local.h`. In public
+release mode, real local secret files are forbidden and the public safety gate
+must fail until they are removed or replaced by placeholders.
+
+Supported WiFi-capable SDK targets read `board_secrets.local.h` from the relevant
+BSP folder when the target-local `component.mk` opts in with
 `EV_BOARD_INCLUDE_LOCAL_SECRETS`.
 
 ## Supported target-local secret files
@@ -12,8 +16,10 @@ folder when the target-local `component.mk` opts in with
 | ATNEL AIR ESP Motherboard | `bsp/atnel_air_esp_motherboard/board_secrets.local.h` | `atnel_air_esp_motherboard` | `atnel_air_esp_motherboard_wifi_hil` |
 | Wemos ESP-WROOM-02 18650 | `bsp/wemos_esp_wroom_02_18650/board_secrets.local.h` | `wemos_esp_wroom_02_18650` | Wemos smoke |
 
-The local files are ignored by Git.  Do not commit credentials, logs containing
-credentials, or generated local secret headers.
+Default local files are ignored by Git, except for the explicit private-lab owner
+exception for the Wemos ESP-WROOM-02 18650 profile in this repository. Do not
+copy credential values into logs, generated reports, generated headers or patch
+artifacts. Public releases require `make public-release-safety-gate`.
 
 ## Creating local secrets
 
@@ -65,7 +71,7 @@ export FW_ESPPORT=/dev/ttyUSB1
 ./tools/fw wemos-wifi-monitor
 ```
 
-Wemos remains no-net by default.  WiFi is enabled only when the ignored local
+Wemos remains no-net by default.  WiFi is enabled only when the board-local
 secret header exists and defines `EV_BOARD_HAS_NET 1U`.
 
 ## Guardrails
@@ -75,4 +81,7 @@ secret header exists and defines `EV_BOARD_HAS_NET 1U`.
 - ESP8266 supports 2.4 GHz WiFi only.
 - Leave MQTT and command credentials empty unless a dedicated HIL/release test
   requires them.
+- Run `python3 tools/audit/private_repo_secrets_policy.py` before sharing logs or
+  patches from private mode.
+- Run `make public-release-safety-gate` before public packaging.
 - HIL PASS requires a serial marker such as `EV_HIL_RESULT PASS failures=0 skipped=0`.

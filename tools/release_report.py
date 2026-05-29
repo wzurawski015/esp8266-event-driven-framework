@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -81,11 +82,17 @@ def sdk_matrix_group_status(path: str, included_classes: set[str]) -> str:
     return "NOT_APPLICABLE"
 
 def main() -> int:
+    docs_status = "NOT_RUN"
+    docs_evidence = "release-gate was not executed in this report."
+    if shutil.which("doxygen") is None:
+        docs_status = "ENVIRONMENT_BLOCKED"
+        docs_evidence = "doxygen executable is not available in this environment; docs/release gate was not executed."
+
     rows = [
         ("Host quality gate", "PASS", "User-provided validation log and current host gates."),
-        ("Docs/release gate", "PASS", "User-provided validation log contains release-gate passed."),
+        ("Docs/release gate", docs_status, docs_evidence),
         ("Static contracts", "PASS", "Validated by host static-contracts gate."),
-        ("Hardening contracts", "PASS", "FreeRTOS heap API, adapter exception allowlist, Wemos opt-in and no-legacy checks are covered by static-contracts/sdk-matrix-check."),
+        ("Hardening contracts", "PASS", "Static contracts, descriptor consistency, private-repo secret containment and release-evidence contracts are covered by quality-gate."),
         ("Routegen/docgen freshness", "PASS", "routegen/docgen are host gates; rerun before release."),
         ("SDK toolchain check", "NOT_RUN", "No SDK toolchain log was provided in this patch build."),
         ("SDK build matrix: buildable targets", sdk_matrix_group_status("docs/release/sdk_build_matrix_report.md", {"buildable_sdk", "physical_smoke"}), "Buildable/physical-smoke SDK targets from docs/release/sdk_build_matrix_report.md."),

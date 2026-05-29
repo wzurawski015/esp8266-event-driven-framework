@@ -6,13 +6,13 @@ This summary must not collapse `NOT_RUN` into `PASS`.
 | Area | Status | Evidence |
 |---|---:|---|
 | Host quality gate | PASS | User-provided validation log and current host gates. |
-| Docs/release gate | PASS | User-provided validation log contains release-gate passed. |
+| Docs/release gate | ENVIRONMENT_BLOCKED | doxygen executable is not available in this environment; docs/release gate was not executed. |
 | Static contracts | PASS | Validated by host static-contracts gate. |
-| Hardening contracts | PASS | FreeRTOS heap API, adapter exception allowlist, Wemos opt-in and no-legacy checks are covered by static-contracts/sdk-matrix-check. |
+| Hardening contracts | PASS | Static contracts, descriptor consistency, private-repo secret containment and release-evidence contracts are covered by quality-gate. |
 | Routegen/docgen freshness | PASS | routegen/docgen are host gates; rerun before release. |
 | SDK toolchain check | NOT_RUN | No SDK toolchain log was provided in this patch build. |
-| SDK build matrix: buildable targets | PASS | Buildable/physical-smoke SDK targets from docs/release/sdk_build_matrix_report.md. |
-| SDK build matrix: HIL SDK targets | PASS | HIL SDK targets are separate from non-HIL SDK build matrix. |
+| SDK build matrix: buildable targets | NOT_RUN | Buildable/physical-smoke SDK targets from docs/release/sdk_build_matrix_report.md. |
+| SDK build matrix: HIL SDK targets | NOT_RUN | HIL SDK targets are separate from non-HIL SDK build matrix. |
 | SDK linker-map memory matrix: buildable targets | NOT_RUN | Buildable/physical-smoke memory rows from docs/release/sdk_memory_matrix_report.md. |
 | SDK linker-map memory matrix: HIL SDK targets | NOT_RUN | HIL SDK memory rows are separate from non-HIL memory matrix. |
 | ATNEL I2C HIL | FAIL | Current failure is isolated to sda-stuck-low-containment fixture/fault-injection coupling. |

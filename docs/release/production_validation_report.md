@@ -83,9 +83,9 @@ are explicitly documented and validated.
 | Area | Status | Notes |
 |---|---:|---|
 | Host quality gate | PASS | Observed in uploaded validation log. |
-| Docs/release gate | PASS | Observed in uploaded validation log. |
+| Docs/release gate | ENVIRONMENT_BLOCKED | `doxygen` is not available in this patch environment, so docs/release gate was not executed here. |
 | SDK toolchain check | NOT_RUN | Toolchain log is not stored in this archive snapshot. |
-| SDK build matrix | PASS | `docs/release/sdk_build_matrix_report.md` contains committed PASS rows for buildable, HIL SDK and Wemos physical-smoke targets. |
+| SDK build matrix | NOT_RUN | `docs/release/sdk_build_matrix_report.md` contains no committed SDK build-log evidence in this archive snapshot. |
 | SDK linker-map memory matrix | NOT_RUN | `docs/release/sdk_memory_matrix_report.md` contains no committed EV_MEM rows in this archive snapshot. |
 | ATNEL I2C HIL | FAIL | Isolated to `sda-stuck-low-containment`; base I2C cases passed. |
 | ATNEL OneWire HIL | NOT_RUN | Requires physical fixture and serial PASS marker. |
@@ -158,6 +158,6 @@ not pull the real SDA/GPIO5 line low during the fault window. See
 
 ## Hardening quality follow-up
 
-The post-BSP-fix hardening pass strengthens static contracts and release evidence without changing runtime semantics. The additional checks cover FreeRTOS/vendor heap API spellings, adapter bootstrap exception allowlisting, Wemos target-local WiFi secrets opt-in, HIL flood stack high-water diagnostics, and hard failure when I2C HIL fault diagnostics cannot identify SDA/SCL GPIOs.
+The post-BSP-fix hardening pass strengthens static contracts and release evidence without changing runtime semantics. The additional checks cover FreeRTOS/vendor heap API spellings, adapter bootstrap exception allowlisting, private-repo Wemos secret containment, HIL flood stack high-water diagnostics, and hard failure when I2C HIL fault diagnostics cannot identify SDA/SCL GPIOs.
 
-SDK linker-map memory status must remain `NOT_RUN` unless `docs/release/sdk_memory_matrix_report.md` contains real non-zero `EV_MEM_*` values from SDK build logs. ATNEL I2C HIL remains `FAIL` until `sda-stuck-low-containment` produces the required serial PASS marker.
+SDK build and SDK linker-map memory status must remain `NOT_RUN` unless the archive contains real SDK build logs or non-zero `EV_MEM_*` values from SDK build logs. ATNEL I2C HIL remains `FAIL` until `sda-stuck-low-containment` produces the required serial PASS marker.

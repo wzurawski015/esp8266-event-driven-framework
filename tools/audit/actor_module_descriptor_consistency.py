@@ -26,6 +26,23 @@ MAILBOX_CAPACITY = {
     "EV_MAILBOX_LOSSY_RING_8": 8,
     "EV_MAILBOX_COALESCED_FLAG": 1,
 }
+KNOWN_EXECUTION_DOMAINS = {
+    "EV_DOMAIN_ISR",
+    "EV_DOMAIN_FAST_LOOP",
+    "EV_DOMAIN_SLOW_IO",
+    "EV_DOMAIN_NETWORK",
+}
+ROUTE_QOS_POLICIES = {
+    "EV_ROUTE_QOS_CRITICAL",
+    "EV_ROUTE_QOS_BEST_EFFORT",
+    "EV_ROUTE_QOS_LOSSY",
+    "EV_ROUTE_QOS_COALESCED",
+    "EV_ROUTE_QOS_LATEST_ONLY",
+    "EV_ROUTE_QOS_WAKEUP_CRITICAL",
+    "EV_ROUTE_QOS_TELEMETRY",
+    "EV_ROUTE_QOS_COMMAND",
+}
+ZERO_POLICY_TOKENS = {"0", "0U", "0UL", "0u"}
 
 
 @dataclass(frozen=True)
@@ -42,6 +59,7 @@ class ModuleDef:
     module_name: str
     domain: str
     mailbox_capacity: str
+    route_policy_flags: str
     handler_fn: str
     line: int
 
@@ -268,6 +286,7 @@ def parse_modules(path: Path) -> tuple[dict[str, ModuleDef], list[str]]:
             module_name=args[1],
             domain=args[6],
             mailbox_capacity=args[7],
+            route_policy_flags=args[9],
             handler_fn=args[10],
             line=line,
         )
@@ -284,7 +303,7 @@ def self_test_parser() -> None:
         */
         EV_ACTOR_MODULE(ACT_SAMPLE, "sample,module", EV_CAP_I2C0 | (EV_CAP_OLED),
                         0U, EV_CAP_OLED, 0U, EV_DOMAIN_SLOW_IO, 8U,
-                        EV_FAULT_NONE, EV_ROUTE_QOS_COMMAND | EV_ROUTE_QOS_TELEMETRY,
+                        EV_FAULT_NONE, EV_ROUTE_QOS_COMMAND,
                         ev_framework_actor_handle)
     '''
     stripped = strip_c_comments(sample)
@@ -301,15 +320,43 @@ def self_test_parser() -> None:
     assert parse_c_string(module_args[1]) == "sample,module"
 
 
+def validate_route_policy_flags(actor_id: str, module: ModuleDef) -> str | None:
+    token = module.route_policy_flags.strip()
+    if "|" in token or "(" in token or ")" in token:
+        return (
+            f"actor-module-consistency: {actor_id} route_policy_flags must be 0U or one EV_ROUTE_QOS_* token; "
+            f"bitmasks are blocked until QoS flags are refactored"
+        )
+    if token in ZERO_POLICY_TOKENS or token in ROUTE_QOS_POLICIES:
+        return None
+    return f"actor-module-consistency: {actor_id} unknown route_policy_flags token in modules.def:{module.line}: {token}"
+
+
 def validate(actors: dict[str, ActorDef], modules: dict[str, ModuleDef]) -> list[str]:
     errors: list[str] = []
+
+    if len(actors) != len(modules):
+        errors.append(
+            f"actor-module-consistency: actor/module count mismatch: "
+            f"actors.def={len(actors)} modules.def={len(modules)}"
+        )
+
+    seen_module_names: dict[str, str] = {}
 
     for actor_id in sorted(actors):
         actor = actors[actor_id]
         module = modules.get(actor_id)
+        if actor.domain not in KNOWN_EXECUTION_DOMAINS:
+            errors.append(f"actor-module-consistency: {actor_id} unknown execution domain in actors.def: {actor.domain}")
+        if actor.mailbox_kind not in MAILBOX_CAPACITY:
+            errors.append(f"actor-module-consistency: {actor_id} unknown mailbox kind in actors.def: {actor.mailbox_kind}")
+
         if module is None:
             errors.append(f"actor-module-consistency: {actor_id} missing from modules.def")
             continue
+
+        if module.domain not in KNOWN_EXECUTION_DOMAINS:
+            errors.append(f"actor-module-consistency: {actor_id} unknown execution domain in modules.def:{module.line}: {module.domain}")
 
         if actor.domain != module.domain:
             errors.append(
@@ -319,9 +366,7 @@ def validate(actors: dict[str, ActorDef], modules: dict[str, ModuleDef]) -> list
 
         expected_capacity = MAILBOX_CAPACITY.get(actor.mailbox_kind)
         actual_capacity = parse_uint(module.mailbox_capacity)
-        if expected_capacity is None:
-            errors.append(f"actor-module-consistency: {actor_id} unknown mailbox kind in actors.def: {actor.mailbox_kind}")
-        elif actual_capacity != expected_capacity:
+        if expected_capacity is not None and actual_capacity != expected_capacity:
             errors.append(
                 f"actor-module-consistency: {actor_id} mailbox capacity mismatch: "
                 f"actors.def={actor.mailbox_kind}->{expected_capacity} modules.def={module.mailbox_capacity}"
@@ -330,6 +375,18 @@ def validate(actors: dict[str, ActorDef], modules: dict[str, ModuleDef]) -> list
         module_name = parse_c_string(module.module_name)
         if module_name is None or module_name == "":
             errors.append(f"actor-module-consistency: {actor_id} has empty or invalid module_name in modules.def:{module.line}")
+        else:
+            previous_actor = seen_module_names.get(module_name)
+            if previous_actor is not None:
+                errors.append(
+                    f"actor-module-consistency: module_name is not unique: "
+                    f"{module_name!r} used by {previous_actor} and {actor_id}"
+                )
+            seen_module_names[module_name] = actor_id
+
+        policy_error = validate_route_policy_flags(actor_id, module)
+        if policy_error is not None:
+            errors.append(policy_error)
 
         handler = module.handler_fn.strip()
         if handler == "" or handler in {"0", "0U", "NULL"}:
@@ -342,8 +399,44 @@ def validate(actors: dict[str, ActorDef], modules: dict[str, ModuleDef]) -> list
     return errors
 
 
+def self_test_validation() -> None:
+    actors = {
+        "ACT_A": ActorDef("ACT_A", "EV_DOMAIN_FAST_LOOP", "EV_MAILBOX_FIFO_8", 1),
+        "ACT_B": ActorDef("ACT_B", "EV_DOMAIN_SLOW_IO", "EV_MAILBOX_FIFO_16", 2),
+    }
+    valid_modules = {
+        "ACT_A": ModuleDef("ACT_A", "\"a\"", "EV_DOMAIN_FAST_LOOP", "8U", "0U", "handler_a", 10),
+        "ACT_B": ModuleDef("ACT_B", "\"b\"", "EV_DOMAIN_SLOW_IO", "16U", "EV_ROUTE_QOS_COMMAND", "handler_b", 11),
+    }
+    assert validate(actors, valid_modules) == []
+
+    bad_domain = dict(valid_modules)
+    bad_domain["ACT_A"] = ModuleDef("ACT_A", "\"a\"", "EV_DOMAIN_NETWORK", "8U", "0U", "handler_a", 10)
+    assert any("domain mismatch" in error for error in validate(actors, bad_domain))
+
+    bad_capacity = dict(valid_modules)
+    bad_capacity["ACT_A"] = ModuleDef("ACT_A", "\"a\"", "EV_DOMAIN_FAST_LOOP", "16U", "0U", "handler_a", 10)
+    assert any("mailbox capacity mismatch" in error for error in validate(actors, bad_capacity))
+
+    duplicate_name = dict(valid_modules)
+    duplicate_name["ACT_B"] = ModuleDef("ACT_B", "\"a\"", "EV_DOMAIN_SLOW_IO", "16U", "0U", "handler_b", 11)
+    assert any("module_name is not unique" in error for error in validate(actors, duplicate_name))
+
+    bad_policy = dict(valid_modules)
+    bad_policy["ACT_B"] = ModuleDef(
+        "ACT_B", "\"b\"", "EV_DOMAIN_SLOW_IO", "16U",
+        "EV_ROUTE_QOS_COMMAND | EV_ROUTE_QOS_TELEMETRY", "handler_b", 11
+    )
+    assert any("bitmasks are blocked" in error for error in validate(actors, bad_policy))
+
+    unknown_domain = {"ACT_A": ActorDef("ACT_A", "EV_DOMAIN_UNKNOWN", "EV_MAILBOX_FIFO_8", 1)}
+    unknown_module = {"ACT_A": ModuleDef("ACT_A", "\"a\"", "EV_DOMAIN_UNKNOWN", "8U", "0U", "handler_a", 10)}
+    assert any("unknown execution domain" in error for error in validate(unknown_domain, unknown_module))
+
+
 def main() -> int:
     self_test_parser()
+    self_test_validation()
     actors, actor_errors = parse_actors(ROOT / "config" / "actors.def")
     modules, module_errors = parse_modules(ROOT / "config" / "modules.def")
     errors = actor_errors + module_errors + validate(actors, modules)

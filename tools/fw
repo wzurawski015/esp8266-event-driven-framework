@@ -173,7 +173,8 @@ Notes:
     resolves the serial port from the selected target USB-UART profile, preferring
     /dev/serial/by-id and VID/PID matches. Ambiguous matches fail safely.
   - For WiFi secrets, prefer EV_WIFI_PASSWORD or interactive prompt over shell
-    history. Local board_secrets.local.h files are ignored by git.
+    history. Private-repo mode may track allowlisted board_secrets.local.h files;
+    public packaging must run make public-release-safety-gate.
 USAGE
 }
 

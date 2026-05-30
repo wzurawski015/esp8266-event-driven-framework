@@ -69,6 +69,9 @@ DRIVER_SRCS := \
 
 APP_SRCS := \
     apps/demo/ev_demo_app.c \
+    apps/demo/ev_demo_board_wiring.c \
+    apps/demo/ev_demo_policy.c \
+    apps/demo/ev_demo_presentation.c \
     apps/demo/ev_demo_runtime_instances.c
 
 TEST_SUPPORT_SRCS := \
@@ -137,6 +140,7 @@ HOST_TESTS := \
     test_fault_metrics_trace_framework \
     test_delivery_trace_timestamp \
     test_actor_layering_contract \
+    test_demo_composition_root_contract \
     test_delivery_command_network_framework
 
 HOST_TEST_BINS := $(addprefix $(BUILD_DIR)/,$(HOST_TESTS))

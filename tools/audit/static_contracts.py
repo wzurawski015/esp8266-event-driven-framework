@@ -464,10 +464,69 @@ for rel, symbol in sorted(set(ADAPTER_EXCEPTION_ALLOWLIST) - ADAPTER_EXCEPTION_O
     errors.append(f"adapter exception allowlist entry is unused or stale: {rel}:{symbol}")
 
 
-# Hard demo runtime_graph migration contracts.
-demo_h = ROOT / "apps" / "demo" / "include" / "ev" / "demo_app.h"
-demo_c = ROOT / "apps" / "demo" / "ev_demo_app.c"
+# Hard demo composition-root and runtime_graph migration contracts.
+demo_dir = ROOT / "apps" / "demo"
+demo_h = demo_dir / "include" / "ev" / "demo_app.h"
+demo_c = demo_dir / "ev_demo_app.c"
 adapter_c = ROOT / "adapters" / "esp8266_rtos_sdk" / "components" / "ev_platform" / "ev_runtime_app.c"
+demo_required_split_files = [
+    "ev_demo_policy.c",
+    "ev_demo_board_wiring.c",
+    "ev_demo_presentation.c",
+    "include/ev/demo_policy.h",
+    "include/ev/demo_board_wiring.h",
+    "include/ev/demo_presentation.h",
+    "include/ev/demo_internal.h",
+]
+for rel_demo in demo_required_split_files:
+    if not (demo_dir / rel_demo).exists():
+        errors.append(f"demo composition-root split file missing: apps/demo/{rel_demo}")
+report_path = ROOT / "docs" / "release" / "demo_composition_root_report.md"
+if not report_path.exists():
+    errors.append("demo composition-root report missing: docs/release/demo_composition_root_report.md")
+if demo_dir.exists():
+    for p in iter_repo_files(demo_dir):
+        if p.suffix not in {".c", ".h"}:
+            continue
+        rel = p.relative_to(ROOT).as_posix()
+        code = strip_comments(p.read_text(encoding="utf-8", errors="ignore"))
+        if RUNTIME_GRAPH_INTERNAL_INCLUDE_RE.search(code) is not None:
+            errors.append(f"demo must not include runtime graph internals: {rel}")
+        if SDK_INCLUDE.search(code) is not None:
+            errors.append(f"demo must not include ESP8266 SDK directly: {rel}")
+        for token, message in {
+            "ev_actor_registry_bind": "demo must not manually bind actor registry",
+            "ev_domain_pump_init": "demo must not initialize domain pumps",
+            "ev_system_pump_init": "demo must not initialize system pump",
+            "ev_system_pump_run": "demo must not run system pump directly",
+            "ev_runtime_scheduler_poll_once": "demo must use runtime_loop instead of polling scheduler directly",
+            "ev_timer_publish_due": "demo must use runtime_loop/graph timer APIs instead of publishing timers directly",
+        }.items():
+            if token in code:
+                errors.append(f"{message}: {rel}")
+if demo_c.exists():
+    demo_app_text = demo_c.read_text(encoding="utf-8", errors="ignore")
+    demo_app_line_count = len(demo_app_text.splitlines())
+    demo_app_code = strip_comments(demo_app_text)
+    if demo_app_line_count > 1100:
+        errors.append(f"demo composition root too large: apps/demo/ev_demo_app.c has {demo_app_line_count} lines")
+    for token, message in {
+        "ev_runtime_builder_init": "demo runtime builder wiring belongs in demo_board_wiring.c",
+        "ev_runtime_builder_add_instance": "demo runtime instance binding belongs in demo_board_wiring.c",
+        "ev_runtime_builder_bind_routes": "demo route binding belongs in demo_board_wiring.c",
+        "ev_panel_actor_init": "concrete actor initialization belongs in demo_board_wiring.c",
+        "ev_supervisor_actor_init": "concrete actor initialization belongs in demo_board_wiring.c",
+        "ev_power_actor_init": "concrete actor initialization belongs in demo_board_wiring.c",
+        "ev_watchdog_actor_init": "concrete actor initialization belongs in demo_board_wiring.c",
+        "ev_network_actor_init": "concrete actor initialization belongs in demo_board_wiring.c",
+        "ev_command_actor_init": "concrete actor initialization belongs in demo_board_wiring.c",
+        "ev_mcp23008_actor_init": "concrete actor initialization belongs in demo_board_wiring.c",
+        "ev_rtc_actor_init": "concrete actor initialization belongs in demo_board_wiring.c",
+        "ev_ds18b20_actor_init": "concrete actor initialization belongs in demo_board_wiring.c",
+        "ev_oled_actor_init": "concrete actor initialization belongs in demo_board_wiring.c",
+    }.items():
+        if token in demo_app_code:
+            errors.append(message)
 if demo_h.exists():
     demo_h_text = strip_comments(demo_h.read_text(encoding="utf-8", errors="ignore"))
     forbidden_demo_header_tokens = {

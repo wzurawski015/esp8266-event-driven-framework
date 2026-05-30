@@ -98,13 +98,13 @@ Each layer section uses the same fields:
 - **Bootstrap-only**: partly. Builder and graph initialization are bootstrap-only;
   scheduler, delivery, ingress, timer, trace, metrics, and outbox code are runtime
   hot path.
-- **Current technical exceptions**: `ev_runtime_graph_t` remains a public structure
-  for static storage ownership, but direct field access outside `runtime/src` is
-  now a static-contract violation. Delivery trace records still set
-  `timestamp_us = 0U`.
-- **Migration direction**: make `ev_runtime_graph_t` fully opaque after the static
-  storage contract is explicit, then timestamp trace delivery records from the
-  monotonic clock port.
+- **Current technical exceptions**: public code owns only bounded opaque runtime
+  graph storage; the actual graph layout is internal to `runtime/src`. Delivery
+  trace timestamps are read from the monotonic clock port with zero only as an
+  explicit fallback.
+- **Migration direction**: keep the graph boundary opaque and move remaining
+  policy-heavy application code into small app-local policy, wiring, and
+  presentation units.
 
 ## actor descriptors / module registry
 
@@ -208,11 +208,13 @@ Each layer section uses the same fields:
 - **Hot path**: yes for app actor handlers and policy callbacks.
 - **Bootstrap-only**: composition code is bootstrap-only; actor behavior is runtime
   code.
-- **Current technical exceptions**: demo code still composes concrete actor
-  contexts and owns opaque `ev_runtime_graph_t` storage as a composition root.
-- **Migration direction**: reduce demo code further to composition root and
-  example policy now that graph internals and concrete actor placement are
-  separated.
+- **Current technical exceptions**: demo code still owns opaque
+  `ev_runtime_graph_t` storage and concrete actor contexts as the designated
+  composition root. Demo policy, board wiring, and presentation are now split
+  from `ev_demo_app.c` so the root no longer acts as a monolithic framework.
+- **Migration direction**: keep apps as composition roots and move the next
+  hardening effort to host safety gates, zero-copy payload contracts, QoS, and
+  formal deep-sleep protocol work.
 
 ## adapters
 

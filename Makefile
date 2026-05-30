@@ -68,6 +68,7 @@ APP_SRCS := \
     apps/demo/ev_demo_runtime_instances.c
 
 TEST_SUPPORT_SRCS := \
+    tests/host/fakes/fake_clock_port.c \
     tests/host/fakes/fake_i2c_port.c \
     tests/host/fakes/fake_irq_port.c \
     tests/host/fakes/fake_onewire_port.c \
@@ -129,6 +130,7 @@ HOST_TESTS := \
     test_demo_runtime_instances \
     test_demo_migration_blockers \
     test_fault_metrics_trace_framework \
+    test_delivery_trace_timestamp \
     test_delivery_command_network_framework
 
 HOST_TEST_BINS := $(addprefix $(BUILD_DIR)/,$(HOST_TESTS))

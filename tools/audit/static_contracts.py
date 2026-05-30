@@ -171,10 +171,24 @@ def validate_route_qos_contract() -> None:
         ) is not None:
             errors.append("delivery service reintroduced hand-coded strict QoS disjunction")
 
+def validate_trace_timestamp_contract() -> None:
+    delivery_path = ROOT / "runtime" / "src" / "ev_delivery_service.c"
+    if not delivery_path.exists():
+        errors.append("delivery service missing: runtime/src/ev_delivery_service.c")
+        return
+    code = strip_comments(delivery_path.read_text(encoding="utf-8", errors="ignore"))
+    if re.search(r"\brec\s*\.\s*timestamp_us\s*=\s*0U\s*;", code) is not None:
+        errors.append("delivery trace timestamp must be read from the monotonic clock port, with zero only as fallback")
+    if "ev_delivery_trace_timestamp_us" not in code:
+        errors.append("delivery trace timestamp helper missing")
+    if "mono_now_us" not in code:
+        errors.append("delivery trace must call the monotonic clock port")
+
 static_contract_self_test()
 validate_layering_contract_document()
 validate_runtime_graph_access_boundary()
 validate_route_qos_contract()
+validate_trace_timestamp_contract()
 
 for artifact in iter_repo_files(ROOT):
     if is_ignored_path(artifact):

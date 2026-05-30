@@ -109,6 +109,7 @@ ev_result_t ev_runtime_graph_schedule_oneshot(ev_runtime_graph_t *graph,
 size_t ev_runtime_graph_timer_pending_count(const ev_runtime_graph_t *graph);
 ev_result_t ev_runtime_graph_trace_record(ev_runtime_graph_t *graph, const ev_trace_record_t *record);
 void ev_runtime_graph_trace_clear(ev_runtime_graph_t *graph);
+size_t ev_runtime_graph_trace_drain(ev_runtime_graph_t *graph, ev_trace_record_t *out_records, size_t max_records);
 ev_result_t ev_runtime_graph_publish(ev_runtime_graph_t *graph, const ev_msg_t *msg, ev_delivery_report_t *out_report);
 ev_result_t ev_runtime_graph_send(ev_runtime_graph_t *graph, ev_actor_id_t target_actor, const ev_msg_t *msg);
 ev_result_t ev_runtime_graph_post_event(ev_runtime_graph_t *graph, ev_event_id_t event_id, ev_actor_id_t source_actor, const void *payload, size_t payload_size);

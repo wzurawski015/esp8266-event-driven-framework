@@ -45,13 +45,30 @@ static void ev_delivery_emit_fault(ev_runtime_graph_t *graph, ev_actor_id_t sour
     }
 }
 
+static uint32_t ev_delivery_trace_timestamp_us(const ev_runtime_graph_t *graph)
+{
+    ev_time_mono_us_t now_us = 0U;
+
+    if ((graph == NULL) ||
+        (graph->ports.clock == NULL) ||
+        (graph->ports.clock->mono_now_us == NULL)) {
+        return 0U;
+    }
+
+    if (graph->ports.clock->mono_now_us(graph->ports.clock->ctx, &now_us) != EV_OK) {
+        return 0U;
+    }
+
+    return (uint32_t)now_us;
+}
+
 static void ev_delivery_trace(ev_runtime_graph_t *graph, const ev_route_t *route, const ev_msg_t *msg, ev_result_t result)
 {
     ev_trace_record_t rec;
     if ((graph == NULL) || (route == NULL) || (msg == NULL)) {
         return;
     }
-    rec.timestamp_us = 0U;
+    rec.timestamp_us = ev_delivery_trace_timestamp_us(graph);
     rec.event_id = msg->event_id;
     rec.source_actor = msg->source_actor;
     rec.target_actor = route->target_actor;

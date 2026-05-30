@@ -671,6 +671,14 @@ void ev_runtime_graph_trace_clear(ev_runtime_graph_t *graph)
     }
 }
 
+size_t ev_runtime_graph_trace_drain(ev_runtime_graph_t *graph, ev_trace_record_t *out_records, size_t max_records)
+{
+    if ((graph == NULL) || ((out_records == NULL) && (max_records > 0U))) {
+        return 0U;
+    }
+    return ev_trace_drain(&graph->trace_ring, out_records, max_records);
+}
+
 ev_result_t ev_runtime_graph_schedule_periodic(ev_runtime_graph_t *graph,
                                                uint32_t now_ms,
                                                uint32_t period_ms,

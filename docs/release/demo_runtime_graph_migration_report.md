@@ -20,7 +20,7 @@ Demo periodic ticks are now scheduled through `ev_timer_service_t` in `ev_runtim
 
 ## Commit 5 delivery migration
 
-Actor-level compatibility delivery now consults `ev_runtime_graph_active_routes()` for the `(event_id, target_actor)` pair before sending. Optional-disabled route counters remain available for demo compatibility, but their source is the framework active route state rather than a parallel actor-enabled check.
+Actor-level compatibility delivery now consults `ev_runtime_graph_route_table()` for the `(event_id, target_actor)` pair before sending. Optional-disabled route counters remain available for demo compatibility, but their source is the framework active route state rather than a parallel actor-enabled check.
 
 ## Commit 6 quiescence migration
 

@@ -1,6 +1,7 @@
 #include <assert.h>
 
 #include "ev/runtime_graph.h"
+#include "ev/runtime_graph_inspection.h"
 
 int main(void)
 {
@@ -30,7 +31,7 @@ int main(void)
     assert(report.matched_routes > 0U);
     assert(report.delivered == 0U);
     assert(report.dropped > 0U);
-    assert(graph.metrics.values[EV_METRIC_ROUTE_DISABLED_SKIPPED] > 0U);
-    assert(graph.metrics.values[EV_METRIC_POST_OK] > 0U);
+    assert(ev_runtime_graph_metric_value(&graph, EV_METRIC_ROUTE_DISABLED_SKIPPED) > 0U);
+    assert(ev_runtime_graph_metric_value(&graph, EV_METRIC_POST_OK) > 0U);
     return 0;
 }

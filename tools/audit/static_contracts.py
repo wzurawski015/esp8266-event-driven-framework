@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import re
 
 ROOT = Path(__file__).resolve().parents[2]
 errors: list[str] = []
 
 IGNORED_DIRS = {".git", "build", "logs", "log", "docker", "docs/generated", "__pycache__"}
+IGNORED_DIR_NAMES = {entry for entry in IGNORED_DIRS if "/" not in entry}
+IGNORED_PATH_PREFIXES = {entry for entry in IGNORED_DIRS if "/" in entry}
 
 FORBIDDEN_HEAP = re.compile(
     r"\b(malloc|calloc|realloc|free|strdup|pvPortMalloc|vPortFree|heap_caps_malloc|heap_caps_free)\s*\("
@@ -28,6 +31,33 @@ ADAPTER_BOOTSTRAP_CALLS = {
 ADAPTER_EXCEPTION_RE = re.compile(r"^\s*EV_ADAPTER_EXCEPTION\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^,]+)\s*,\s*(.*?)\s*\)\s*$")
 ADAPTER_EXCEPTION_CATEGORIES = {"bootstrap", "hil_bootstrap", "static_safe"}
 
+REQUIRED_LAYERING_CONTRACT_SECTIONS = [
+    "config/codegen",
+    "core kernel",
+    "runtime",
+    "actor descriptors / module registry",
+    "device actors",
+    "drivers",
+    "ports",
+    "apps",
+    "adapters",
+    "bsp",
+    "tests",
+    "tools",
+    "docs",
+]
+
+def validate_layering_contract_document() -> None:
+    contract_path = ROOT / "docs" / "architecture" / "layering-contract.md"
+    if not contract_path.exists():
+        errors.append("layering contract missing: docs/architecture/layering-contract.md")
+        return
+    contract = contract_path.read_text(encoding="utf-8", errors="ignore")
+    for section in REQUIRED_LAYERING_CONTRACT_SECTIONS:
+        if re.search(rf"^##\s+{re.escape(section)}\s*$", contract, flags=re.MULTILINE) is None:
+            errors.append(f"layering contract missing section: {section}")
+
+
 def strip_comments(text: str) -> str:
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
     text = re.sub(r"//.*", "", text)
@@ -35,8 +65,135 @@ def strip_comments(text: str) -> str:
 
 
 def is_ignored_path(path: Path) -> bool:
-    rel = path.relative_to(ROOT).as_posix()
-    return any(rel == ignored or rel.startswith(f"{ignored}/") for ignored in IGNORED_DIRS)
+    rel_path = path.relative_to(ROOT)
+    rel_parts = rel_path.parts
+    rel = rel_path.as_posix()
+    if any(part in IGNORED_DIR_NAMES for part in rel_parts):
+        return True
+    return any(rel == ignored or rel.startswith(f"{ignored}/") for ignored in IGNORED_PATH_PREFIXES)
+
+
+def iter_repo_files(base: Path = ROOT):
+    for dirpath, dirnames, filenames in os.walk(base):
+        current = Path(dirpath)
+        dirnames[:] = [name for name in dirnames if not is_ignored_path(current / name)]
+        for filename in filenames:
+            candidate = current / filename
+            if not is_ignored_path(candidate):
+                yield candidate
+
+
+GRAPH_INTERNAL_FIELDS = [
+    "registry",
+    "actor_runtimes",
+    "mailboxes",
+    "mailbox_storage",
+    "actor_contexts",
+    "descriptors",
+    "instances",
+    "instance_bound",
+    "lifecycle",
+    "actor_enabled",
+    "timer_service",
+    "ingress_service",
+    "quiescence_service",
+    "faults",
+    "metrics",
+    "trace_ring",
+    "active_routes",
+    "scheduler",
+    "active_routes_bound",
+    "board_capabilities",
+    "runtime_capabilities",
+    "ports",
+    "board_profile",
+]
+GRAPH_INTERNAL_FIELD_ALT = "|".join(re.escape(field) for field in GRAPH_INTERNAL_FIELDS)
+GRAPH_INTERNAL_ACCESS_RE = re.compile(
+    rf"(?:\bgraph\s*(?:->|\.)|(?:\.|->)\s*graph\s*(?:->|\.))\s*({GRAPH_INTERNAL_FIELD_ALT})\b"
+)
+GRAPH_NULL_CAST_ACCESS_RE = re.compile(
+    rf"\(\s*\(\s*ev_runtime_graph_t\s*\*\s*\)\s*0\s*\)\s*->\s*({GRAPH_INTERNAL_FIELD_ALT})\b"
+)
+GRAPH_ACCESS_AUDIT_ROOTS = ("apps", "adapters", "core", "modules", "drivers", "ports", "tests", "tools", "runtime/include")
+GRAPH_ACCESS_ALLOWLIST = {"tools/audit/static_contracts.py"}
+
+
+def is_graph_audit_path(rel: str) -> bool:
+    return any(rel == root or rel.startswith(f"{root}/") for root in GRAPH_ACCESS_AUDIT_ROOTS)
+
+
+def graph_access_is_allowlisted(rel: str) -> bool:
+    return rel.startswith("runtime/src/") or rel in GRAPH_ACCESS_ALLOWLIST
+
+
+
+RUNTIME_GRAPH_PUBLIC_HEADER_FORBIDDEN = [
+    "registry",
+    "actor_runtimes",
+    "mailboxes",
+    "mailbox_storage",
+    "actor_contexts",
+    "descriptors",
+    "instances",
+    "instance_bound",
+    "lifecycle",
+    "actor_enabled",
+    "timer_service",
+    "ingress_service",
+    "quiescence_service",
+    "faults",
+    "metrics",
+    "trace_ring",
+    "active_routes",
+    "scheduler",
+    "active_routes_bound",
+    "board_capabilities",
+    "runtime_capabilities",
+]
+RUNTIME_GRAPH_INTERNAL_INCLUDE_RE = re.compile(r'#\s*include\s*[<"]ev_runtime_graph_internal\.h[>"]')
+
+
+def validate_runtime_graph_public_header_opaque() -> None:
+    public_header = ROOT / "runtime" / "include" / "ev" / "runtime_graph.h"
+    if not public_header.exists():
+        errors.append("runtime graph public header missing: runtime/include/ev/runtime_graph.h")
+        return
+    code = strip_comments(public_header.read_text(encoding="utf-8", errors="ignore"))
+    for field in RUNTIME_GRAPH_PUBLIC_HEADER_FORBIDDEN:
+        if re.search(rf"\b{re.escape(field)}\b", code) is not None:
+            errors.append(f"runtime graph public header exposes internal field name: {field}")
+    if "EV_RUNTIME_GRAPH_OPAQUE_STORAGE_BYTES" not in code:
+        errors.append("runtime graph public header must expose bounded opaque storage size")
+    if "ev_runtime_graph_opaque_storage_t" not in code:
+        errors.append("runtime graph public header must use an opaque storage wrapper")
+
+
+def validate_runtime_graph_internal_header_boundary() -> None:
+    for p in iter_repo_files(ROOT):
+        if p.suffix not in {".c", ".h"}:
+            continue
+        rel = p.relative_to(ROOT).as_posix()
+        if rel.startswith("runtime/src/"):
+            continue
+        code = strip_comments(p.read_text(encoding="utf-8", errors="ignore"))
+        if RUNTIME_GRAPH_INTERNAL_INCLUDE_RE.search(code) is not None:
+            errors.append(f"runtime graph internal header included outside runtime/src: {rel}")
+
+def validate_runtime_graph_access_boundary() -> None:
+    for p in iter_repo_files(ROOT):
+        if p.suffix not in {".c", ".h", ".py"}:
+            continue
+        rel = p.relative_to(ROOT).as_posix()
+        if not is_graph_audit_path(rel) or graph_access_is_allowlisted(rel):
+            continue
+        code = strip_comments(p.read_text(encoding="utf-8", errors="ignore"))
+        for pattern in (GRAPH_INTERNAL_ACCESS_RE, GRAPH_NULL_CAST_ACCESS_RE):
+            for match in pattern.finditer(code):
+                line_no = code.count("\n", 0, match.start()) + 1
+                errors.append(
+                    f"runtime graph internal field access outside runtime boundary: {rel}:{line_no} uses {match.group(1)}"
+                )
 
 
 def static_contract_self_test() -> None:
@@ -49,9 +206,45 @@ def static_contract_self_test() -> None:
         errors.append("static-contract self-test failed: heap API in comments was not ignored")
 
 
-static_contract_self_test()
 
-for artifact in ROOT.rglob("*"):
+def validate_route_qos_contract() -> None:
+    report_path = ROOT / "docs" / "release" / "route_qos_enforcement_report.md"
+    if not report_path.exists():
+        errors.append("route QoS enforcement report missing: docs/release/route_qos_enforcement_report.md")
+
+    delivery_path = ROOT / "runtime" / "src" / "ev_delivery_service.c"
+    if delivery_path.exists():
+        code = strip_comments(delivery_path.read_text(encoding="utf-8", errors="ignore"))
+        if re.search(
+            r"EV_ROUTE_QOS_CRITICAL\s*\|\|[^;{}]*"
+            r"EV_ROUTE_QOS_WAKEUP_CRITICAL\s*\|\|[^;{}]*"
+            r"EV_ROUTE_QOS_COMMAND",
+            code,
+        ) is not None:
+            errors.append("delivery service reintroduced hand-coded strict QoS disjunction")
+
+def validate_trace_timestamp_contract() -> None:
+    delivery_path = ROOT / "runtime" / "src" / "ev_delivery_service.c"
+    if not delivery_path.exists():
+        errors.append("delivery service missing: runtime/src/ev_delivery_service.c")
+        return
+    code = strip_comments(delivery_path.read_text(encoding="utf-8", errors="ignore"))
+    if re.search(r"\brec\s*\.\s*timestamp_us\s*=\s*0U\s*;", code) is not None:
+        errors.append("delivery trace timestamp must be read from the monotonic clock port, with zero only as fallback")
+    if "ev_delivery_trace_timestamp_us" not in code:
+        errors.append("delivery trace timestamp helper missing")
+    if "mono_now_us" not in code:
+        errors.append("delivery trace must call the monotonic clock port")
+
+static_contract_self_test()
+validate_layering_contract_document()
+validate_runtime_graph_public_header_opaque()
+validate_runtime_graph_internal_header_boundary()
+validate_runtime_graph_access_boundary()
+validate_route_qos_contract()
+validate_trace_timestamp_contract()
+
+for artifact in iter_repo_files(ROOT):
     if is_ignored_path(artifact):
         continue
     if artifact.is_file() and artifact.suffix in {".orig", ".rej"}:
@@ -110,7 +303,7 @@ for subdir in ["core", "runtime", "modules", "drivers", "ports", "apps", "tests/
     base = ROOT / subdir
     if not base.exists():
         continue
-    for p in base.rglob("*"):
+    for p in iter_repo_files(base):
         if is_ignored_path(p):
             continue
         if p.suffix not in {".c", ".h"}:
@@ -157,7 +350,7 @@ for rel in ["config/faults.def", "config/metrics.def", "config/modules.def", "co
     if not (ROOT / rel).exists():
         errors.append(f"required SSOT file missing: {rel}")
 
-for p in (ROOT / "adapters").rglob("*"):
+for p in iter_repo_files(ROOT / "adapters"):
     if p.suffix not in {".c", ".h"}:
         continue
     text = p.read_text(encoding="utf-8", errors="ignore")
@@ -170,7 +363,7 @@ for p in (ROOT / "adapters").rglob("*"):
 if (ROOT / "app" / "ev_demo_app.c").exists():
     errors.append("legacy app/ev_demo_app.c remains outside apps/demo")
 
-for p in (ROOT / "adapters").rglob("*"):
+for p in iter_repo_files(ROOT / "adapters"):
     if is_ignored_path(p):
         continue
     if p.suffix not in {".c", ".h"}:

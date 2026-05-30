@@ -1,6 +1,7 @@
 #include <assert.h>
 
 #include "ev/runtime_graph.h"
+#include "ev/runtime_graph_inspection.h"
 
 int main(void)
 {
@@ -12,7 +13,7 @@ int main(void)
     assert(ev_runtime_builder_add_module(&builder, ACT_FAULT) == EV_OK);
     assert(ev_runtime_builder_add_module(&builder, ACT_METRICS) == EV_OK);
     assert(ev_runtime_builder_bind_routes(&builder) == EV_OK);
-    routes = ev_runtime_graph_active_routes(&graph);
+    routes = ev_runtime_graph_route_table(&graph);
     assert(routes != 0);
     assert(routes->count == ev_route_count());
     assert(routes->active_count >= 1U);

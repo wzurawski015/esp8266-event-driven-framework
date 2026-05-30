@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "ev/runtime_loop.h"
+#include "ev/runtime_graph_timers.h"
 
 static ev_result_t fake_now(void *ctx, uint32_t *out_now_ms)
 {

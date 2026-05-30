@@ -109,5 +109,5 @@ SDK/HIL/Wemos PASS is claimed only from real SDK build logs or serial monitor PA
 
 ## Local WiFi credentials
 
-WiFi credentials are intentionally kept out of tracked files. Use `./tools/fw wifi-secrets-atnel`, `./tools/fw wifi-secrets-wemos`, or `./tools/fw wifi-secrets-all` to create ignored `board_secrets.local.h` files for supported boards, then build/flash with the target-specific WiFi wrappers. See `docs/specs/wifi-local-secrets.md`.
+WiFi credentials use two explicit modes. In private/lab mode, the Wemos BSP-local `board_secrets.local.h` file may be tracked by the repository owner, but secret values must not leak into logs, generated reports or patch artifacts. Public release mode must run `make public-release-safety-gate` and fails while real local secrets are present. Use `./tools/fw wifi-secrets-atnel`, `./tools/fw wifi-secrets-wemos`, or `./tools/fw wifi-secrets-all` to create/update board-local secret files. See `docs/specs/wifi-local-secrets.md` and `docs/security/private-repo-secrets-policy.md`.
 

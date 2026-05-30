@@ -6,6 +6,7 @@
 #include "ev/metrics_registry.h"
 #include "ev/runtime_graph.h"
 #include "ev/timer_service.h"
+#include "ev_runtime_graph_internal.h"
 
 static void ev_quiescence_report_init(ev_quiescence_report_t *report)
 {
@@ -80,28 +81,28 @@ ev_result_t ev_runtime_is_quiescent_at(ev_runtime_graph_t *graph, uint32_t now_m
     effective_policy = (policy != NULL) ? *policy : ev_quiescence_default_policy();
 
     for (i = 0U; i < (size_t)EV_ACTOR_COUNT; ++i) {
-        if (graph->actor_enabled[i] != 0U) {
-            report.pending_actor_messages += (uint32_t)ev_mailbox_count(&graph->mailboxes[i]);
-            if ((graph->instance_bound[i] != 0U) && (graph->instances[i].quiescence_fn != NULL)) {
-                (void)graph->instances[i].quiescence_fn(graph->actor_runtimes[i].actor_context, &report);
-            } else if ((graph->descriptors[i] != NULL) && (graph->descriptors[i]->quiescence_fn != NULL)) {
-                (void)graph->descriptors[i]->quiescence_fn(graph->actor_runtimes[i].actor_context, &report);
+        if (EV_RUNTIME_GRAPH_IMPL(graph)->actor_enabled[i] != 0U) {
+            report.pending_actor_messages += (uint32_t)ev_mailbox_count(&EV_RUNTIME_GRAPH_IMPL(graph)->mailboxes[i]);
+            if ((EV_RUNTIME_GRAPH_IMPL(graph)->instance_bound[i] != 0U) && (EV_RUNTIME_GRAPH_IMPL(graph)->instances[i].quiescence_fn != NULL)) {
+                (void)EV_RUNTIME_GRAPH_IMPL(graph)->instances[i].quiescence_fn(EV_RUNTIME_GRAPH_IMPL(graph)->actor_runtimes[i].actor_context, &report);
+            } else if ((EV_RUNTIME_GRAPH_IMPL(graph)->descriptors[i] != NULL) && (EV_RUNTIME_GRAPH_IMPL(graph)->descriptors[i]->quiescence_fn != NULL)) {
+                (void)EV_RUNTIME_GRAPH_IMPL(graph)->descriptors[i]->quiescence_fn(EV_RUNTIME_GRAPH_IMPL(graph)->actor_runtimes[i].actor_context, &report);
             }
         }
     }
-    report.pending_ingress_events = (uint32_t)ev_ingress_pending(&graph->ingress_service);
-    report.due_timers = ev_quiescence_due_timer_count(&graph->timer_service, now_ms);
-    report.pending_trace_records = (uint32_t)ev_trace_pending(&graph->trace_ring);
-    report.pending_fault_records = (uint32_t)ev_fault_pending_count(&graph->faults);
+    report.pending_ingress_events = (uint32_t)ev_ingress_pending(&EV_RUNTIME_GRAPH_IMPL(graph)->ingress_service);
+    report.due_timers = ev_quiescence_due_timer_count(&EV_RUNTIME_GRAPH_IMPL(graph)->timer_service, now_ms);
+    report.pending_trace_records = (uint32_t)ev_trace_pending(&EV_RUNTIME_GRAPH_IMPL(graph)->trace_ring);
+    report.pending_fault_records = (uint32_t)ev_fault_pending_count(&EV_RUNTIME_GRAPH_IMPL(graph)->faults);
     report.pending_log_records = 0U;
-    if ((graph->ports.log != NULL) && (graph->ports.log->pending != NULL)) {
+    if ((EV_RUNTIME_GRAPH_IMPL(graph)->ports.log != NULL) && (EV_RUNTIME_GRAPH_IMPL(graph)->ports.log->pending != NULL)) {
         uint32_t pending_logs = 0U;
-        if (graph->ports.log->pending(graph->ports.log->ctx, &pending_logs) == EV_OK) {
+        if (EV_RUNTIME_GRAPH_IMPL(graph)->ports.log->pending(EV_RUNTIME_GRAPH_IMPL(graph)->ports.log->ctx, &pending_logs) == EV_OK) {
             report.pending_log_records = pending_logs;
         }
     }
 
-    deadline_rc = ev_timer_next_deadline_ms(&graph->timer_service, &next_deadline);
+    deadline_rc = ev_timer_next_deadline_ms(&EV_RUNTIME_GRAPH_IMPL(graph)->timer_service, &next_deadline);
     if (deadline_rc == EV_OK) {
         report.next_deadline_ms = next_deadline;
         report.earliest_safe_sleep_until_ms = next_deadline;
@@ -123,7 +124,7 @@ ev_result_t ev_runtime_is_quiescent_at(ev_runtime_graph_t *graph, uint32_t now_m
         report.policy_blocker_mask |= EV_QUIESCENCE_POLICY_BLOCK_TRACE;
     }
     if (((effective_policy.fault_policy == EV_QUIESCENCE_BUFFER_BLOCK_UNTIL_DRAINED) && (report.pending_fault_records > 0U)) ||
-        ((effective_policy.fault_policy == EV_QUIESCENCE_BUFFER_BLOCK_CRITICAL_ONLY) && (ev_fault_has_critical(&graph->faults) != 0))) {
+        ((effective_policy.fault_policy == EV_QUIESCENCE_BUFFER_BLOCK_CRITICAL_ONLY) && (ev_fault_has_critical(&EV_RUNTIME_GRAPH_IMPL(graph)->faults) != 0))) {
         report.policy_blocker_mask |= EV_QUIESCENCE_POLICY_BLOCK_FAULT;
     }
     if ((effective_policy.log_policy == EV_QUIESCENCE_BUFFER_BLOCK_UNTIL_DRAINED) && (report.pending_log_records > 0U)) {
@@ -142,13 +143,13 @@ ev_result_t ev_runtime_is_quiescent_at(ev_runtime_graph_t *graph, uint32_t now_m
     if ((report.pending_actor_messages == 0U) &&
         (report.pending_ingress_events == 0U) &&
         (report.policy_blocker_mask == 0U)) {
-        graph->quiescence_service.accepted++;
-        (void)ev_metric_increment(&graph->metrics, EV_METRIC_QUIESCENCE_ACCEPTED, 1U);
+        EV_RUNTIME_GRAPH_IMPL(graph)->quiescence_service.accepted++;
+        (void)ev_metric_increment(&EV_RUNTIME_GRAPH_IMPL(graph)->metrics, EV_METRIC_QUIESCENCE_ACCEPTED, 1U);
         return EV_OK;
     }
 
-    graph->quiescence_service.rejected++;
-    (void)ev_metric_increment(&graph->metrics, EV_METRIC_QUIESCENCE_REJECTED, 1U);
+    EV_RUNTIME_GRAPH_IMPL(graph)->quiescence_service.rejected++;
+    (void)ev_metric_increment(&EV_RUNTIME_GRAPH_IMPL(graph)->metrics, EV_METRIC_QUIESCENCE_REJECTED, 1U);
     return EV_ERR_NOT_READY;
 }
 
@@ -163,5 +164,5 @@ ev_result_t ev_runtime_next_wake_deadline_ms(ev_runtime_graph_t *graph, uint32_t
     if ((graph == NULL) || (out_deadline_ms == NULL)) {
         return EV_ERR_INVALID_ARG;
     }
-    return ev_timer_next_deadline_ms(&graph->timer_service, out_deadline_ms);
+    return ev_timer_next_deadline_ms(&EV_RUNTIME_GRAPH_IMPL(graph)->timer_service, out_deadline_ms);
 }

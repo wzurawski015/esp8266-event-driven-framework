@@ -26,8 +26,19 @@ typedef struct {
     size_t optional_disabled_network_routes;
 } ev_delivery_report_t;
 
+/**
+ * @brief Failure behavior used by delivery when a route target cannot accept a message.
+ */
+typedef enum {
+    EV_DELIVERY_QOS_FAILURE_STRICT = 0,
+    EV_DELIVERY_QOS_FAILURE_DROP = 1
+} ev_delivery_qos_failure_policy_t;
+
 void ev_delivery_service_init(ev_delivery_service_t *svc, struct ev_runtime_graph *graph);
 void ev_delivery_report_reset(ev_delivery_report_t *report);
+ev_delivery_qos_failure_policy_t ev_delivery_qos_failure_policy(ev_route_qos_t qos);
+int ev_delivery_qos_failure_is_drop(ev_route_qos_t qos);
+int ev_delivery_qos_failure_is_strict(ev_route_qos_t qos);
 ev_result_t ev_delivery_publish(ev_delivery_service_t *svc, const ev_msg_t *msg, ev_delivery_report_t *report);
 
 #endif

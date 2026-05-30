@@ -3,6 +3,7 @@
 #include "ev/runtime_graph.h"
 #include "ev/runtime_poll.h"
 #include "ev/power_manager.h"
+#include "ev/runtime_graph_timers.h"
 
 static ev_result_t timer_sink(ev_actor_id_t target_actor, const ev_msg_t *msg, void *ctx)
 {
@@ -28,12 +29,12 @@ int main(void)
     assert(ev_runtime_builder_add_module(&builder, ACT_METRICS) == EV_OK);
     assert(ev_runtime_builder_build(&builder) == EV_OK);
 
-    assert(ev_timer_schedule_oneshot(&graph.timer_service, 100U, 50U, ACT_FAULT, EV_TICK_1S, 0U, &token) == EV_OK);
-    assert(ev_timer_pending_count(&graph.timer_service) == 1U);
-    assert(ev_timer_publish_due(&graph.timer_service, 149U, timer_sink, &published, 4U) == 0U);
-    assert(ev_timer_publish_due(&graph.timer_service, 150U, timer_sink, &published, 4U) == 1U);
+    assert(ev_runtime_graph_schedule_oneshot(&graph, 100U, 50U, ACT_FAULT, EV_TICK_1S, 0U, &token) == EV_OK);
+    assert(ev_runtime_graph_timer_pending_count(&graph) == 1U);
+    assert(ev_runtime_graph_publish_due_timers(&graph, 149U, timer_sink, &published, 4U) == 0U);
+    assert(ev_runtime_graph_publish_due_timers(&graph, 150U, timer_sink, &published, 4U) == 1U);
     assert(published == 1U);
-    assert(ev_timer_pending_count(&graph.timer_service) == 0U);
+    assert(ev_runtime_graph_timer_pending_count(&graph) == 0U);
 
     ev_power_manager_init(&power, &policy);
     assert(ev_runtime_is_quiescent(&graph, &report) == EV_OK);

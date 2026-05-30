@@ -23,3 +23,10 @@ profile selection and compatibility counters only. Remaining hardening work is
 to hide scheduler/timer internals behind public graph APIs, move poll
 orchestration into `runtime_loop`, and replace the demo delivery callback with a
 graph-backed actor publish port.
+
+## Layering contract
+
+The hard dependency rules for each repository layer are defined in
+[`layering-contract.md`](layering-contract.md). That document is the reference
+for future graph opacity, QoS, performance, deep-sleep, and device-actor
+migration work.

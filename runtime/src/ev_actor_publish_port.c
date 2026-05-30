@@ -5,23 +5,27 @@
 #include "ev/active_route_table.h"
 #include "ev/actor_catalog.h"
 #include "ev/metrics_registry.h"
+#include "ev_runtime_graph_internal.h"
+#include "ev/runtime_graph_inspection.h"
 
 static const ev_active_route_t *ev_actor_publish_find_route(ev_runtime_graph_t *graph,
                                                             ev_event_id_t event_id,
                                                             ev_actor_id_t target_actor)
 {
     const ev_active_route_table_t *routes;
+    ev_route_span_t span;
     size_t i;
 
     if (graph == NULL) {
         return NULL;
     }
-    routes = ev_runtime_graph_active_routes(graph);
+    routes = ev_runtime_graph_route_table(graph);
     if (routes == NULL) {
         return NULL;
     }
-    for (i = 0U; i < routes->count; ++i) {
-        const ev_active_route_t *entry = ev_active_route_at(routes, i);
+    span = ev_active_route_table_span_for_event(routes, event_id);
+    for (i = 0U; i < span.count; ++i) {
+        const ev_active_route_t *entry = ev_active_route_at(routes, span.start_index + i);
         if ((entry != NULL) &&
             (entry->route.event_id == event_id) &&
             (entry->route.target_actor == target_actor)) {
@@ -76,7 +80,7 @@ ev_result_t ev_actor_send(ev_actor_publish_port_t *port, ev_actor_id_t target_ac
             if (target_actor == ACT_NETWORK) {
                 port->stats.optional_disabled_network_routes++;
             }
-            (void)ev_metric_increment(&port->graph->metrics, EV_METRIC_ROUTE_DISABLED_SKIPPED, 1U);
+            (void)ev_metric_increment(&EV_RUNTIME_GRAPH_IMPL(port->graph)->metrics, EV_METRIC_ROUTE_DISABLED_SKIPPED, 1U);
             return EV_OK;
         }
         if (route->state != EV_ACTIVE_ROUTE_ENABLED) {

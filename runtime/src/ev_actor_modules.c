@@ -1,13 +1,14 @@
 #include "ev/actor_module.h"
 
 #include "ev/runtime_graph.h"
+#include "ev_runtime_graph_internal.h"
 
 ev_result_t ev_default_module_init(ev_runtime_graph_t *graph, const ev_actor_module_descriptor_t *descriptor)
 {
     if ((graph == NULL) || (descriptor == NULL)) {
         return EV_ERR_INVALID_ARG;
     }
-    graph->runtime_capabilities.active |= descriptor->provided_capabilities;
+    EV_RUNTIME_GRAPH_IMPL(graph)->runtime_capabilities.active |= descriptor->provided_capabilities;
     return EV_OK;
 }
 
@@ -86,7 +87,7 @@ ev_result_t ev_framework_actor_handle(void *actor_context, const ev_msg_t *msg)
     }
 
     if (msg->event_id == EV_ACTOR_LIFECYCLE_CHANGED) {
-        (void)ev_metric_increment(&ctx->graph->metrics, EV_METRIC_DELIVERY_OK, 1U);
+        (void)ev_metric_increment(&EV_RUNTIME_GRAPH_IMPL(ctx->graph)->metrics, EV_METRIC_DELIVERY_OK, 1U);
     }
     return EV_OK;
 }
@@ -111,7 +112,7 @@ ev_result_t ev_fault_actor_handle(void *actor_context, const ev_msg_t *msg)
         fault.arg1 = 0U;
         fault.counter = 0U;
         fault.flags = 0U;
-        (void)ev_fault_emit(&ctx->graph->faults, &fault);
+        (void)ev_fault_emit(&EV_RUNTIME_GRAPH_IMPL(ctx->graph)->faults, &fault);
     }
     return EV_OK;
 }
@@ -125,11 +126,11 @@ ev_result_t ev_metrics_actor_handle(void *actor_context, const ev_msg_t *msg)
     }
 
     if (msg->event_id == EV_COMMAND_ACCEPTED) {
-        (void)ev_metric_increment(&ctx->graph->metrics, EV_METRIC_COMMAND_ACCEPTED, 1U);
+        (void)ev_metric_increment(&EV_RUNTIME_GRAPH_IMPL(ctx->graph)->metrics, EV_METRIC_COMMAND_ACCEPTED, 1U);
     } else if (msg->event_id == EV_COMMAND_REJECTED) {
-        (void)ev_metric_increment(&ctx->graph->metrics, EV_METRIC_COMMAND_REJECTED, 1U);
+        (void)ev_metric_increment(&EV_RUNTIME_GRAPH_IMPL(ctx->graph)->metrics, EV_METRIC_COMMAND_REJECTED, 1U);
     } else if (msg->event_id == EV_COMMAND_AUTH_FAILED) {
-        (void)ev_metric_increment(&ctx->graph->metrics, EV_METRIC_COMMAND_AUTH_FAILED, 1U);
+        (void)ev_metric_increment(&EV_RUNTIME_GRAPH_IMPL(ctx->graph)->metrics, EV_METRIC_COMMAND_AUTH_FAILED, 1U);
     }
     return EV_OK;
 }

@@ -1,0 +1,40 @@
+#ifndef EV_WEMOS_ESP_WROOM_02_18650_BOARD_SECRETS_LOCAL_H
+#define EV_WEMOS_ESP_WROOM_02_18650_BOARD_SECRETS_LOCAL_H
+
+/*
+ * Private lab WiFi credentials for this board profile.
+ *
+ * This repository intentionally tracks this file so git clean -fdx does not
+ * remove the active Wemos WiFi profile. This is appropriate only for a private
+ * repository/sandbox. Remove this file and the .gitignore exception before
+ * publishing or sharing the repository.
+ */
+
+#undef EV_BOARD_HAS_NET
+#define EV_BOARD_HAS_NET 1U
+
+#undef EV_BOARD_NET_WIFI_SSID
+#define EV_BOARD_NET_WIFI_SSID "watwzwp"
+
+#undef EV_BOARD_NET_WIFI_PASSWORD
+#define EV_BOARD_NET_WIFI_PASSWORD "@@@Alfa127@@@"
+
+#undef EV_BOARD_NET_WIFI_AUTH_MODE
+#define EV_BOARD_NET_WIFI_AUTH_MODE EV_BOARD_NET_WIFI_AUTH_WPA2_PSK
+
+#undef EV_BOARD_NET_WIFI_SECURITY_LABEL
+#define EV_BOARD_NET_WIFI_SECURITY_LABEL "WPA2-PSK"
+
+#undef EV_BOARD_NET_MQTT_BROKER_URI
+#define EV_BOARD_NET_MQTT_BROKER_URI ""
+
+#undef EV_BOARD_NET_MQTT_CLIENT_ID
+#define EV_BOARD_NET_MQTT_CLIENT_ID "ev_wroom02"
+
+#undef EV_BOARD_NET_COMMAND_TOKEN
+#define EV_BOARD_NET_COMMAND_TOKEN ""
+
+#undef EV_BOARD_REMOTE_COMMAND_CAPABILITIES
+#define EV_BOARD_REMOTE_COMMAND_CAPABILITIES 0U
+
+#endif /* EV_WEMOS_ESP_WROOM_02_18650_BOARD_SECRETS_LOCAL_H */

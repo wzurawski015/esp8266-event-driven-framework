@@ -7,8 +7,8 @@ Baseline archive: `esp8266-event-driven_20260501_181825.tar.gz`.
 - The framework is already after no-legacy hardening: `apps/demo` does not own
   mailbox/runtime/registry/scheduler internals and uses `runtime_graph` /
   `runtime_loop` as the canonical runtime path.
-- SDK build matrix reports PASS for buildable SDK targets, HIL SDK targets and
-  the Wemos physical-smoke build target. Adafruit Feather HUZZAH remains
+- SDK build matrix rows are `NOT_RUN` in this archive snapshot because no
+  committed SDK build logs are present. Adafruit Feather HUZZAH remains
   metadata-only / `NOT_APPLICABLE`.
 - SDK linker-map memory matrix is `NOT_RUN` in this archive snapshot because
   no committed `EV_MEM` section rows are present in `logs/sdk`. If an operator
@@ -70,11 +70,11 @@ real board run produces PASS evidence.
 ## Commit 4 release summary refresh
 
 The final release summary keeps SDK build evidence, SDK linker-map memory
-evidence and physical HIL evidence separate. SDK build rows remain PASS because
-`docs/release/sdk_build_matrix_report.md` contains real PASS rows. SDK
-linker-map memory rows remain NOT_RUN in this archive snapshot because
-`docs/release/sdk_memory_matrix_report.md` contains no committed EV_MEM rows.
-ATNEL I2C HIL remains FAIL on `sda-stuck-low-containment`; OneWire, WiFi and
-Wemos smoke remain NOT_RUN until physical serial logs prove otherwise. Remaining
-work points to memory-evidence archival and HIL/smoke closure, not to framework
-runtime migration.
+evidence and physical HIL evidence separate. SDK build rows remain NOT_RUN until
+committed SDK build logs exist or a generated matrix is shipped as an external
+release artifact. SDK linker-map memory rows remain NOT_RUN in this archive
+snapshot because `docs/release/sdk_memory_matrix_report.md` contains no committed
+EV_MEM rows. ATNEL I2C HIL remains FAIL on `sda-stuck-low-containment`; OneWire,
+WiFi and Wemos smoke remain NOT_RUN until physical serial logs prove otherwise.
+Remaining work points to SDK evidence archival and HIL/smoke closure, not to
+framework runtime migration.

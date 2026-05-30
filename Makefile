@@ -4,10 +4,12 @@ PYTHON ?= python3
 CFLAGS ?= -std=c11 -Wall -Wextra -O0 -g0 -pedantic -DEV_HOST_BUILD \
     -Icore/include -Icore/generated/include -Iruntime/include -Imodules/include -Idrivers/include \
     -Iports/include -Iapps/demo/include -Iconfig
+BENCH_CFLAGS ?= $(filter-out -O0,$(CFLAGS)) -O2 -D_POSIX_C_SOURCE=200809L
 LDFLAGS ?=
 
 BUILD_DIR := build/host
 PROPERTY_BUILD_DIR := build/property
+BENCH_BUILD_DIR := build/bench
 DOC_SITE_DIR := docs/generated/site
 
 CORE_SRCS := \
@@ -66,6 +68,7 @@ APP_SRCS := \
     apps/demo/ev_demo_runtime_instances.c
 
 TEST_SUPPORT_SRCS := \
+    tests/host/fakes/fake_clock_port.c \
     tests/host/fakes/fake_i2c_port.c \
     tests/host/fakes/fake_irq_port.c \
     tests/host/fakes/fake_onewire_port.c \
@@ -82,6 +85,8 @@ HOST_TESTS := \
     test_msg_contract \
     test_route_table \
     test_route_spans \
+    test_active_route_table_spans \
+    test_route_qos_delivery_policy \
     test_dispatch_contract \
     test_mailbox_contract \
     test_actor_runtime \
@@ -107,10 +112,13 @@ HOST_TESTS := \
     test_app_fairness \
     test_network_isolation \
     test_command_actor_contract \
+    test_actor_module_descriptor_consistency \
+    test_runtime_mailbox_layout \
     test_runtime_actor_instance_descriptors \
     test_runtime_builder_route_validation \
     test_runtime_disabled_routes \
     test_runtime_graph_publish_send \
+    test_runtime_graph_opaque_contract \
     test_actor_publish_port \
     test_runtime_graph_canonical_scheduler \
     test_runtime_loop \
@@ -123,6 +131,7 @@ HOST_TESTS := \
     test_demo_runtime_instances \
     test_demo_migration_blockers \
     test_fault_metrics_trace_framework \
+    test_delivery_trace_timestamp \
     test_delivery_command_network_framework
 
 HOST_TEST_BINS := $(addprefix $(BUILD_DIR)/,$(HOST_TESTS))
@@ -132,8 +141,16 @@ PROPERTY_TESTS := \
 
 PROPERTY_TEST_BINS := $(addprefix $(PROPERTY_BUILD_DIR)/,$(PROPERTY_TESTS))
 
-.PHONY: all host-test property-test routegen routegen-check static-contracts memory-budget sdk-matrix-check sdk-memory-matrix production-release-gate quality-gate release-gate docgen docs clean
-.SECONDARY: $(COMMON_OBJS)
+BENCH_SRCS := $(COMMON_SRCS)
+BENCH_COMMON_OBJS := $(patsubst %.c,$(BENCH_BUILD_DIR)/obj/%.o,$(BENCH_SRCS))
+BENCH_TESTS := \
+    bench_runtime_publish \
+    bench_runtime_poll
+BENCH_BINS := $(addprefix $(BENCH_BUILD_DIR)/,$(BENCH_TESTS))
+BENCH_RESULTS := $(BENCH_BUILD_DIR)/results.txt
+
+.PHONY: all host-test property-test bench perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate production-release-gate quality-gate release-gate docgen docs clean
+.SECONDARY: $(COMMON_OBJS) $(BENCH_COMMON_OBJS)
 
 all: host-test
 
@@ -142,6 +159,9 @@ $(BUILD_DIR):
 
 $(PROPERTY_BUILD_DIR):
 	mkdir -p $(PROPERTY_BUILD_DIR)
+
+$(BENCH_BUILD_DIR):
+	mkdir -p $(BENCH_BUILD_DIR)
 
 $(BUILD_DIR)/obj/%.o: %.c | $(BUILD_DIR)
 	mkdir -p $(dir $@)
@@ -153,6 +173,13 @@ $(BUILD_DIR)/%: tests/host/%.c $(COMMON_OBJS) | $(BUILD_DIR)
 $(PROPERTY_BUILD_DIR)/%: tests/property/%.c $(COMMON_OBJS) | $(PROPERTY_BUILD_DIR)
 	$(CC) $(CFLAGS) $(COMMON_OBJS) $< $(LDFLAGS) -o $@
 
+$(BENCH_BUILD_DIR)/obj/%.o: %.c | $(BENCH_BUILD_DIR)
+	mkdir -p $(dir $@)
+	$(CC) $(BENCH_CFLAGS) -c $< -o $@
+
+$(BENCH_BUILD_DIR)/%: tests/bench/%.c $(BENCH_COMMON_OBJS) | $(BENCH_BUILD_DIR)
+	$(CC) $(BENCH_CFLAGS) $(BENCH_COMMON_OBJS) $< $(LDFLAGS) -o $@
+
 host-test: routegen $(HOST_TEST_BINS)
 	@set -e; for t in $(HOST_TEST_BINS); do ./$$t; done
 	@echo "host tests passed"
@@ -161,14 +188,46 @@ property-test: routegen $(PROPERTY_TEST_BINS)
 	@set -e; for t in $(PROPERTY_TEST_BINS); do ./$$t; done
 	@echo "property tests passed"
 
+bench: routegen $(BENCH_BINS)
+	@mkdir -p $(BENCH_BUILD_DIR)
+	@: > $(BENCH_RESULTS)
+	@set -e; for t in $(BENCH_BINS); do ./$$t | tee -a $(BENCH_RESULTS); done
+	@$(PYTHON) tools/bench_report.py $(BENCH_RESULTS)
+	@echo "bench passed"
+
+perf-gate: bench
+	@echo "perf-gate passed (report-only baseline)"
+
 routegen:
 	$(PYTHON) tools/routegen/routegen.py
+	$(PYTHON) tools/routegen/mailbox_layoutgen.py
 
-routegen-check: routegen
+mailbox-layoutgen:
+	$(PYTHON) tools/routegen/mailbox_layoutgen.py
+
+mailbox-layoutgen-check:
+	$(PYTHON) tools/routegen/mailbox_layoutgen.py --check
+
+routegen-check: mailbox-layoutgen-check
 	$(PYTHON) tools/audit/routegen_check.py
 
 static-contracts: routegen
 	$(PYTHON) tools/audit/static_contracts.py
+
+actor-module-consistency: routegen
+	$(PYTHON) tools/audit/actor_module_descriptor_consistency.py
+
+descriptor-contracts: actor-module-consistency
+	@echo "descriptor-contracts passed"
+
+private-repo-secrets-policy:
+	$(PYTHON) tools/audit/private_repo_secrets_policy.py
+
+release-evidence-contracts:
+	$(PYTHON) tools/audit/release_evidence_contracts.py
+
+public-release-safety-gate:
+	PUBLIC_RELEASE=1 $(PYTHON) tools/audit/private_repo_secrets_policy.py
 
 memory-budget: routegen
 	$(PYTHON) tools/audit/memory_budget.py
@@ -182,8 +241,13 @@ sdk-memory-matrix:
 	$(PYTHON) tools/sdk_memory_matrix.py --self-test
 	$(PYTHON) tools/sdk_memory_matrix.py
 
+sdk-memory-release-gate:
+	$(PYTHON) tools/sdk_memory_report.py --self-test
+	$(PYTHON) tools/sdk_memory_matrix.py --self-test
+	EV_SDK_MEMORY_REQUIRE_PASS=1 $(PYTHON) tools/sdk_memory_matrix.py
+
 .NOTPARALLEL: quality-gate
-quality-gate: clean routegen-check static-contracts memory-budget host-test property-test
+quality-gate: clean routegen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts memory-budget host-test property-test
 	@echo "quality-gate passed"
 
 release-gate: quality-gate docgen docs

@@ -1,6 +1,8 @@
 #include "ev/runtime_loop.h"
 
 #include <string.h>
+#include "ev/runtime_graph_inspection.h"
+#include "ev/runtime_graph_timers.h"
 
 #define EV_RUNTIME_LOOP_DEFAULT_PUMP_CALLS 10U
 #define EV_RUNTIME_LOOP_DEFAULT_MESSAGES 32U

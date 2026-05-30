@@ -5,7 +5,7 @@ COMPONENT_REQUIRES := ev_platform
 EV_WEMOS_BSP_SECRETS_DIR := $(abspath $(COMPONENT_PATH)/$(EV_WEMOS_BSP_INCLUDE_DIR))
 EV_WEMOS_BSP_PROJECT_SECRETS_DIR := $(abspath $(PROJECT_PATH)/../../../../bsp/wemos_esp_wroom_02_18650)
 
-# Developer-local WiFi credentials are intentionally kept out of git.
+# Wemos private-lab WiFi credentials may be tracked in private checkouts.
 # If board_secrets.local.h exists, only this SDK target opts in to including it.
 # Use absolute paths for the existence check because ESP-IDF may parse
 # component.mk from a generated build directory, not from the component source

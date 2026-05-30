@@ -201,6 +201,44 @@ bool ev_msg_is_disposed(const ev_msg_t *msg);
  */
 ev_payload_kind_t ev_msg_payload_kind(const ev_msg_t *msg);
 
+
+/**
+ * @brief Return true when the catalog declares an inline/copy-fixed payload.
+ *
+ * This helper describes the event-level contract, not merely the current
+ * physical storage field. Empty inline/copy-fixed messages therefore still
+ * return true.
+ */
+bool ev_msg_payload_is_inline_contract(const ev_msg_t *msg);
+
+/**
+ * @brief Return true when the catalog declares an owned lease payload.
+ */
+bool ev_msg_payload_is_lease_contract(const ev_msg_t *msg);
+
+/**
+ * @brief Return true when the catalog declares a borrowed stream-view payload.
+ */
+bool ev_msg_payload_is_stream_view_contract(const ev_msg_t *msg);
+
+/**
+ * @brief Return true when the catalog payload kind avoids copying large bytes.
+ */
+bool ev_msg_payload_is_zero_copy_contract(const ev_msg_t *msg);
+
+/**
+ * @brief Return true when the current message attachment owns a release share.
+ */
+bool ev_msg_payload_requires_release(const ev_msg_t *msg);
+
+/**
+ * @brief Validate the payload lifetime/ownership contract for this message.
+ *
+ * This is an explicit wrapper around the runtime message validator. It exists
+ * so hot-path and zero-copy tests can name the contract they rely on.
+ */
+ev_result_t ev_msg_validate_payload_contract(const ev_msg_t *msg);
+
 /**
  * @brief Return a pointer to the current payload bytes, if any.
  *

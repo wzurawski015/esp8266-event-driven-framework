@@ -378,6 +378,46 @@ def validate_host_safety_gate_contract() -> None:
     if not (ROOT / "docs" / "release" / "host_safety_gate_report.md").exists():
         errors.append("host safety gate report missing: docs/release/host_safety_gate_report.md")
 
+
+def validate_hotpath_zero_alloc_contract_registration() -> None:
+    required = [
+        "config/hotpath_contract.def",
+        "tools/audit/hotpath_zero_alloc_contract.py",
+        "docs/architecture/hotpath-zero-allocation-contract.md",
+        "docs/architecture/zero_copy_payload_contract.md",
+        "docs/release/hotpath_zero_allocation_report.md",
+        "tests/host/test_zero_copy_payload_contract.c",
+    ]
+    for rel in required:
+        if not (ROOT / rel).exists():
+            errors.append(f"hotpath zero-allocation contract artifact missing: {rel}")
+
+    makefile_path = ROOT / "Makefile"
+    if not makefile_path.exists():
+        errors.append("Makefile missing for hotpath zero-allocation contract")
+        return
+    makefile = makefile_path.read_text(encoding="utf-8", errors="ignore")
+    if re.search(r"^hotpath-zero-alloc-gate\s*:", makefile, flags=re.MULTILINE) is None:
+        errors.append("hotpath-zero-alloc-gate target missing")
+    if "tools/audit/hotpath_zero_alloc_contract.py" not in makefile:
+        errors.append("hotpath-zero-alloc-gate must run tools/audit/hotpath_zero_alloc_contract.py")
+    if "test_zero_copy_payload_contract" not in makefile:
+        errors.append("zero-copy payload contract test must be registered in Makefile")
+
+    manifest = ROOT / "config" / "hotpath_contract.def"
+    if manifest.exists():
+        manifest_text = manifest.read_text(encoding="utf-8", errors="ignore")
+        for rel in [
+            "core/src/ev_msg.c",
+            "core/src/ev_mailbox.c",
+            "core/src/ev_lease_pool.c",
+            "runtime/src/ev_delivery_service.c",
+            "runtime/src/ev_runtime_poll.c",
+        ]:
+            if f"HOTPATH_FILE({rel})" not in manifest_text:
+                errors.append(f"hotpath manifest does not cover required file: {rel}")
+
+
 static_contract_self_test()
 validate_layering_contract_document()
 validate_runtime_graph_public_header_opaque()
@@ -387,6 +427,7 @@ validate_actor_layering_boundary()
 validate_route_qos_contract()
 validate_trace_timestamp_contract()
 validate_host_safety_gate_contract()
+validate_hotpath_zero_alloc_contract_registration()
 
 for artifact in iter_repo_files(ROOT):
     if is_ignored_path(artifact):

@@ -107,6 +107,7 @@ HOST_TESTS := \
     test_mailbox_contract \
     test_actor_runtime \
     test_lease_pool_contract \
+    test_zero_copy_payload_contract \
     test_runtime_diagnostics \
     test_actor_pump_contract \
     test_domain_pump_contract \
@@ -167,7 +168,7 @@ BENCH_TESTS := \
 BENCH_BINS := $(addprefix $(BENCH_BUILD_DIR)/,$(BENCH_TESTS))
 BENCH_RESULTS := $(BENCH_BUILD_DIR)/results.txt
 
-.PHONY: all host-test property-test host-strict-test host-sanitize-cc-check host-sanitize-test host-tsan-cc-check host-tsan-test clang-tidy-gate safety-gate bench perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate production-release-gate quality-gate release-gate docgen docs clean
+.PHONY: all host-test property-test host-strict-test host-sanitize-cc-check host-sanitize-test host-tsan-cc-check host-tsan-test clang-tidy-gate safety-gate hotpath-zero-alloc-gate bench perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate production-release-gate quality-gate release-gate docgen docs clean
 .SECONDARY: $(COMMON_OBJS) $(BENCH_COMMON_OBJS)
 
 all: host-test
@@ -249,6 +250,11 @@ clang-tidy-gate:
 safety-gate: host-strict-test host-sanitize-test
 	@echo "safety-gate passed"
 
+hotpath-zero-alloc-gate: routegen $(BUILD_DIR)/test_zero_copy_payload_contract
+	$(PYTHON) tools/audit/hotpath_zero_alloc_contract.py
+	./$(BUILD_DIR)/test_zero_copy_payload_contract
+	@echo "hotpath-zero-alloc-gate passed"
+
 bench: routegen $(BENCH_BINS)
 	@mkdir -p $(BENCH_BUILD_DIR)
 	@: > $(BENCH_RESULTS)
@@ -308,7 +314,7 @@ sdk-memory-release-gate:
 	EV_SDK_MEMORY_REQUIRE_PASS=1 $(PYTHON) tools/sdk_memory_matrix.py
 
 .NOTPARALLEL: quality-gate
-quality-gate: clean routegen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts memory-budget host-test property-test
+quality-gate: clean routegen-check static-contracts hotpath-zero-alloc-gate actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts memory-budget host-test property-test
 	@echo "quality-gate passed"
 
 release-gate: quality-gate docgen docs

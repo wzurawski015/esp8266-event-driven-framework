@@ -101,7 +101,6 @@ GRAPH_INTERNAL_FIELDS = [
     "metrics",
     "trace_ring",
     "active_routes",
-    "delivery_service",
     "scheduler",
     "active_routes_bound",
     "board_capabilities",
@@ -117,7 +116,7 @@ GRAPH_NULL_CAST_ACCESS_RE = re.compile(
     rf"\(\s*\(\s*ev_runtime_graph_t\s*\*\s*\)\s*0\s*\)\s*->\s*({GRAPH_INTERNAL_FIELD_ALT})\b"
 )
 GRAPH_ACCESS_AUDIT_ROOTS = ("apps", "adapters", "core", "modules", "drivers", "ports", "tests", "tools", "runtime/include")
-GRAPH_ACCESS_ALLOWLIST = {"runtime/include/ev/runtime_graph.h", "tools/audit/static_contracts.py"}
+GRAPH_ACCESS_ALLOWLIST = {"tools/audit/static_contracts.py"}
 
 
 def is_graph_audit_path(rel: str) -> bool:
@@ -127,6 +126,59 @@ def is_graph_audit_path(rel: str) -> bool:
 def graph_access_is_allowlisted(rel: str) -> bool:
     return rel.startswith("runtime/src/") or rel in GRAPH_ACCESS_ALLOWLIST
 
+
+
+RUNTIME_GRAPH_PUBLIC_HEADER_FORBIDDEN = [
+    "registry",
+    "actor_runtimes",
+    "mailboxes",
+    "mailbox_storage",
+    "actor_contexts",
+    "descriptors",
+    "instances",
+    "instance_bound",
+    "lifecycle",
+    "actor_enabled",
+    "timer_service",
+    "ingress_service",
+    "quiescence_service",
+    "faults",
+    "metrics",
+    "trace_ring",
+    "active_routes",
+    "scheduler",
+    "active_routes_bound",
+    "board_capabilities",
+    "runtime_capabilities",
+]
+RUNTIME_GRAPH_INTERNAL_INCLUDE_RE = re.compile(r'#\s*include\s*[<"]ev_runtime_graph_internal\.h[>"]')
+
+
+def validate_runtime_graph_public_header_opaque() -> None:
+    public_header = ROOT / "runtime" / "include" / "ev" / "runtime_graph.h"
+    if not public_header.exists():
+        errors.append("runtime graph public header missing: runtime/include/ev/runtime_graph.h")
+        return
+    code = strip_comments(public_header.read_text(encoding="utf-8", errors="ignore"))
+    for field in RUNTIME_GRAPH_PUBLIC_HEADER_FORBIDDEN:
+        if re.search(rf"\b{re.escape(field)}\b", code) is not None:
+            errors.append(f"runtime graph public header exposes internal field name: {field}")
+    if "EV_RUNTIME_GRAPH_OPAQUE_STORAGE_BYTES" not in code:
+        errors.append("runtime graph public header must expose bounded opaque storage size")
+    if "ev_runtime_graph_opaque_storage_t" not in code:
+        errors.append("runtime graph public header must use an opaque storage wrapper")
+
+
+def validate_runtime_graph_internal_header_boundary() -> None:
+    for p in iter_repo_files(ROOT):
+        if p.suffix not in {".c", ".h"}:
+            continue
+        rel = p.relative_to(ROOT).as_posix()
+        if rel.startswith("runtime/src/"):
+            continue
+        code = strip_comments(p.read_text(encoding="utf-8", errors="ignore"))
+        if RUNTIME_GRAPH_INTERNAL_INCLUDE_RE.search(code) is not None:
+            errors.append(f"runtime graph internal header included outside runtime/src: {rel}")
 
 def validate_runtime_graph_access_boundary() -> None:
     for p in iter_repo_files(ROOT):
@@ -186,6 +238,8 @@ def validate_trace_timestamp_contract() -> None:
 
 static_contract_self_test()
 validate_layering_contract_document()
+validate_runtime_graph_public_header_opaque()
+validate_runtime_graph_internal_header_boundary()
 validate_runtime_graph_access_boundary()
 validate_route_qos_contract()
 validate_trace_timestamp_contract()

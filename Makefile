@@ -118,6 +118,7 @@ HOST_TESTS := \
     test_runtime_builder_route_validation \
     test_runtime_disabled_routes \
     test_runtime_graph_publish_send \
+    test_runtime_graph_opaque_contract \
     test_actor_publish_port \
     test_runtime_graph_canonical_scheduler \
     test_runtime_loop \

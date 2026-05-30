@@ -11,6 +11,7 @@
 #include "ev/actor_publish_port.h"
 #include "ev/port_net.h"
 #include "ev/system_pump.h"
+#include "ev/timer_service.h"
 
 /* Wstrzykiwane kontrakty i Aktorzy dodani w Stage 2 */
 #include "ev/port_i2c.h"

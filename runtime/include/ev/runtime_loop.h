@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "ev/runtime_graph.h"
+#include "ev/timer_service.h"
 
 #ifdef __cplusplus
 extern "C" {

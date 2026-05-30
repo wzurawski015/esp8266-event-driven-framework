@@ -7,6 +7,7 @@
 #include "ev/runtime_graph.h"
 #include "ev/timer_service.h"
 #include "ev/trace_ring.h"
+#include "ev/runtime_graph_inspection.h"
 
 static uint32_t xorshift32(uint32_t *state)
 {
@@ -111,7 +112,7 @@ static void property_route_validation(void)
     assert(ev_runtime_builder_add_module(&builder, ACT_FAULT) == EV_OK);
     assert(ev_runtime_builder_add_module(&builder, ACT_METRICS) == EV_OK);
     assert(ev_runtime_builder_bind_routes(&builder) == EV_OK);
-    routes = ev_runtime_graph_active_routes(&graph);
+    routes = ev_runtime_graph_route_table(&graph);
     assert(routes != 0);
     assert(routes->optional_disabled_count > 0U);
 }

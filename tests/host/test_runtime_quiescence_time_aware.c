@@ -3,6 +3,8 @@
 #include "ev/runtime_graph.h"
 #include "ev/power_manager.h"
 #include "fakes/fake_log_port.h"
+#include "ev/runtime_graph_timers.h"
+#include "ev/runtime_graph_trace.h"
 
 int main(void)
 {

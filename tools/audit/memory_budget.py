@@ -12,6 +12,8 @@ probe = build / "memory_budget_probe.c"
 probe_c = r'''
 #include <stdio.h>
 #include "ev/runtime_graph.h"
+#include "ev_runtime_graph_internal.h"
+#include "ev/actor_mailbox_layout_generated.h"
 #include "ev/msg.h"
 #include "ev/mailbox.h"
 #include "ev/actor_runtime.h"
@@ -24,6 +26,9 @@ probe_c = r'''
 int main(void)
 {
     printf("ev_runtime_graph_t %zu\n", sizeof(ev_runtime_graph_t));
+    printf("ev_runtime_graph_opaque_storage_bytes %zu\n", (size_t)EV_RUNTIME_GRAPH_OPAQUE_STORAGE_BYTES);
+    printf("ev_runtime_graph_impl_t %zu\n", sizeof(ev_runtime_graph_impl_t));
+    printf("ev_runtime_graph_opaque_padding %zu\n", sizeof(ev_runtime_graph_t) - sizeof(ev_runtime_graph_impl_t));
     printf("ev_msg_t %zu\n", sizeof(ev_msg_t));
     printf("ev_mailbox_t %zu\n", sizeof(ev_mailbox_t));
     printf("ev_actor_runtime_t %zu\n", sizeof(ev_actor_runtime_t));
@@ -43,7 +48,7 @@ probe.write_text(probe_c, encoding="utf-8")
 
 cmd = [
     "cc", "-std=c11", "-Wall", "-Wextra", "-Wpedantic", "-Icore/include",
-    "-Icore/generated/include", "-Iruntime/include", "-Imodules/include",
+    "-Icore/generated/include", "-Iruntime/include", "-Iruntime/src", "-Imodules/include",
     "-Idrivers/include", "-Iports/include", "-Iapps/demo/include", "-Iconfig",
     str(probe), "-o", str(build / "memory_budget_probe")
 ]

@@ -5,6 +5,7 @@
 #include "ev/actor_catalog.h"
 #include "ev/actor_publish_port.h"
 #include "ev/runtime_graph.h"
+#include "ev/runtime_graph_inspection.h"
 
 static ev_route_t make_route(ev_event_id_t event_id, ev_actor_id_t target_actor)
 {
@@ -131,7 +132,7 @@ static void assert_builder_finalizes_active_route_spans(void)
     assert(ev_runtime_builder_bind_routes(&builder) == EV_OK);
     assert(ev_runtime_builder_build(&builder) == EV_OK);
 
-    routes = ev_runtime_graph_active_routes(&graph);
+    routes = ev_runtime_graph_route_table(&graph);
     assert(routes != NULL);
     assert(routes->count == ev_route_count());
 

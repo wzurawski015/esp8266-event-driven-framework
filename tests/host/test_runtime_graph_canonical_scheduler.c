@@ -2,6 +2,7 @@
 
 #include "ev/runtime_graph.h"
 #include "ev/runtime_poll.h"
+#include "ev/runtime_graph_inspection.h"
 
 int main(void)
 {

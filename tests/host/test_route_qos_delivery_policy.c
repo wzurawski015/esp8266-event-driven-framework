@@ -4,6 +4,7 @@
 #include "ev/metrics_registry.h"
 #include "ev/msg.h"
 #include "ev/runtime_graph.h"
+#include "ev/runtime_graph_inspection.h"
 
 static void assert_policy(ev_route_qos_t qos, ev_delivery_qos_failure_policy_t expected)
 {

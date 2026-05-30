@@ -1,6 +1,7 @@
 #include <assert.h>
 
 #include "ev/actor_publish_port.h"
+#include "ev/runtime_graph_inspection.h"
 
 int main(void)
 {

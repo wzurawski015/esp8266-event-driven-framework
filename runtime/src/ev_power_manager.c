@@ -5,6 +5,7 @@
 #include "ev/fault_bus.h"
 #include "ev/metrics_registry.h"
 #include "ev/runtime_graph.h"
+#include "ev_runtime_graph_internal.h"
 
 void ev_power_manager_init(ev_power_manager_t *manager, const ev_power_policy_t *policy)
 {
@@ -27,7 +28,7 @@ ev_result_t ev_power_manager_can_sleep_at(ev_runtime_graph_t *graph, ev_power_ma
         (requested_sleep_ms < manager->policy.min_sleep_ms) ||
         (requested_sleep_ms > manager->policy.max_sleep_ms)) {
         manager->sleep_rejected++;
-        (void)ev_metric_increment(&graph->metrics, EV_METRIC_SLEEP_REJECTED, 1U);
+        (void)ev_metric_increment(&EV_RUNTIME_GRAPH_IMPL(graph)->metrics, EV_METRIC_SLEEP_REJECTED, 1U);
         return EV_ERR_POLICY;
     }
 
@@ -39,13 +40,13 @@ ev_result_t ev_power_manager_can_sleep_at(ev_runtime_graph_t *graph, ev_power_ma
         fault.severity = EV_FAULT_SEV_INFO;
         fault.source_actor = ACT_POWER;
         fault.triggering_event = EV_SYS_GOTO_SLEEP_CMD;
-        (void)ev_fault_emit(&graph->faults, &fault);
+        (void)ev_fault_emit(&EV_RUNTIME_GRAPH_IMPL(graph)->faults, &fault);
         manager->sleep_rejected++;
-        (void)ev_metric_increment(&graph->metrics, EV_METRIC_SLEEP_REJECTED, 1U);
+        (void)ev_metric_increment(&EV_RUNTIME_GRAPH_IMPL(graph)->metrics, EV_METRIC_SLEEP_REJECTED, 1U);
         return rc;
     }
     manager->sleep_accepted++;
-    (void)ev_metric_increment(&graph->metrics, EV_METRIC_SLEEP_ACCEPTED, 1U);
+    (void)ev_metric_increment(&EV_RUNTIME_GRAPH_IMPL(graph)->metrics, EV_METRIC_SLEEP_ACCEPTED, 1U);
     return EV_OK;
 }
 

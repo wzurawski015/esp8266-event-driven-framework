@@ -14,6 +14,8 @@
 #include "ev/runtime_poll.h"
 #include "ev/runtime_loop.h"
 #include "ev/demo_runtime_instances.h"
+#include "ev/runtime_graph_inspection.h"
+#include "ev/runtime_graph_timers.h"
 
 #define EV_DEMO_APP_DEFAULT_TICK_MS 1000U
 #define EV_DEMO_APP_FAST_TICK_MS 100U

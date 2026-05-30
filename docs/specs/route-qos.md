@@ -89,7 +89,7 @@ route spans or active route spans. It must not scan all routes for every publish
 
 The demo application keeps a compatibility delivery callback for legacy actor
 contexts that still call `ev_publish()`. That callback must consult
-`ev_runtime_graph_active_routes()` and treat `EV_ACTIVE_ROUTE_OPTIONAL_DISABLED`
+`ev_runtime_graph_route_table()` and treat `EV_ACTIVE_ROUTE_OPTIONAL_DISABLED`
 as a safe skip. The active route table, not an application-local route engine,
 is the source of truth for disabled-route semantics.
 

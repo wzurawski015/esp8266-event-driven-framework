@@ -3,6 +3,7 @@
 #include "ev/runtime_graph.h"
 #include "ev/runtime_poll.h"
 #include "ev/power_manager.h"
+#include "ev/runtime_graph_timers.h"
 
 static ev_result_t timer_sink(ev_actor_id_t target_actor, const ev_msg_t *msg, void *ctx)
 {

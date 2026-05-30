@@ -4,6 +4,7 @@
 #include "ev/msg.h"
 #include "ev/runtime_graph.h"
 #include "fakes/fake_clock_port.h"
+#include "ev/runtime_graph_trace.h"
 
 static void build_fault_graph(ev_runtime_graph_t *graph, ev_runtime_builder_t *builder, ev_clock_port_t *clock_port)
 {

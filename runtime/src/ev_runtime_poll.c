@@ -1,6 +1,7 @@
 #include "ev/runtime_poll.h"
 
 #include <string.h>
+#include "ev_runtime_graph_internal.h"
 
 static ev_result_t ev_runtime_timer_delivery(ev_actor_id_t target_actor, const ev_msg_t *msg, void *ctx)
 {
@@ -21,9 +22,9 @@ ev_result_t ev_runtime_poll_once(ev_runtime_graph_t *graph, uint32_t now_ms, siz
     (void)memset(&local, 0, sizeof(local));
     (void)memset(&system_report, 0, sizeof(system_report));
     local.last_result = EV_OK;
-    local.timers_published = ev_timer_publish_due(&graph->timer_service, now_ms, ev_runtime_timer_delivery, graph, EV_TIMER_SERVICE_CAPACITY);
+    local.timers_published = ev_timer_publish_due(&EV_RUNTIME_GRAPH_IMPL(graph)->timer_service, now_ms, ev_runtime_timer_delivery, graph, EV_TIMER_SERVICE_CAPACITY);
 
-    rc = ev_runtime_scheduler_poll_once(&graph->scheduler, actor_budget, &system_report);
+    rc = ev_runtime_scheduler_poll_once(&EV_RUNTIME_GRAPH_IMPL(graph)->scheduler, actor_budget, &system_report);
     local.domains_pumped = system_report.domains_pumped;
     local.actors_pumped = system_report.turns_processed;
     local.messages_processed = system_report.messages_processed;

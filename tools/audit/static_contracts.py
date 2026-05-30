@@ -196,6 +196,88 @@ def validate_runtime_graph_access_boundary() -> None:
                 )
 
 
+
+
+DEVICE_ACTOR_SOURCES = {
+    "ev_rtc_actor.c",
+    "ev_ds18b20_actor.c",
+    "ev_mcp23008_actor.c",
+    "ev_oled_actor.c",
+    "ev_panel_actor.c",
+}
+FRAMEWORK_ACTOR_SOURCES = {
+    "ev_network_actor.c",
+    "ev_command_actor.c",
+    "ev_power_actor.c",
+    "ev_watchdog_actor.c",
+    "ev_supervisor_actor.c",
+}
+DEVICE_ACTOR_HEADERS = {
+    "rtc_actor.h",
+    "ds18b20_actor.h",
+    "mcp23008_actor.h",
+    "oled_actor.h",
+    "panel_actor.h",
+}
+FRAMEWORK_ACTOR_HEADERS = {
+    "network_actor.h",
+    "command_actor.h",
+    "power_actor.h",
+    "watchdog_actor.h",
+    "supervisor_actor.h",
+}
+CONCRETE_ACTOR_HEADERS = DEVICE_ACTOR_HEADERS | FRAMEWORK_ACTOR_HEADERS
+CORE_ACTOR_KERNEL_SOURCE_ALLOWLIST = {"ev_actor_catalog.c", "ev_actor_runtime.c"}
+CORE_ACTOR_KERNEL_HEADER_ALLOWLIST = {"actor_catalog.h", "actor_id.h", "actor_runtime.h"}
+RELATIVE_ACTORS_INCLUDE_RE = re.compile(r'#\s*include\s*[<"][^>"]*\.\./[^>"]*actors/')
+CONCRETE_ACTOR_INCLUDE_RE = re.compile(r'#\s*include\s*[<"]ev/(%s)[>"]' % "|".join(re.escape(h) for h in sorted(CONCRETE_ACTOR_HEADERS)))
+
+
+def validate_actor_layering_boundary() -> None:
+    for name in sorted(DEVICE_ACTOR_SOURCES):
+        if (ROOT / "core" / "src" / name).exists():
+            errors.append(f"concrete device actor implementation remains in core/src: {name}")
+        if not (ROOT / "actors" / "device" / name).exists():
+            errors.append(f"device actor implementation missing from actors/device: {name}")
+    for name in sorted(FRAMEWORK_ACTOR_SOURCES):
+        if (ROOT / "core" / "src" / name).exists():
+            errors.append(f"concrete framework actor implementation remains in core/src: {name}")
+        if not (ROOT / "actors" / "framework" / name).exists():
+            errors.append(f"framework actor implementation missing from actors/framework: {name}")
+    for name in sorted(DEVICE_ACTOR_HEADERS):
+        if (ROOT / "core" / "include" / "ev" / name).exists():
+            errors.append(f"concrete device actor header remains in core/include/ev: {name}")
+        if not (ROOT / "actors" / "device" / "include" / "ev" / name).exists():
+            errors.append(f"device actor header missing from actors/device/include/ev: {name}")
+    for name in sorted(FRAMEWORK_ACTOR_HEADERS):
+        if (ROOT / "core" / "include" / "ev" / name).exists():
+            errors.append(f"concrete framework actor header remains in core/include/ev: {name}")
+        if not (ROOT / "actors" / "framework" / "include" / "ev" / name).exists():
+            errors.append(f"framework actor header missing from actors/framework/include/ev: {name}")
+
+    core_src_actor_files = {p.name for p in (ROOT / "core" / "src").glob("*actor*.c")}
+    for name in sorted(core_src_actor_files - CORE_ACTOR_KERNEL_SOURCE_ALLOWLIST):
+        errors.append(f"non-kernel actor source in core/src: {name}")
+    core_header_actor_files = {p.name for p in (ROOT / "core" / "include" / "ev").glob("*actor*.h")}
+    for name in sorted(core_header_actor_files - CORE_ACTOR_KERNEL_HEADER_ALLOWLIST):
+        errors.append(f"non-kernel actor header in core/include/ev: {name}")
+
+    for p in iter_repo_files(ROOT):
+        if p.suffix not in {".c", ".h"}:
+            continue
+        rel = p.relative_to(ROOT).as_posix()
+        code = strip_comments(p.read_text(encoding="utf-8", errors="ignore"))
+        if RELATIVE_ACTORS_INCLUDE_RE.search(code) is not None:
+            errors.append(f"relative include into actors layer is forbidden: {rel}")
+        if rel.startswith("core/") and CONCRETE_ACTOR_INCLUDE_RE.search(code) is not None:
+            errors.append(f"core must not include concrete device/framework actor headers: {rel}")
+        if rel.startswith(("actors/device/", "actors/framework/")) and SDK_INCLUDE.search(code) is not None:
+            errors.append(f"SDK include leak in actor layer {rel}")
+        if rel.startswith(("actors/device/", "actors/framework/")) and FORBIDDEN_BLOCK.search(code):
+            errors.append(f"forbidden blocking primitive in actor layer {rel}")
+        if rel.startswith(("actors/device/", "actors/framework/")) and FORBIDDEN_HEAP.search(code):
+            errors.append(f"forbidden heap call in actor layer {rel}")
+
 def static_contract_self_test() -> None:
     for symbol in ["pvPortMalloc", "vPortFree", "heap_caps_malloc", "heap_caps_free"]:
         sample = f"void *p = {symbol}(16);" if symbol.endswith("malloc") or symbol == "pvPortMalloc" else f"{symbol}(p);"
@@ -241,6 +323,7 @@ validate_layering_contract_document()
 validate_runtime_graph_public_header_opaque()
 validate_runtime_graph_internal_header_boundary()
 validate_runtime_graph_access_boundary()
+validate_actor_layering_boundary()
 validate_route_qos_contract()
 validate_trace_timestamp_contract()
 
@@ -299,7 +382,7 @@ ADAPTER_EXCEPTION_ALLOWLIST = load_adapter_exception_allowlist()
 ADAPTER_EXCEPTION_OBSERVED: set[tuple[str, str]] = set()
 
 
-for subdir in ["core", "runtime", "modules", "drivers", "ports", "apps", "tests/host", "tests/property"]:
+for subdir in ["core", "runtime", "actors", "modules", "drivers", "ports", "apps", "tests/host", "tests/property"]:
     base = ROOT / subdir
     if not base.exists():
         continue
@@ -313,9 +396,9 @@ for subdir in ["core", "runtime", "modules", "drivers", "ports", "apps", "tests/
         code = strip_comments(text)
         if FORBIDDEN_HEAP.search(code):
             errors.append(f"forbidden heap call in {rel}")
-        if subdir in {"core", "runtime", "modules", "drivers", "apps"} and SDK_INCLUDE.search(code):
+        if subdir in {"core", "runtime", "actors", "modules", "drivers", "apps"} and SDK_INCLUDE.search(code):
             errors.append(f"SDK include leak in portable layer {rel}")
-        if subdir in {"core", "runtime", "modules", "drivers", "apps"} and FORBIDDEN_BLOCK.search(code):
+        if subdir in {"core", "runtime", "actors", "modules", "drivers", "apps"} and FORBIDDEN_BLOCK.search(code):
             errors.append(f"forbidden blocking primitive in {rel}")
         if TODO.search(text):
             errors.append(f"production TODO/FIXME marker in {rel}")

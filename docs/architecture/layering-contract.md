@@ -62,16 +62,18 @@ Each layer section uses the same fields:
   platform resources.
 - **ESP8266 RTOS SDK visibility**: forbidden.
 - **BSP visibility**: forbidden.
-- **Concrete device actor visibility**: target state is forbidden; current source
-  placement is an exception listed below.
+- **Concrete device actor visibility**: forbidden. Core may keep only actor
+  kernel primitives such as IDs, catalogs, mailbox/runtime plumbing, and generic
+  dispatch helpers.
 - **Hot path**: yes. Core mailbox, publish, send, dispose, pump, and route lookup
   functions are hot path and must remain bounded, non-blocking, and static-memory
   friendly.
 - **Bootstrap-only**: no.
-- **Current technical exceptions**: concrete device actors are still implemented
-  in `core/src` and exported through `core/include/ev/*_actor.h`.
-- **Migration direction**: move device actors out of `core/` after public runtime
-  graph accessors and route/delivery contracts are hardened.
+- **Current technical exceptions**: none for concrete device/framework actor
+  placement; static contracts now fail if those implementations or headers return
+  to `core/`.
+- **Migration direction**: keep `core/` as actor-kernel primitives only and move
+  future concrete actor behavior directly into the actor layer.
 
 ## runtime
 
@@ -119,16 +121,19 @@ Each layer section uses the same fields:
 - **Hot path**: mostly no; descriptor tables are read during bootstrap and lookup.
 - **Bootstrap-only**: mostly yes, except generated catalog lookup data used during
   dispatch and delivery.
-- **Current technical exceptions**: wrapper headers in `modules/` still include
-  actor headers that are physically located in `core/include`.
-- **Migration direction**: keep actor/module consistency strict and move device
-  actor descriptor wrappers with the actors when that layer is split.
+- **Current technical exceptions**: descriptor wrappers in `modules/` still
+  include concrete actor public headers, but those headers now live under
+  `actors/device/include` or `actors/framework/include`.
+- **Migration direction**: keep actor/module consistency strict and consider
+  moving descriptor wrappers into the actor layer only in a separate API-neutral
+  cleanup.
 
 ## device actors
 
 - **Responsibility**: implement reusable actor behavior for hardware-adjacent or
-  service-adjacent entities such as RTC, DS18B20, MCP23008, OLED, panel, network,
-  command, power, supervisor, and watchdog actors.
+  service-adjacent entities. `actors/device` owns RTC, DS18B20, MCP23008, OLED,
+  and panel actors. `actors/framework` owns network, command, power, supervisor,
+  and watchdog actors.
 - **Allowed dependencies**: core actor/message APIs, abstract port contracts,
   small driver facades, actor descriptors, and generated identifiers.
 - **Forbidden dependencies**: direct ESP8266 SDK APIs, direct BSP pin maps, target
@@ -141,11 +146,11 @@ Each layer section uses the same fields:
 - **Hot path**: yes. Actor handlers execute in cooperative runtime polling and
   must remain bounded.
 - **Bootstrap-only**: no.
-- **Current technical exceptions**: device actors are currently still stored in
-  `core/src` and headers live in `core/include/ev`.
-- **Migration direction**: create a dedicated actor layer or move concrete actors
-  under `modules/actors` or `drivers`, depending on whether each actor is pure
-  policy or hardware-facing behavior.
+- **Current technical exceptions**: none for actor source/header placement;
+  concrete actor files live in `actors/device` and `actors/framework`.
+- **Migration direction**: keep actor behavior portable, bounded, and SDK-free;
+  later split device-driver facades or module wrappers only as separate small
+  changes.
 
 ## drivers
 
@@ -163,9 +168,9 @@ Each layer section uses the same fields:
   bounded and non-allocating.
 - **Bootstrap-only**: no.
 - **Current technical exceptions**: current driver headers mostly re-export actor
-  headers while concrete actors still live in `core/`.
-- **Migration direction**: after device actors move, convert re-export facades into
-  clearer actor-driver contracts or remove redundant wrappers.
+  headers from the actor layer.
+- **Migration direction**: convert re-export facades into clearer actor-driver
+  contracts or remove redundant wrappers in a separate cleanup.
 
 ## ports
 
@@ -203,11 +208,11 @@ Each layer section uses the same fields:
 - **Hot path**: yes for app actor handlers and policy callbacks.
 - **Bootstrap-only**: composition code is bootstrap-only; actor behavior is runtime
   code.
-- **Current technical exceptions**: demo code still embeds public
-  `ev_runtime_graph_t` storage because the graph is not fully opaque yet, but it
-  must not inspect graph internals directly.
-- **Migration direction**: reduce demo code to composition root and example policy
-  after the graph storage boundary becomes opaque.
+- **Current technical exceptions**: demo code still composes concrete actor
+  contexts and owns opaque `ev_runtime_graph_t` storage as a composition root.
+- **Migration direction**: reduce demo code further to composition root and
+  example policy now that graph internals and concrete actor placement are
+  separated.
 
 ## adapters
 
@@ -324,12 +329,9 @@ Each layer section uses the same fields:
 
 The following exceptions are intentionally named instead of hidden:
 
-1. Concrete device actors are still located in `core/src` and exported from
-   `core/include/ev`.
-2. `ev_runtime_graph_t` is still a public structure for static storage ownership,
-   but direct non-runtime field access is now an enforced violation.
-3. Delivery trace records still write `timestamp_us = 0U`.
-4. The Wemos ESP-WROOM-02 18650 BSP has a private, deliberately tracked
+1. `ev_runtime_graph_t` is public opaque static storage for embedded stack/static
+   ownership, but direct non-runtime field access is an enforced violation.
+2. The Wemos ESP-WROOM-02 18650 BSP has a private, deliberately tracked
    `board_secrets.local.h`; this is not a general policy and must not be copied
    to public repositories.
 
@@ -340,5 +342,5 @@ The following exceptions are intentionally named instead of hidden:
 2. Make the `ev_runtime_graph_t` storage contract explicit or fully opaque.
 3. Enforce route delivery policies end to end.
 4. Add host microbenchmarks for publish and runtime polling.
-5. Move concrete device actors out of `core/` only after the public runtime graph
-   boundary is in place.
+5. Keep concrete device/framework actors out of `core/` with static contracts.
+6. Reduce demo apps to pure composition roots and example policy.

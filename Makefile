@@ -2,7 +2,7 @@ CC ?= cc
 PYTHON ?= python3
 
 CFLAGS ?= -std=c11 -Wall -Wextra -O0 -g0 -pedantic -DEV_HOST_BUILD \
-    -Icore/include -Icore/generated/include -Iruntime/include -Imodules/include -Idrivers/include \
+    -Icore/include -Iactors/device/include -Iactors/framework/include -Icore/generated/include -Iruntime/include -Imodules/include -Idrivers/include \
     -Iports/include -Iapps/demo/include -Iconfig
 BENCH_CFLAGS ?= $(filter-out -O0,$(CFLAGS)) -O2 -D_POSIX_C_SOURCE=200809L
 LDFLAGS ?=
@@ -25,17 +25,21 @@ CORE_SRCS := \
     core/src/ev_actor_runtime.c \
     core/src/ev_domain_pump.c \
     core/src/ev_system_pump.c \
-    core/src/ev_lease_pool.c \
-    core/src/ev_rtc_actor.c \
-    core/src/ev_ds18b20_actor.c \
-    core/src/ev_mcp23008_actor.c \
-    core/src/ev_panel_actor.c \
-    core/src/ev_oled_actor.c \
-    core/src/ev_supervisor_actor.c \
-    core/src/ev_power_actor.c \
-    core/src/ev_watchdog_actor.c \
-    core/src/ev_network_actor.c \
-    core/src/ev_command_actor.c
+    core/src/ev_lease_pool.c
+
+ACTOR_DEVICE_SRCS := \
+    actors/device/ev_rtc_actor.c \
+    actors/device/ev_ds18b20_actor.c \
+    actors/device/ev_mcp23008_actor.c \
+    actors/device/ev_panel_actor.c \
+    actors/device/ev_oled_actor.c
+
+ACTOR_FRAMEWORK_SRCS := \
+    actors/framework/ev_supervisor_actor.c \
+    actors/framework/ev_power_actor.c \
+    actors/framework/ev_watchdog_actor.c \
+    actors/framework/ev_network_actor.c \
+    actors/framework/ev_command_actor.c
 
 RUNTIME_SRCS := \
     runtime/src/ev_actor_modules.c \
@@ -77,7 +81,7 @@ TEST_SUPPORT_SRCS := \
     tests/host/fakes/fake_wdt_port.c \
     tests/host/fakes/fake_net_port.c
 
-COMMON_SRCS := $(CORE_SRCS) $(RUNTIME_SRCS) $(MODULE_SRCS) $(DRIVER_SRCS) $(APP_SRCS) $(TEST_SUPPORT_SRCS)
+COMMON_SRCS := $(CORE_SRCS) $(ACTOR_DEVICE_SRCS) $(ACTOR_FRAMEWORK_SRCS) $(RUNTIME_SRCS) $(MODULE_SRCS) $(DRIVER_SRCS) $(APP_SRCS) $(TEST_SUPPORT_SRCS)
 COMMON_OBJS := $(patsubst %.c,$(BUILD_DIR)/obj/%.o,$(COMMON_SRCS))
 
 HOST_TESTS := \
@@ -132,6 +136,7 @@ HOST_TESTS := \
     test_demo_migration_blockers \
     test_fault_metrics_trace_framework \
     test_delivery_trace_timestamp \
+    test_actor_layering_contract \
     test_delivery_command_network_framework
 
 HOST_TEST_BINS := $(addprefix $(BUILD_DIR)/,$(HOST_TESTS))

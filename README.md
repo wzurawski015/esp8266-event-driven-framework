@@ -33,6 +33,18 @@ make property-test
 make quality-gate
 ```
 
+Host safety validation is separate from the default quality gate because sanitizer support depends on the host compiler/runtime:
+
+```sh
+make host-strict-test
+make host-sanitize-test
+make safety-gate
+make host-tsan-test      # optional/report target
+make clang-tidy-gate     # optional; reports ENVIRONMENT_BLOCKED if unavailable
+```
+
+`make host-strict-test` uses C17 with `-Werror`. `make host-sanitize-test` uses AddressSanitizer and UndefinedBehaviorSanitizer. These targets are host-only and are not propagated into ESP8266 RTOS SDK builds.
+
 `make quality-gate` executes the host release gate:
 
 ```sh

@@ -1,9 +1,18 @@
 CC ?= cc
 PYTHON ?= python3
 
-CFLAGS ?= -std=c11 -Wall -Wextra -O0 -g0 -pedantic -DEV_HOST_BUILD \
+HOST_INCLUDE_FLAGS ?= \
     -Icore/include -Iactors/device/include -Iactors/framework/include -Icore/generated/include -Iruntime/include -Imodules/include -Idrivers/include \
     -Iports/include -Iapps/demo/include -Iconfig
+HOST_BASE_DEFINES ?= -DEV_HOST_BUILD
+CFLAGS ?= -std=c11 -Wall -Wextra -O0 -g0 -pedantic $(HOST_BASE_DEFINES) $(HOST_INCLUDE_FLAGS)
+HOST_STRICT_CFLAGS ?= -std=c17 -Wall -Wextra -Wpedantic -Werror -O0 -g0 $(HOST_BASE_DEFINES) $(HOST_INCLUDE_FLAGS)
+HOST_SANITIZE_CFLAGS ?= -std=c17 -Wall -Wextra -Wpedantic -Werror -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined $(HOST_BASE_DEFINES) $(HOST_INCLUDE_FLAGS)
+HOST_SANITIZE_LDFLAGS ?= -fsanitize=address,undefined
+HOST_TSAN_CFLAGS ?= -std=c17 -Wall -Wextra -Wpedantic -Werror -O1 -g -fno-omit-frame-pointer -fsanitize=thread $(HOST_BASE_DEFINES) $(HOST_INCLUDE_FLAGS)
+HOST_TSAN_LDFLAGS ?= -fsanitize=thread
+CLANG_TIDY ?= clang-tidy
+CLANG_TIDY_CHECKS ?= -*,clang-analyzer-*,bugprone-*,cert-*,performance-*,portability-*,-bugprone-easily-swappable-parameters
 BENCH_CFLAGS ?= $(filter-out -O0,$(CFLAGS)) -O2 -D_POSIX_C_SOURCE=200809L
 LDFLAGS ?=
 
@@ -158,7 +167,7 @@ BENCH_TESTS := \
 BENCH_BINS := $(addprefix $(BENCH_BUILD_DIR)/,$(BENCH_TESTS))
 BENCH_RESULTS := $(BENCH_BUILD_DIR)/results.txt
 
-.PHONY: all host-test property-test bench perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate production-release-gate quality-gate release-gate docgen docs clean
+.PHONY: all host-test property-test host-strict-test host-sanitize-cc-check host-sanitize-test host-tsan-cc-check host-tsan-test clang-tidy-gate safety-gate bench perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate production-release-gate quality-gate release-gate docgen docs clean
 .SECONDARY: $(COMMON_OBJS) $(BENCH_COMMON_OBJS)
 
 all: host-test
@@ -196,6 +205,49 @@ host-test: routegen $(HOST_TEST_BINS)
 property-test: routegen $(PROPERTY_TEST_BINS)
 	@set -e; for t in $(PROPERTY_TEST_BINS); do ./$$t; done
 	@echo "property tests passed"
+
+host-strict-test:
+	@echo "host-strict-test: C17 + -Werror host build"
+	@$(MAKE) --no-print-directory BUILD_DIR=build/host-strict CFLAGS="$(HOST_STRICT_CFLAGS)" LDFLAGS="$(LDFLAGS)" host-test
+
+host-sanitize-cc-check:
+	@mkdir -p build/host-sanitize
+	@printf '%s\n' 'int main(void){return 0;}' > build/host-sanitize/sanitize_check.c
+	@if ! $(CC) $(HOST_SANITIZE_CFLAGS) build/host-sanitize/sanitize_check.c $(HOST_SANITIZE_LDFLAGS) -o build/host-sanitize/sanitize_check >/dev/null 2>&1; then \
+		echo "host-sanitize-test ENVIRONMENT_BLOCKED: compiler does not support -fsanitize=address,undefined"; \
+		exit 77; \
+	fi
+
+host-sanitize-test: host-sanitize-cc-check
+	@echo "host-sanitize-test: AddressSanitizer + UndefinedBehaviorSanitizer host build"
+	@$(MAKE) --no-print-directory BUILD_DIR=build/host-sanitize CFLAGS="$(HOST_SANITIZE_CFLAGS)" LDFLAGS="$(HOST_SANITIZE_LDFLAGS) $(LDFLAGS)" host-test
+
+host-tsan-cc-check:
+	@mkdir -p build/host-tsan
+	@printf '%s\n' 'int main(void){return 0;}' > build/host-tsan/tsan_check.c
+	@if ! $(CC) $(HOST_TSAN_CFLAGS) build/host-tsan/tsan_check.c $(HOST_TSAN_LDFLAGS) -o build/host-tsan/tsan_check >/dev/null 2>&1; then \
+		echo "host-tsan-test ENVIRONMENT_BLOCKED: compiler does not support -fsanitize=thread"; \
+		exit 77; \
+	fi
+
+host-tsan-test: host-tsan-cc-check
+	@echo "host-tsan-test: ThreadSanitizer host build"
+	@$(MAKE) --no-print-directory BUILD_DIR=build/host-tsan CFLAGS="$(HOST_TSAN_CFLAGS)" LDFLAGS="$(HOST_TSAN_LDFLAGS) $(LDFLAGS)" host-test
+
+clang-tidy-gate:
+	@if ! command -v $(CLANG_TIDY) >/dev/null 2>&1; then \
+		echo "clang-tidy-gate ENVIRONMENT_BLOCKED: $(CLANG_TIDY) not found"; \
+	else \
+		echo "clang-tidy-gate: portable layers and representative host tests"; \
+		$(CLANG_TIDY) --quiet \
+			$(CORE_SRCS) $(ACTOR_DEVICE_SRCS) $(ACTOR_FRAMEWORK_SRCS) $(RUNTIME_SRCS) $(MODULE_SRCS) $(DRIVER_SRCS) $(APP_SRCS) $(TEST_SUPPORT_SRCS) \
+			tests/host/test_msg_contract.c tests/host/test_mailbox_contract.c tests/host/test_delivery_trace_timestamp.c tests/property/test_framework_property.c \
+			-checks='$(CLANG_TIDY_CHECKS)' -- $(HOST_STRICT_CFLAGS); \
+		echo "clang-tidy-gate passed"; \
+	fi
+
+safety-gate: host-strict-test host-sanitize-test
+	@echo "safety-gate passed"
 
 bench: routegen $(BENCH_BINS)
 	@mkdir -p $(BENCH_BUILD_DIR)

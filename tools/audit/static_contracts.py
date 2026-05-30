@@ -318,6 +318,66 @@ def validate_trace_timestamp_contract() -> None:
     if "mono_now_us" not in code:
         errors.append("delivery trace must call the monotonic clock port")
 
+def extract_make_target_body(makefile: str, target: str) -> str:
+    match = re.search(rf"^{re.escape(target)}\s*:[^\n]*\n(?P<body>(?:\t.*\n|\s*\n)*)", makefile, flags=re.MULTILINE)
+    return match.group("body") if match else ""
+
+
+def validate_host_safety_gate_contract() -> None:
+    makefile_path = ROOT / "Makefile"
+    if not makefile_path.exists():
+        errors.append("Makefile missing for host safety gate contract")
+        return
+    makefile = makefile_path.read_text(encoding="utf-8", errors="ignore")
+    for target in ["host-strict-test", "host-sanitize-cc-check", "host-sanitize-test", "host-tsan-cc-check", "host-tsan-test", "clang-tidy-gate", "safety-gate"]:
+        if re.search(rf"^{re.escape(target)}\s*:", makefile, flags=re.MULTILINE) is None:
+            errors.append(f"host safety target missing: {target}")
+    strict_flags = re.search(r"^HOST_STRICT_CFLAGS\s*\?=\s*(.*)$", makefile, flags=re.MULTILINE)
+    if strict_flags is None:
+        errors.append("HOST_STRICT_CFLAGS missing")
+    else:
+        for flag in ["-std=c17", "-Wall", "-Wextra", "-Wpedantic", "-Werror"]:
+            if flag not in strict_flags.group(1):
+                errors.append(f"HOST_STRICT_CFLAGS missing {flag}")
+    sanitize_flags = re.search(r"^HOST_SANITIZE_CFLAGS\s*\?=\s*(.*)$", makefile, flags=re.MULTILINE)
+    if sanitize_flags is None:
+        errors.append("HOST_SANITIZE_CFLAGS missing")
+    else:
+        for flag in ["-std=c17", "-fsanitize=address,undefined", "-fno-omit-frame-pointer"]:
+            if flag not in sanitize_flags.group(1):
+                errors.append(f"HOST_SANITIZE_CFLAGS missing {flag}")
+    sanitize_ld = re.search(r"^HOST_SANITIZE_LDFLAGS\s*\?=\s*(.*)$", makefile, flags=re.MULTILINE)
+    if sanitize_ld is None or "-fsanitize=address,undefined" not in sanitize_ld.group(1):
+        errors.append("HOST_SANITIZE_LDFLAGS must include -fsanitize=address,undefined")
+    strict_body = extract_make_target_body(makefile, "host-strict-test")
+    if "host-test" not in strict_body or "HOST_STRICT_CFLAGS" not in strict_body:
+        errors.append("host-strict-test must build and run host-test with HOST_STRICT_CFLAGS")
+    sanitize_body = extract_make_target_body(makefile, "host-sanitize-test")
+    if "host-test" not in sanitize_body or "HOST_SANITIZE_CFLAGS" not in sanitize_body:
+        errors.append("host-sanitize-test must build and run host-test with HOST_SANITIZE_CFLAGS")
+    if "sdk-" in sanitize_body:
+        errors.append("host-sanitize-test must remain host-only and must not invoke SDK targets")
+    if re.search(r"host-sanitize-test\s*:[^\n]*host-sanitize-cc-check", makefile) is None:
+        errors.append("host-sanitize-test must depend on host-sanitize-cc-check")
+    tsan_body = extract_make_target_body(makefile, "host-tsan-test")
+    if "sdk-" in tsan_body:
+        errors.append("host-tsan-test must remain host-only and must not invoke SDK targets")
+    if "ENVIRONMENT_BLOCKED" not in extract_make_target_body(makefile, "host-sanitize-cc-check"):
+        errors.append("host-sanitize compiler check must report ENVIRONMENT_BLOCKED when unsupported")
+    if "ENVIRONMENT_BLOCKED" not in extract_make_target_body(makefile, "host-tsan-cc-check"):
+        errors.append("host-tsan compiler check must report ENVIRONMENT_BLOCKED when unsupported")
+    if "ENVIRONMENT_BLOCKED" not in extract_make_target_body(makefile, "clang-tidy-gate"):
+        errors.append("clang-tidy-gate must report ENVIRONMENT_BLOCKED when clang-tidy is unavailable")
+    safety = re.search(r"^safety-gate\s*:(.*)$", makefile, flags=re.MULTILINE)
+    if safety is None:
+        errors.append("safety-gate target missing")
+    else:
+        for dep in ["host-strict-test", "host-sanitize-test"]:
+            if dep not in safety.group(1):
+                errors.append(f"safety-gate missing dependency: {dep}")
+    if not (ROOT / "docs" / "release" / "host_safety_gate_report.md").exists():
+        errors.append("host safety gate report missing: docs/release/host_safety_gate_report.md")
+
 static_contract_self_test()
 validate_layering_contract_document()
 validate_runtime_graph_public_header_opaque()
@@ -326,6 +386,7 @@ validate_runtime_graph_access_boundary()
 validate_actor_layering_boundary()
 validate_route_qos_contract()
 validate_trace_timestamp_contract()
+validate_host_safety_gate_contract()
 
 for artifact in iter_repo_files(ROOT):
     if is_ignored_path(artifact):

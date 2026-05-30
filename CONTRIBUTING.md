@@ -2,7 +2,7 @@
 
 ## Ground rules
 
-- Use C11 for portable core code.
+- Use C11-compatible portable core code; host safety gates also compile the framework as C17.
 - Keep `core/` and `domain/` platform-agnostic.
 - Public headers must document ownership, preconditions, postconditions, and failure modes.
 - Do not introduce dynamic allocation into hot paths.
@@ -14,7 +14,7 @@
 
 - One coherent concern per commit.
 - Generated files must be regenerated in the same commit as their SSOT changes.
-- Build and host tests must pass before pushing.
+- Build and host tests must pass before pushing. For safety-sensitive changes, also run `make host-strict-test`, `make host-sanitize-test`, and `make safety-gate`.
 
 ## Documentation
 

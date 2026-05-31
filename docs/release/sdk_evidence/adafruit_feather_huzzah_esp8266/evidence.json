@@ -1,0 +1,28 @@
+{
+  "baud": "115200",
+  "build_log": "docs/release/sdk_evidence/adafruit_feather_huzzah_esp8266/build.log",
+  "class": "metadata_only",
+  "family": "adafruit",
+  "map_summary": "docs/release/sdk_evidence/adafruit_feather_huzzah_esp8266/map_summary.txt",
+  "path": "adapters/esp8266_rtos_sdk/targets/adafruit_feather_huzzah_esp8266",
+  "reason": "metadata-only target",
+  "sdkconfig_effective": "docs/release/sdk_evidence/adafruit_feather_huzzah_esp8266/sdkconfig.effective.txt",
+  "size_log": "docs/release/sdk_evidence/adafruit_feather_huzzah_esp8266/size.log",
+  "stack": {
+    "max_frame": 0,
+    "reason": "not run",
+    "status": "STACK_NOT_AVAILABLE"
+  },
+  "stack_usage": "docs/release/sdk_evidence/adafruit_feather_huzzah_esp8266/stack_usage.txt",
+  "status": "NOT_APPLICABLE",
+  "target": "adafruit_feather_huzzah_esp8266",
+  "timestamp_utc": "2026-05-31T06:59:28Z",
+  "values": {
+    "APP_BIN": 0,
+    "BSS": 0,
+    "DATA": 0,
+    "DRAM": 0,
+    "IRAM": 0,
+    "IROM": 0
+  }
+}

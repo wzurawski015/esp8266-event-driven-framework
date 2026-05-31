@@ -1,0 +1,2 @@
+bb704dd2c3b20011f1ca65a61eaf86f9ab72ce95ffc9c3450812607792b489bf  sdkconfig.effective.txt
+08f45af1575f69f3927cf0cc774cbea6e1340bf5668ae4f44b1cc03d82b44b4e  evidence.json

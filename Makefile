@@ -174,7 +174,7 @@ BENCH_BINS := $(addprefix $(BENCH_BUILD_DIR)/,$(BENCH_TESTS))
 BENCH_RESULTS := $(BENCH_BUILD_DIR)/results.txt
 PERF_BUDGETS ?= config/perf_budgets.json
 
-.PHONY: all host-test property-test host-strict-test host-sanitize-cc-check host-sanitize-test host-tsan-cc-check host-tsan-test clang-tidy-gate safety-gate hotpath-zero-alloc-gate bench perf-report perf-budget-gate perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts qos-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate production-release-gate quality-gate release-gate docgen docs clean
+.PHONY: all host-test property-test host-strict-test host-sanitize-cc-check host-sanitize-test host-tsan-cc-check host-tsan-test clang-tidy-gate safety-gate hotpath-zero-alloc-gate bench perf-report perf-budget-gate perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts qos-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate sdk-build-evidence sdk-map-stack-evidence sdk-evidence-gate production-release-gate quality-gate release-gate docgen docs clean
 .SECONDARY: $(COMMON_OBJS) $(BENCH_COMMON_OBJS)
 
 all: host-test
@@ -323,6 +323,16 @@ sdk-memory-matrix:
 	$(PYTHON) tools/sdk_memory_report.py --self-test
 	$(PYTHON) tools/sdk_memory_matrix.py --self-test
 	$(PYTHON) tools/sdk_memory_matrix.py
+
+sdk-build-evidence:
+	$(PYTHON) tools/release/capture_sdk_evidence.py --self-test
+	$(PYTHON) tools/release/capture_sdk_evidence.py --capture
+
+sdk-map-stack-evidence:
+	$(PYTHON) tools/release/capture_sdk_evidence.py --summarize
+
+sdk-evidence-gate:
+	$(PYTHON) tools/release/capture_sdk_evidence.py --gate
 
 sdk-memory-release-gate:
 	$(PYTHON) tools/sdk_memory_report.py --self-test

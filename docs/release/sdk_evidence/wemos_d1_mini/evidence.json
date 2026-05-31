@@ -1,0 +1,28 @@
+{
+  "baud": "115200",
+  "build_log": "docs/release/sdk_evidence/wemos_d1_mini/build.log",
+  "class": "buildable_sdk",
+  "family": "wemos",
+  "map_summary": "docs/release/sdk_evidence/wemos_d1_mini/map_summary.txt",
+  "path": "adapters/esp8266_rtos_sdk/targets/wemos_d1_mini",
+  "reason": "SDK build toolchain not available: neither IDF_PATH nor docker runner found",
+  "sdkconfig_effective": "docs/release/sdk_evidence/wemos_d1_mini/sdkconfig.effective.txt",
+  "size_log": "docs/release/sdk_evidence/wemos_d1_mini/size.log",
+  "stack": {
+    "max_frame": 0,
+    "reason": "no EV_MEM_STACK_USAGE marker",
+    "status": "STACK_NOT_AVAILABLE"
+  },
+  "stack_usage": "docs/release/sdk_evidence/wemos_d1_mini/stack_usage.txt",
+  "status": "ENVIRONMENT_BLOCKED",
+  "target": "wemos_d1_mini",
+  "timestamp_utc": "2026-05-31T06:59:28Z",
+  "values": {
+    "APP_BIN": 0,
+    "BSS": 0,
+    "DATA": 0,
+    "DRAM": 0,
+    "IRAM": 0,
+    "IROM": 0
+  }
+}

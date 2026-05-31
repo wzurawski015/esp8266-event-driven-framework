@@ -1,0 +1,8 @@
+target=atnel_air_esp_motherboard
+status=ENVIRONMENT_BLOCKED
+EV_MEM_IRAM=0
+EV_MEM_DRAM=0
+EV_MEM_BSS=0
+EV_MEM_DATA=0
+EV_MEM_IROM=0
+EV_MEM_APP_BIN=0

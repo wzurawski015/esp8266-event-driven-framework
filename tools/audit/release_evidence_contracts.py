@@ -10,6 +10,54 @@ ROOT = Path(__file__).resolve().parents[2]
 STATUS_VALUES = {"PASS", "FAIL", "NOT_RUN", "ENVIRONMENT_BLOCKED", "NOT_APPLICABLE"}
 SDK_BUILD_REPORT = ROOT / "docs" / "release" / "sdk_build_matrix_report.md"
 SDK_MEMORY_REPORT = ROOT / "docs" / "release" / "sdk_memory_matrix_report.md"
+
+SDK_EVIDENCE_ROOT = ROOT / "docs" / "release" / "sdk_evidence"
+SDK_REAL_EVIDENCE_REPORT = ROOT / "docs" / "release" / "sdk_real_build_map_stack_evidence_report.md"
+
+
+def _evidence_json_for_target(target: str) -> Path:
+    return SDK_EVIDENCE_ROOT / target / "evidence.json"
+
+
+def _load_evidence_for_target(target: str) -> dict:
+    path = _evidence_json_for_target(target)
+    if not path.is_file():
+        return {}
+    try:
+        import json
+        return json.loads(path.read_text(encoding="utf-8", errors="ignore"))
+    except Exception:
+        return {}
+
+
+def check_sdk_evidence_files(errors: list[str]) -> None:
+    rows = table_rows(SDK_BUILD_REPORT)
+    header = next((cells for cells in rows if cells and cells[0] == "Target"), [])
+    if not header:
+        return
+    try:
+        status_index = header.index("Status")
+    except ValueError:
+        return
+    for cells in rows:
+        if not cells or cells[0] == "Target" or len(cells) <= status_index:
+            continue
+        target = cells[0].strip("`")
+        status = cells[status_index]
+        if status != "PASS":
+            continue
+        evidence = _load_evidence_for_target(target)
+        if not evidence:
+            errors.append(f"release-evidence: SDK PASS row has no evidence.json: {target}")
+            continue
+        log_path = evidence.get("build_log", "")
+        if not log_path or not (ROOT / str(log_path)).is_file():
+            errors.append(f"release-evidence: SDK PASS row has no committed build log: {target}")
+        if evidence.get("status") != "PASS":
+            errors.append(f"release-evidence: SDK PASS row evidence status is not PASS: {target}")
+        values = evidence.get("values", {}) if isinstance(evidence.get("values", {}), dict) else {}
+        if not any(int(values.get(key, 0) or 0) > 0 for key in ["IRAM", "DRAM", "BSS", "DATA", "APP_BIN"]):
+            errors.append(f"release-evidence: SDK PASS row has no non-zero memory evidence: {target}")
 FINAL_SUMMARY = ROOT / "docs" / "release" / "final_release_validation_summary.md"
 HIL_REPORTS = [
     ROOT / "docs" / "release" / "hil_atnel_i2c_report.md",
@@ -182,6 +230,7 @@ def main() -> int:
     mem_status = check_sdk_memory_report(errors)
     check_final_summary(errors, sdk_status, mem_status)
     check_hil_reports(errors)
+    check_sdk_evidence_files(errors)
     if errors:
         for error in errors:
             print(error, file=sys.stderr)

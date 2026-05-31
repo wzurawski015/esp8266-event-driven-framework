@@ -58,6 +58,22 @@ def validate_layering_contract_document() -> None:
             errors.append(f"layering contract missing section: {section}")
 
 
+
+def check_sdk_evidence_contracts() -> None:
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8", errors="ignore")
+    required_targets = ["sdk-build-evidence", "sdk-map-stack-evidence", "sdk-evidence-gate"]
+    for target in required_targets:
+        if f"{target}:" not in makefile:
+            errors.append(f"static-contracts: Makefile missing {target}")
+    tool = ROOT / "tools" / "release" / "capture_sdk_evidence.py"
+    if not tool.is_file():
+        errors.append("static-contracts: missing tools/release/capture_sdk_evidence.py")
+    else:
+        text = tool.read_text(encoding="utf-8", errors="ignore")
+        for token in ["ENVIRONMENT_BLOCKED", "--gate", "evidence.json", "EV_MEM_"]:
+            if token not in text:
+                errors.append(f"static-contracts: SDK evidence tool missing {token}")
+
 def strip_comments(text: str) -> str:
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
     text = re.sub(r"//.*", "", text)

@@ -1,0 +1,5 @@
+{
+  "max_frame": 0,
+  "reason": "no EV_MEM_STACK_USAGE marker",
+  "status": "STACK_NOT_AVAILABLE"
+}

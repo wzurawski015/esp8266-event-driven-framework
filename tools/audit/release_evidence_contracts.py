@@ -243,6 +243,40 @@ def check_i2c_hil_evidence(errors: list[str]) -> None:
     if not parsed.get("fixture_coupled", False):
         errors.append("release-evidence: ATNEL I2C PASS without fixture-coupled evidence")
 
+
+def _parsed_json_path_from_report(path: Path) -> Path | None:
+    if not path.is_file():
+        return None
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    m = re.search(r"docs/release/hil_evidence/[^`| ]+/parsed\.json", text)
+    if not m:
+        return None
+    return ROOT / m.group(0)
+
+
+def check_wemos_hil_evidence(errors: list[str]) -> None:
+    reports = [
+        ROOT / "docs" / "release" / "wemos_esp_wroom_02_18650_smoke_report.md",
+        ROOT / "docs" / "release" / "wemos_esp_wroom_02_18650_deep_sleep_wake_report.md",
+    ]
+    for path in reports:
+        if first_status(path) != "PASS":
+            continue
+        parsed_path = _parsed_json_path_from_report(path)
+        if parsed_path is None or not parsed_path.is_file():
+            errors.append(f"release-evidence: {path.relative_to(ROOT).as_posix()} PASS without parsed JSON")
+            continue
+        try:
+            import json
+            parsed = json.loads(parsed_path.read_text(encoding="utf-8", errors="ignore"))
+        except Exception:
+            errors.append(f"release-evidence: {path.relative_to(ROOT).as_posix()} parsed JSON invalid")
+            continue
+        if parsed.get("status") != "PASS":
+            errors.append(f"release-evidence: {path.relative_to(ROOT).as_posix()} PASS but parsed status is not PASS")
+        if "deep_sleep" in path.name and parsed.get("mode") != "deepsleep":
+            errors.append("release-evidence: Wemos deep-sleep PASS without deepsleep parsed mode")
+
 def self_test() -> None:
     assert status_cells(["foo", "PASS", "bar"]) == ["PASS"]
     assert status_cells(["foo", "NOT_RUN"]) == ["NOT_RUN"]
@@ -255,6 +289,7 @@ def main() -> int:
     mem_status = check_sdk_memory_report(errors)
     check_final_summary(errors, sdk_status, mem_status)
     check_hil_reports(errors)
+    check_wemos_hil_evidence(errors)
     check_i2c_hil_evidence(errors)
     check_sdk_evidence_files(errors)
     if errors:

@@ -95,6 +95,30 @@ def check_hil_i2c_evidence_contracts() -> None:
         if f"{target}:" not in makefile:
             errors.append(f"static-contracts: Makefile missing {target}")
 
+
+def check_wemos_evidence_contracts() -> None:
+    parser = ROOT / "tools" / "hil" / "parse_wemos_smoke_log.py"
+    if not parser.is_file():
+        errors.append("static-contracts: missing Wemos smoke parser")
+    else:
+        text = parser.read_text(encoding="utf-8", errors="ignore")
+        for token in ["EV_WEMOS_SMOKE_BOOT", "EV_WEMOS_SMOKE_RUNTIME_READY", "EV_POWER_SMOKE_STATE", "--self-test"]:
+            if token not in text:
+                errors.append(f"static-contracts: Wemos parser missing {token}")
+    marker_files = [
+        ROOT / "adapters" / "esp8266_rtos_sdk" / "targets" / "wemos_esp_wroom_02_18650" / "main" / "app_main.c",
+        ROOT / "adapters" / "esp8266_rtos_sdk" / "components" / "ev_platform" / "ev_runtime_app.c",
+        ROOT / "actors" / "framework" / "ev_power_actor.c",
+    ]
+    marker_text = "\n".join(path.read_text(encoding="utf-8", errors="ignore") for path in marker_files if path.is_file())
+    for token in ["EV_WEMOS_SMOKE_BOOT", "EV_WEMOS_SMOKE_RUNTIME_READY", "EV_WEMOS_SMOKE_TICK", "EV_POWER_SMOKE_STATE", "EV_POWER_SMOKE_DEEP_SLEEP_ENTER"]:
+        if token not in marker_text:
+            errors.append(f"static-contracts: Wemos/deep-sleep firmware marker missing {token}")
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8", errors="ignore")
+    for target in ["hil-wemos-smoke-evidence", "hil-wemos-smoke-gate", "hil-wemos-deepsleep-wake-gate"]:
+        if f"{target}:" not in makefile:
+            errors.append(f"static-contracts: Makefile missing {target}")
+
 def strip_comments(text: str) -> str:
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
     text = re.sub(r"//.*", "", text)

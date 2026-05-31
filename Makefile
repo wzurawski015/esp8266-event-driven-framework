@@ -174,7 +174,7 @@ BENCH_BINS := $(addprefix $(BENCH_BUILD_DIR)/,$(BENCH_TESTS))
 BENCH_RESULTS := $(BENCH_BUILD_DIR)/results.txt
 PERF_BUDGETS ?= config/perf_budgets.json
 
-.PHONY: all host-test property-test host-strict-test host-sanitize-cc-check host-sanitize-test host-tsan-cc-check host-tsan-test clang-tidy-gate safety-gate hotpath-zero-alloc-gate bench perf-report perf-budget-gate perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts qos-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate sdk-build-evidence sdk-map-stack-evidence sdk-evidence-gate hil-atnel-i2c-flash hil-atnel-i2c-monitor hil-atnel-i2c-evidence hil-atnel-i2c-gate production-release-gate quality-gate release-gate docgen docs clean
+.PHONY: all host-test property-test host-strict-test host-sanitize-cc-check host-sanitize-test host-tsan-cc-check host-tsan-test clang-tidy-gate safety-gate hotpath-zero-alloc-gate bench perf-report perf-budget-gate perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts qos-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate sdk-build-evidence sdk-map-stack-evidence sdk-evidence-gate hil-atnel-i2c-flash hil-atnel-i2c-monitor hil-atnel-i2c-evidence hil-atnel-i2c-gate hil-wemos-smoke-flash hil-wemos-smoke-monitor hil-wemos-smoke-evidence hil-wemos-smoke-gate hil-wemos-deepsleep-wake-gate production-release-gate quality-gate release-gate docgen docs clean
 .SECONDARY: $(COMMON_OBJS) $(BENCH_COMMON_OBJS)
 
 all: host-test
@@ -350,6 +350,26 @@ hil-atnel-i2c-evidence:
 
 hil-atnel-i2c-gate:
 	@if [ -n "$${EV_HIL_ATNEL_I2C_SERIAL_LOG:-}" ]; then $(PYTHON) tools/hil/parse_atnel_i2c_hil_log.py --log "$${EV_HIL_ATNEL_I2C_SERIAL_LOG}"; else $(PYTHON) tools/hil/parse_atnel_i2c_hil_log.py --environment-blocked; fi
+
+hil-wemos-smoke-flash:
+	@if [ "$${EV_HIL_ALLOW_FLASH:-}" = "1" ]; then ./tools/fw wemos-smoke-flash; else echo "hil-wemos-smoke-flash ENVIRONMENT_BLOCKED: set EV_HIL_ALLOW_FLASH=1 and attach Wemos target"; exit 77; fi
+
+hil-wemos-smoke-monitor:
+	@if [ "$${EV_HIL_ALLOW_MONITOR:-}" = "1" ]; then ./tools/fw wemos-smoke-monitor; else echo "hil-wemos-smoke-monitor ENVIRONMENT_BLOCKED: set EV_HIL_ALLOW_MONITOR=1 and attach Wemos target"; exit 77; fi
+
+hil-wemos-smoke-evidence:
+	$(PYTHON) tools/hil/parse_wemos_smoke_log.py --self-test
+	@if [ -n "$${EV_HIL_WEMOS_SMOKE_SERIAL_LOG:-}" ]; then \
+		$(PYTHON) tools/hil/parse_wemos_smoke_log.py --log "$${EV_HIL_WEMOS_SMOKE_SERIAL_LOG}"; \
+	else \
+		$(PYTHON) tools/hil/parse_wemos_smoke_log.py --environment-blocked || true; \
+	fi
+
+hil-wemos-smoke-gate:
+	@if [ -n "$${EV_HIL_WEMOS_SMOKE_SERIAL_LOG:-}" ]; then $(PYTHON) tools/hil/parse_wemos_smoke_log.py --log "$${EV_HIL_WEMOS_SMOKE_SERIAL_LOG}"; else $(PYTHON) tools/hil/parse_wemos_smoke_log.py --environment-blocked; fi
+
+hil-wemos-deepsleep-wake-gate:
+	@if [ -n "$${EV_HIL_WEMOS_DEEPSLEEP_SERIAL_LOG:-}" ]; then $(PYTHON) tools/hil/parse_wemos_smoke_log.py --deepsleep --log "$${EV_HIL_WEMOS_DEEPSLEEP_SERIAL_LOG}"; else $(PYTHON) tools/hil/parse_wemos_smoke_log.py --deepsleep --environment-blocked; fi
 
 sdk-memory-release-gate:
 	$(PYTHON) tools/sdk_memory_report.py --self-test

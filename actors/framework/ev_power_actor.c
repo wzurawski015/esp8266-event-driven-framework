@@ -8,6 +8,8 @@
 #define EV_POWER_US_PER_MS 1000ULL
 
 
+static void ev_power_actor_log_state_marker(ev_power_actor_ctx_t *ctx, ev_power_state_t state);
+
 static void ev_power_actor_record_transition(ev_power_actor_ctx_t *ctx, const ev_power_state_machine_t *sm)
 {
     if ((ctx == NULL) || (sm == NULL)) {
@@ -34,6 +36,7 @@ static ev_result_t ev_power_actor_step(ev_power_actor_ctx_t *ctx,
     input.reason = (uint32_t)reason;
     rc = ev_power_state_machine_step(sm, action, &input, NULL);
     ev_power_actor_record_transition(ctx, sm);
+    ev_power_actor_log_state_marker(ctx, sm->state);
     return rc;
 }
 
@@ -66,6 +69,55 @@ static ev_result_t ev_power_actor_log(ev_power_actor_ctx_t *ctx, const char *mes
 
     tag = (ctx->log_tag != NULL) ? ctx->log_tag : "ev_power";
     return ctx->log_port->write(ctx->log_port->ctx, EV_LOG_INFO, tag, message, strlen(message));
+}
+
+static ev_result_t ev_power_actor_log_smoke_marker(ev_power_actor_ctx_t *ctx, const char *message)
+{
+#ifdef EV_HOST_BUILD
+    (void)ctx;
+    (void)message;
+    return EV_OK;
+#else
+    return ev_power_actor_log(ctx, message);
+#endif
+}
+
+
+static void ev_power_actor_log_state_marker(ev_power_actor_ctx_t *ctx, ev_power_state_t state)
+{
+    switch (state) {
+    case EV_POWER_STATE_ACTIVE:
+        (void)ev_power_actor_log_smoke_marker(ctx, "EV_POWER_SMOKE_STATE ACTIVE");
+        break;
+    case EV_POWER_STATE_SLEEP_REQUESTED:
+        (void)ev_power_actor_log_smoke_marker(ctx, "EV_POWER_SMOKE_STATE SLEEP_REQUESTED");
+        break;
+    case EV_POWER_STATE_DRAINING_RUNTIME:
+        (void)ev_power_actor_log_smoke_marker(ctx, "EV_POWER_SMOKE_STATE DRAINING_RUNTIME");
+        break;
+    case EV_POWER_STATE_LOG_FLUSHING:
+        (void)ev_power_actor_log_smoke_marker(ctx, "EV_POWER_SMOKE_STATE LOG_FLUSHING");
+        break;
+    case EV_POWER_STATE_PORTS_PREPARE_SLEEP:
+        (void)ev_power_actor_log_smoke_marker(ctx, "EV_POWER_SMOKE_STATE PORTS_PREPARE_SLEEP");
+        break;
+    case EV_POWER_STATE_RTC_STATE_SAVED:
+        (void)ev_power_actor_log_smoke_marker(ctx, "EV_POWER_SMOKE_STATE RTC_STATE_SAVED");
+        break;
+    case EV_POWER_STATE_ENTERING_DEEP_SLEEP:
+        (void)ev_power_actor_log_smoke_marker(ctx, "EV_POWER_SMOKE_STATE ENTERING_DEEP_SLEEP");
+        break;
+    case EV_POWER_STATE_WAKE_BOOT:
+        (void)ev_power_actor_log_smoke_marker(ctx, "EV_POWER_SMOKE_STATE WAKE_BOOT");
+        break;
+    case EV_POWER_STATE_REJECTED:
+        (void)ev_power_actor_log_smoke_marker(ctx, "EV_POWER_SMOKE_STATE REJECTED");
+        break;
+    case EV_POWER_STATE_FAILED:
+    default:
+        (void)ev_power_actor_log_smoke_marker(ctx, "EV_POWER_SMOKE_STATE FAILED");
+        break;
+    }
 }
 
 static ev_result_t ev_power_actor_flush_log(ev_power_actor_ctx_t *ctx)
@@ -243,6 +295,7 @@ ev_result_t ev_power_actor_handle(void *actor_context, const ev_msg_t *msg)
         }
 
         ++ctx->sleep_requests_seen;
+        (void)ev_power_actor_log_smoke_marker(ctx, "EV_POWER_SMOKE_SLEEP_REQUEST");
         duration_us = (uint64_t)payload->duration_ms * EV_POWER_US_PER_MS;
         ctx->last_duration_us = duration_us;
         ctx->last_reject_reason = EV_POWER_SLEEP_REJECT_NONE;
@@ -295,6 +348,7 @@ ev_result_t ev_power_actor_handle(void *actor_context, const ev_msg_t *msg)
         (void)ev_power_actor_step(ctx, &sm, EV_POWER_ACTION_RTC_STATE_SAVED, EV_OK, EV_POWER_SLEEP_REJECT_NONE);
 
         ++ctx->sleep_requests_accepted;
+        (void)ev_power_actor_log_smoke_marker(ctx, "EV_POWER_SMOKE_DEEP_SLEEP_ENTER");
         rc = ctx->system_port->deep_sleep(ctx->system_port->ctx, duration_us);
         if (rc != EV_OK) {
             ++ctx->deep_sleep_failures;

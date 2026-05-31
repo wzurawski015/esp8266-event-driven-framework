@@ -54,7 +54,7 @@ void app_main(void)
     };
     ev_net_port_t *runtime_net_port = NULL;
 
-    printf("EV_WEMOS_SMOKE_BOOT board=%s profile=minimal_runtime\n", EV_BOARD_NAME);
+    printf("EV_WEMOS_SMOKE_BOOT target=wemos_esp_wroom_02_18650 board=%s profile=minimal_runtime\n", EV_BOARD_NAME);
 
 #if EV_BOARD_HAS_NET
     {

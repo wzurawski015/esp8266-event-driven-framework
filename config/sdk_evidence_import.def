@@ -1,0 +1,8 @@
+# Required SDK targets for imported release evidence.
+EV_SDK_EVIDENCE_REQUIRED(esp8266_generic_dev, buildable_sdk)
+EV_SDK_EVIDENCE_REQUIRED(atnel_air_esp_motherboard, buildable_sdk)
+EV_SDK_EVIDENCE_REQUIRED(atnel_air_esp_motherboard_i2c_hil, hil_sdk)
+EV_SDK_EVIDENCE_REQUIRED(atnel_air_esp_motherboard_onewire_hil, hil_sdk)
+EV_SDK_EVIDENCE_REQUIRED(atnel_air_esp_motherboard_wifi_hil, hil_sdk)
+EV_SDK_EVIDENCE_REQUIRED(wemos_d1_mini, buildable_sdk)
+EV_SDK_EVIDENCE_REQUIRED(wemos_esp_wroom_02_18650, physical_smoke)

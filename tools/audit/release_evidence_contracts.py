@@ -58,6 +58,39 @@ def check_sdk_evidence_files(errors: list[str]) -> None:
         values = evidence.get("values", {}) if isinstance(evidence.get("values", {}), dict) else {}
         if not any(int(values.get(key, 0) or 0) > 0 for key in ["IRAM", "DRAM", "BSS", "DATA", "APP_BIN"]):
             errors.append(f"release-evidence: SDK PASS row has no non-zero memory evidence: {target}")
+
+def check_sdk_import_evidence_contracts(errors: list[str]) -> None:
+    importer = ROOT / "tools" / "release" / "import_sdk_evidence.py"
+    manifest = ROOT / "config" / "sdk_evidence_import.def"
+    report = ROOT / "docs" / "release" / "sdk_imported_build_map_stack_evidence_report.md"
+    if not importer.is_file():
+        errors.append("release-evidence: SDK import tool missing")
+    if not manifest.is_file():
+        errors.append("release-evidence: SDK import manifest missing")
+    if not report.is_file():
+        errors.append("release-evidence: SDK imported evidence report missing")
+    for target_dir in SDK_EVIDENCE_ROOT.glob("*") if SDK_EVIDENCE_ROOT.exists() else []:
+        ev = target_dir / "evidence.json"
+        if not ev.is_file():
+            continue
+        data = _load_evidence_for_target(target_dir.name)
+        if data.get("status") != "PASS":
+            continue
+        log_path = ROOT / str(data.get("build_log", ""))
+        if not log_path.is_file():
+            errors.append(f"release-evidence: imported SDK PASS without committed build log: {target_dir.name}")
+            continue
+        text = log_path.read_text(encoding="utf-8", errors="ignore")
+        if not re.search(r"EV_SDK_BUILD_STATUS=PASS|EV_MEM_REPORT_RESULT PASS", text):
+            errors.append(f"release-evidence: imported SDK PASS without PASS marker: {target_dir.name}")
+        values = data.get("values", {}) if isinstance(data.get("values", {}), dict) else {}
+        if not any(int(values.get(key, 0) or 0) > 0 for key in ["IRAM", "DRAM", "BSS", "DATA", "APP_BIN"]):
+            errors.append(f"release-evidence: imported SDK PASS without non-zero EV_MEM: {target_dir.name}")
+        for rel_key in ["build_log", "size_log", "map_summary", "stack_usage", "sdkconfig_effective"]:
+            rel = data.get(rel_key, "")
+            if rel and str(rel).lower().endswith((".elf", ".bin", ".o", ".a")):
+                errors.append(f"release-evidence: forbidden binary SDK artifact in evidence: {target_dir.name}:{rel}")
+
 FINAL_SUMMARY = ROOT / "docs" / "release" / "final_release_validation_summary.md"
 HIL_REPORTS = [
     ROOT / "docs" / "release" / "hil_atnel_i2c_report.md",
@@ -314,6 +347,7 @@ def main() -> int:
     check_wemos_hil_evidence(errors)
     check_i2c_hil_evidence(errors)
     check_sdk_evidence_files(errors)
+    check_sdk_import_evidence_contracts(errors)
     if errors:
         for error in errors:
             print(error, file=sys.stderr)

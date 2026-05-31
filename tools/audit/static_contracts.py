@@ -888,6 +888,26 @@ if "EV_UB_HARDENING_ALLOW_BLOCKED" not in makefile_text:
 if "host-sanitize-test || true" in makefile_text or "fuzz-sanitize-gate || true" in makefile_text:
     errors.append("sanitizer/fuzz sanitizer gates must not be suppressed with || true in Makefile")
 
+
+# SDK evidence import contracts.
+for rel in [
+    "tools/release/import_sdk_evidence.py",
+    "config/sdk_evidence_import.def",
+    "docs/release/sdk_evidence_import_workflow.md",
+    "docs/release/sdk_imported_build_map_stack_evidence_report.md",
+]:
+    if not (ROOT / rel).exists():
+        errors.append(f"SDK evidence import artifact missing: {rel}")
+for target in ["sdk-import-evidence", "sdk-import-evidence-gate", "sdk-full-evidence-gate"]:
+    if f"{target}:" not in makefile_text:
+        errors.append(f"SDK import target missing from Makefile: {target}")
+import_tool = ROOT / "tools" / "release" / "import_sdk_evidence.py"
+if import_tool.exists():
+    import_text = import_tool.read_text(encoding="utf-8", errors="ignore")
+    for token in ["--import-root", "--import-target", "FORBIDDEN_SUFFIXES", "EV_MEM_IRAM", "EV_SDK_EVIDENCE_IMPORT_ROOT"]:
+        if token not in import_text:
+            errors.append(f"SDK import tool missing required capability token: {token}")
+
 if errors:
     for error in errors:
         print(error)

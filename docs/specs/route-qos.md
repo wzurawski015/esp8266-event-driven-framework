@@ -102,3 +102,14 @@ is the source of truth for disabled-route semantics.
   beyond the existing mailbox kind behavior and the drop-allowed failure policy.
 - Delivery trace timestamps are still outside this contract and currently remain
   part of the trace timestamp follow-up work.
+
+## End-to-end contract enforcement
+
+The current end-to-end contract is implemented by `ev_qos_contract`:
+
+- `ev_qos_contract_for(qos)` returns the central behavior table.
+- `ev_actor_module_route_policy_accepts_qos(descriptor, qos)` documents the historical `route_policy_flags` field as a single accepted QoS class.
+- `ev_qos_validate_route_against_module(route, descriptor, report)` runs before active delivery.
+- Delivery reports expose `rejected_routes` and `qos_conflict_routes` so partial rejection is visible.
+
+`EV_ROUTE_QOS_COALESCED` and `EV_ROUTE_QOS_LATEST_ONLY` are explicit `algorithm-not-yet-promoted` classes in this patch. They remain drop-allowed until a bounded mailbox replacement/coalescing algorithm is promoted with its own tests and performance evidence.

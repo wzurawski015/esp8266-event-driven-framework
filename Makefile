@@ -61,6 +61,7 @@ RUNTIME_SRCS := \
     runtime/src/ev_ingress_service.c \
     runtime/src/ev_quiescence_service.c \
     runtime/src/ev_delivery_service.c \
+    runtime/src/ev_qos_contract.c \
     runtime/src/ev_runtime_poll.c \
     runtime/src/ev_runtime_loop.c \
     runtime/src/ev_power_manager.c \
@@ -104,6 +105,8 @@ HOST_TESTS := \
     test_route_spans \
     test_active_route_table_spans \
     test_route_qos_delivery_policy \
+    test_qos_contract_table \
+    test_qos_route_module_compatibility \
     test_dispatch_contract \
     test_mailbox_contract \
     test_actor_runtime \
@@ -170,7 +173,7 @@ BENCH_TESTS := \
 BENCH_BINS := $(addprefix $(BENCH_BUILD_DIR)/,$(BENCH_TESTS))
 BENCH_RESULTS := $(BENCH_BUILD_DIR)/results.txt
 
-.PHONY: all host-test property-test host-strict-test host-sanitize-cc-check host-sanitize-test host-tsan-cc-check host-tsan-test clang-tidy-gate safety-gate hotpath-zero-alloc-gate bench perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate production-release-gate quality-gate release-gate docgen docs clean
+.PHONY: all host-test property-test host-strict-test host-sanitize-cc-check host-sanitize-test host-tsan-cc-check host-tsan-test clang-tidy-gate safety-gate hotpath-zero-alloc-gate bench perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts qos-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate production-release-gate quality-gate release-gate docgen docs clean
 .SECONDARY: $(COMMON_OBJS) $(BENCH_COMMON_OBJS)
 
 all: host-test
@@ -295,6 +298,9 @@ private-repo-secrets-policy:
 release-evidence-contracts:
 	$(PYTHON) tools/audit/release_evidence_contracts.py
 
+qos-contracts:
+	$(PYTHON) tools/audit/qos_contract_check.py
+
 public-release-safety-gate:
 	PUBLIC_RELEASE=1 $(PYTHON) tools/audit/private_repo_secrets_policy.py
 
@@ -316,7 +322,7 @@ sdk-memory-release-gate:
 	EV_SDK_MEMORY_REQUIRE_PASS=1 $(PYTHON) tools/sdk_memory_matrix.py
 
 .NOTPARALLEL: quality-gate
-quality-gate: clean routegen-check static-contracts hotpath-zero-alloc-gate actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts memory-budget host-test property-test
+quality-gate: clean routegen-check static-contracts hotpath-zero-alloc-gate actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts qos-contracts memory-budget host-test property-test
 	@echo "quality-gate passed"
 
 release-gate: quality-gate docgen docs

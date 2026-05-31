@@ -5,6 +5,7 @@
 #include "ev/active_route_table.h"
 #include "ev/fault_bus.h"
 #include "ev/metrics_registry.h"
+#include "ev/qos_contract.h"
 #include "ev/runtime_graph.h"
 #include "ev/trace_ring.h"
 #include "ev_runtime_graph_internal.h"
@@ -84,30 +85,17 @@ static void ev_delivery_trace(ev_runtime_graph_t *graph, const ev_route_t *route
 
 ev_delivery_qos_failure_policy_t ev_delivery_qos_failure_policy(ev_route_qos_t qos)
 {
-    switch (qos) {
-    case EV_ROUTE_QOS_BEST_EFFORT:
-    case EV_ROUTE_QOS_LOSSY:
-    case EV_ROUTE_QOS_COALESCED:
-    case EV_ROUTE_QOS_LATEST_ONLY:
-    case EV_ROUTE_QOS_TELEMETRY:
-        return EV_DELIVERY_QOS_FAILURE_DROP;
-
-    case EV_ROUTE_QOS_CRITICAL:
-    case EV_ROUTE_QOS_WAKEUP_CRITICAL:
-    case EV_ROUTE_QOS_COMMAND:
-    default:
-        return EV_DELIVERY_QOS_FAILURE_STRICT;
-    }
+    return (ev_qos_failure_is_drop_allowed(qos) != 0) ? EV_DELIVERY_QOS_FAILURE_DROP : EV_DELIVERY_QOS_FAILURE_STRICT;
 }
 
 int ev_delivery_qos_failure_is_drop(ev_route_qos_t qos)
 {
-    return ev_delivery_qos_failure_policy(qos) == EV_DELIVERY_QOS_FAILURE_DROP;
+    return ev_qos_failure_is_drop_allowed(qos);
 }
 
 int ev_delivery_qos_failure_is_strict(ev_route_qos_t qos)
 {
-    return ev_delivery_qos_failure_policy(qos) == EV_DELIVERY_QOS_FAILURE_STRICT;
+    return ev_qos_failure_is_strict(qos);
 }
 
 static ev_result_t ev_delivery_deliver_one(ev_runtime_graph_t *graph, const ev_route_t *route, const ev_msg_t *msg, ev_delivery_report_t *local)
@@ -169,8 +157,10 @@ static ev_result_t ev_delivery_publish_active(ev_runtime_graph_t *graph, const e
         }
         if (entry->state != EV_ACTIVE_ROUTE_ENABLED) {
             local->dropped++;
+            local->rejected_routes++;
             (void)ev_metric_increment(&EV_RUNTIME_GRAPH_IMPL(graph)->metrics, EV_METRIC_ROUTE_VALIDATION_REJECTED, 1U);
             if (entry->state == EV_ACTIVE_ROUTE_REJECTED_QOS_CONFLICT) {
+                local->qos_conflict_routes++;
                 (void)ev_metric_increment(&EV_RUNTIME_GRAPH_IMPL(graph)->metrics, EV_METRIC_ROUTE_QOS_CONFLICT, 1U);
             }
             ev_delivery_emit_fault(graph, msg->source_actor, entry->route.target_actor, msg->event_id, entry->reason);

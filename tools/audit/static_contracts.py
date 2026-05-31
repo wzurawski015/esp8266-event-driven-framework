@@ -290,20 +290,34 @@ def static_contract_self_test() -> None:
 
 
 def validate_route_qos_contract() -> None:
-    report_path = ROOT / "docs" / "release" / "route_qos_enforcement_report.md"
-    if not report_path.exists():
-        errors.append("route QoS enforcement report missing: docs/release/route_qos_enforcement_report.md")
-
+    required = ["runtime/include/ev/qos_contract.h", "runtime/src/ev_qos_contract.c", "tools/audit/qos_contract_check.py", "tests/host/test_qos_contract_table.c", "tests/host/test_qos_route_module_compatibility.c", "docs/architecture/qos_delivery_contract.md", "docs/release/qos_end_to_end_enforcement_report.md"]
+    for rel in required:
+        if not (ROOT / rel).exists():
+            errors.append(f"QoS contract artifact missing: {rel}")
+    delivery_header = ROOT / "runtime" / "include" / "ev" / "delivery_service.h"
+    if delivery_header.exists():
+        header_text = delivery_header.read_text(encoding="utf-8", errors="ignore")
+        for field in ["rejected_routes", "qos_conflict_routes"]:
+            if field not in header_text:
+                errors.append(f"delivery report missing QoS visibility field: {field}")
     delivery_path = ROOT / "runtime" / "src" / "ev_delivery_service.c"
     if delivery_path.exists():
         code = strip_comments(delivery_path.read_text(encoding="utf-8", errors="ignore"))
-        if re.search(
-            r"EV_ROUTE_QOS_CRITICAL\s*\|\|[^;{}]*"
-            r"EV_ROUTE_QOS_WAKEUP_CRITICAL\s*\|\|[^;{}]*"
-            r"EV_ROUTE_QOS_COMMAND",
-            code,
-        ) is not None:
+        if re.search(r"EV_ROUTE_QOS_CRITICAL\s*\|\|[^;{}]*" r"EV_ROUTE_QOS_WAKEUP_CRITICAL\s*\|\|[^;{}]*" r"EV_ROUTE_QOS_COMMAND", code) is not None:
             errors.append("delivery service reintroduced hand-coded strict QoS disjunction")
+        if "ev_qos_failure_is_drop_allowed" not in code:
+            errors.append("delivery service must use central QoS failure behavior")
+    graph_path = ROOT / "runtime" / "src" / "ev_runtime_graph.c"
+    if graph_path.exists() and "ev_qos_validate_route_against_module" not in strip_comments(graph_path.read_text(encoding="utf-8", errors="ignore")):
+        errors.append("runtime builder must validate route/module QoS before hot path")
+    makefile_path = ROOT / "Makefile"
+    if makefile_path.exists():
+        makefile = makefile_path.read_text(encoding="utf-8", errors="ignore")
+        if "qos-contracts" not in makefile or "tools/audit/qos_contract_check.py" not in makefile:
+            errors.append("QoS contract checker must be registered in Makefile")
+        for test_name in ["test_qos_contract_table", "test_qos_route_module_compatibility"]:
+            if test_name not in makefile:
+                errors.append(f"QoS host test not registered in Makefile: {test_name}")
 
 def validate_trace_timestamp_contract() -> None:
     delivery_path = ROOT / "runtime" / "src" / "ev_delivery_service.c"

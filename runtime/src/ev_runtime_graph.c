@@ -7,6 +7,7 @@
 #include "ev/compiler.h"
 #include "ev/event_catalog.h"
 #include "ev/metrics_registry.h"
+#include "ev/qos_contract.h"
 #include "ev/runtime_ports.h"
 #include "ev/runtime_board_profile.h"
 #include "ev_runtime_graph_internal.h"
@@ -192,30 +193,6 @@ ev_result_t ev_runtime_builder_set_route_validation_flags(ev_runtime_builder_t *
     return EV_OK;
 }
 
-static int ev_runtime_builder_route_qos_supported(const ev_actor_module_descriptor_t *descriptor, ev_route_qos_t qos)
-{
-    if (descriptor == NULL) {
-        return 0;
-    }
-    if (ev_route_qos_is_valid(qos) == 0) {
-        return 0;
-    }
-    if ((descriptor->route_policy_flags != 0U) && (qos != (ev_route_qos_t)descriptor->route_policy_flags)) {
-        if ((descriptor->route_policy_flags == EV_ROUTE_QOS_WAKEUP_CRITICAL) && (qos == EV_ROUTE_QOS_CRITICAL)) {
-            return 1;
-        }
-        if ((descriptor->route_policy_flags == EV_ROUTE_QOS_TELEMETRY) &&
-            ((qos == EV_ROUTE_QOS_TELEMETRY) || (qos == EV_ROUTE_QOS_BEST_EFFORT) || (qos == EV_ROUTE_QOS_LOSSY) || (qos == EV_ROUTE_QOS_CRITICAL))) {
-            return 1;
-        }
-        if ((descriptor->route_policy_flags == EV_ROUTE_QOS_COMMAND) && ((qos == EV_ROUTE_QOS_COMMAND) || (qos == EV_ROUTE_QOS_CRITICAL))) {
-            return 1;
-        }
-        return 0;
-    }
-    return 1;
-}
-
 static ev_active_route_state_t ev_runtime_builder_classify_route(ev_runtime_builder_t *builder, const ev_route_t *route, ev_result_t *out_reason)
 {
     const ev_actor_module_descriptor_t *descriptor;
@@ -247,11 +224,16 @@ static ev_active_route_state_t ev_runtime_builder_classify_route(ev_runtime_buil
         }
         return EV_ACTIVE_ROUTE_REJECTED_INVALID_ACTOR;
     }
-    if (ev_runtime_builder_route_qos_supported(descriptor, route->qos) == 0) {
-        if (out_reason != NULL) {
-            *out_reason = EV_ERR_POLICY;
+    {
+        ev_qos_contract_report_t qos_report;
+        ev_result_t qos_rc = ev_qos_validate_route_against_module(route, descriptor, &qos_report);
+        if (qos_rc != EV_OK) {
+            (void)qos_report;
+            if (out_reason != NULL) {
+                *out_reason = qos_rc;
+            }
+            return EV_ACTIVE_ROUTE_REJECTED_QOS_CONFLICT;
         }
-        return EV_ACTIVE_ROUTE_REJECTED_QOS_CONFLICT;
     }
     if (builder->requested[route->target_actor] != 0U) {
         if (out_reason != NULL) {

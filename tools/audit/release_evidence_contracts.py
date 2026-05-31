@@ -316,24 +316,37 @@ def check_wemos_hil_evidence(errors: list[str]) -> None:
 
 
 def check_eventflow_evidence(errors: list[str]) -> None:
-    report = ROOT / "docs" / "release" / "eventflow_hardware_evidence_report.md"
-    if first_status(report) != "PASS":
-        return
-    parsed_path = _parsed_json_path_from_report(report)
-    if parsed_path is None or not parsed_path.is_file():
-        errors.append("release-evidence: eventflow PASS without parsed JSON")
-        return
-    try:
-        import json
-        parsed = json.loads(parsed_path.read_text(encoding="utf-8", errors="ignore"))
-    except Exception:
-        errors.append("release-evidence: eventflow parsed JSON invalid")
-        return
-    if parsed.get("status") != "PASS":
-        errors.append("release-evidence: eventflow report PASS but parsed status is not PASS")
-    for source in parsed.get("sources", []):
-        if source.get("required") and source.get("status") != "PASS":
-            errors.append(f"release-evidence: eventflow PASS with non-PASS source {source.get('name')}")
+    reports = [
+        ROOT / "docs" / "release" / "eventflow_hardware_evidence_report.md",
+        ROOT / "docs" / "release" / "eventflow_final_hardware_release_report.md",
+    ]
+    for report in reports:
+        if first_status(report) != "PASS":
+            continue
+        parsed_path = _parsed_json_path_from_report(report)
+        if parsed_path is None or not parsed_path.is_file():
+            errors.append(f"release-evidence: {report.relative_to(ROOT).as_posix()} PASS without parsed JSON")
+            continue
+        try:
+            import json
+            parsed = json.loads(parsed_path.read_text(encoding="utf-8", errors="ignore"))
+        except Exception:
+            errors.append(f"release-evidence: {report.relative_to(ROOT).as_posix()} parsed JSON invalid")
+            continue
+        if parsed.get("status") != "PASS":
+            errors.append(f"release-evidence: {report.relative_to(ROOT).as_posix()} PASS but parsed status is not PASS")
+        required_names = {"sdk_esp8266_generic_dev", "sdk_atnel_i2c_hil", "sdk_wemos_smoke", "atnel_i2c_sda_stuck_low", "wemos_smoke", "wemos_deep_sleep_wake"}
+        seen = set()
+        for source in parsed.get("sources", []):
+            if source.get("required"):
+                seen.add(source.get("name"))
+                if source.get("status") != "PASS":
+                    errors.append(f"release-evidence: eventflow PASS with non-PASS source {source.get('name')}")
+                if not source.get("path_sha256"):
+                    errors.append(f"release-evidence: eventflow PASS source lacks SHA-256 {source.get('name')}")
+        missing = required_names - seen
+        if missing:
+            errors.append("release-evidence: eventflow PASS missing required sources: " + ",".join(sorted(missing)))
 
 
 def check_hil_import_contracts(errors: list[str]) -> None:

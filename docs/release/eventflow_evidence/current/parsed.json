@@ -1,9 +1,11 @@
 {
+  "event_sequence": "SDK build -> ATNEL I2C containment -> Wemos boot/runtime/tick -> sleep request -> deep-sleep enter -> wake boot",
   "sources": [
     {
       "kind": "sdk",
       "name": "sdk_esp8266_generic_dev",
       "path": "docs/release/sdk_evidence/esp8266_generic_dev/evidence.json",
+      "path_sha256": "771a9918feefbb1b4ae0cb7227a2f7918b35522da76ca7beedd64d1731d9a312",
       "reason": "SDK build toolchain not available: neither IDF_PATH nor docker runner found",
       "required": true,
       "status": "ENVIRONMENT_BLOCKED"
@@ -12,6 +14,7 @@
       "kind": "sdk",
       "name": "sdk_atnel_i2c_hil",
       "path": "docs/release/sdk_evidence/atnel_air_esp_motherboard_i2c_hil/evidence.json",
+      "path_sha256": "ec751f571ef87509bce914f84b2a534a0be53fe23f8eb7c1c23c182abd36ad90",
       "reason": "SDK build toolchain not available: neither IDF_PATH nor docker runner found",
       "required": true,
       "status": "ENVIRONMENT_BLOCKED"
@@ -20,6 +23,7 @@
       "kind": "sdk",
       "name": "sdk_wemos_smoke",
       "path": "docs/release/sdk_evidence/wemos_esp_wroom_02_18650/evidence.json",
+      "path_sha256": "962d0f6d7e289f7b14aed0a9acf38abe7677f0c9aeb9b02fe4558d2668db34a3",
       "reason": "SDK build toolchain not available: neither IDF_PATH nor docker runner found",
       "required": true,
       "status": "ENVIRONMENT_BLOCKED"
@@ -28,6 +32,7 @@
       "kind": "hil_i2c",
       "name": "atnel_i2c_sda_stuck_low",
       "path": "docs/release/hil_evidence/i2c/current/parsed.json",
+      "path_sha256": "aa3208d9b26c4a1f4ea2ae553884f972bbeac466b8a588cca23ff17c591b2845",
       "reason": "ATNEL I2C hardware fixture or serial log is not available",
       "required": true,
       "status": "ENVIRONMENT_BLOCKED"
@@ -36,6 +41,7 @@
       "kind": "hil_wemos_smoke",
       "name": "wemos_smoke",
       "path": "docs/release/hil_evidence/wemos_smoke/current/parsed.json",
+      "path_sha256": "59218cd66132d393adb2f762ddfe358d0ef4c293554eb74b5c00a351d4108c4f",
       "reason": "",
       "required": true,
       "status": "ENVIRONMENT_BLOCKED"
@@ -44,6 +50,7 @@
       "kind": "hil_wemos_deepsleep",
       "name": "wemos_deep_sleep_wake",
       "path": "docs/release/hil_evidence/wemos_deepsleep/current/parsed.json",
+      "path_sha256": "9ccf580538a18f2398e61ee1ba9054efecf48f2dcd493d0c2e0f2f84627730bd",
       "reason": "",
       "required": true,
       "status": "ENVIRONMENT_BLOCKED"

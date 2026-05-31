@@ -1,4 +1,4 @@
-# Event-flow hardware evidence report
+# Eventflow final hardware release report
 
 | Field | Value |
 |---|---|

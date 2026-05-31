@@ -1,4 +1,4 @@
-# Eventflow hardware evidence contract
+# Eventflow hardware release contract
 
 The hardware event-flow gate aggregates the asynchronous path:
 

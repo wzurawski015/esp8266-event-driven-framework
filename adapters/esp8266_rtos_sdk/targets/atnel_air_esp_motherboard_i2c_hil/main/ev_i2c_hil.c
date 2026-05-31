@@ -582,23 +582,62 @@ static void ev_hil_test_sda_stuck_low(const ev_esp8266_i2c_hil_config_t *cfg, ev
     ev_i2c_status_t stuck_status;
     ev_i2c_status_t recovery_status;
     const uint32_t before_heap = ev_hil_free_heap();
+    int sda_before;
+    int scl_before;
+    int sda_during;
+    int scl_during;
+    int sda_after;
+    int scl_after;
+    bool injection_coupled;
+
+    ESP_LOGI(EV_HIL_I2C_TAG, "EV_HIL_I2C_CASE_BEGIN name=%s", name);
 
     if (!ev_hil_fault_gpio_prepare(result, name, cfg->sda_fault_gpio)) {
+        ESP_LOGE(EV_HIL_I2C_TAG, "EV_HIL_I2C_CASE_RESULT name=%s status=FAIL reason=FIXTURE_GPIO_UNAVAILABLE", name);
         return;
     }
 
+    sda_before = ev_hil_gpio_level_or_minus_one(EV_BOARD_I2C_SDA_GPIO);
+    scl_before = ev_hil_gpio_level_or_minus_one(EV_BOARD_I2C_SCL_GPIO);
     ev_hil_log_fault_fixture_levels(name, "before_fault", cfg->sda_fault_gpio, EV_BOARD_I2C_SDA_GPIO, EV_BOARD_I2C_SCL_GPIO);
     ev_hil_fault_gpio_drive_low(cfg->sda_fault_gpio);
     ets_delay_us(20U);
+    sda_during = ev_hil_gpio_level_or_minus_one(EV_BOARD_I2C_SDA_GPIO);
+    scl_during = ev_hil_gpio_level_or_minus_one(EV_BOARD_I2C_SCL_GPIO);
+    injection_coupled = (sda_during == 0);
     ev_hil_log_fault_fixture_levels(name, "during_fault", cfg->sda_fault_gpio, EV_BOARD_I2C_SDA_GPIO, EV_BOARD_I2C_SCL_GPIO);
+    ESP_LOGI(EV_HIL_I2C_TAG,
+             "EV_HIL_I2C_SDA_FORCE_LOW requested=1 observed=%u fault_gpio=%d sda_gpio=%d",
+             injection_coupled ? 1U : 0U,
+             cfg->sda_fault_gpio,
+             EV_BOARD_I2C_SDA_GPIO);
+    ESP_LOGI(EV_HIL_I2C_TAG,
+             "EV_HIL_I2C_BUS_STATE before=sda:%d,scl:%d during=sda:%d,scl:%d",
+             sda_before,
+             scl_before,
+             sda_during,
+             scl_during);
     stuck_status = ev_hil_i2c_write_stream(cfg, cfg->rtc_addr_7bit, NULL, 0U);
     ev_hil_fault_gpio_release(cfg->sda_fault_gpio);
     ets_delay_us(20U);
+    sda_after = ev_hil_gpio_level_or_minus_one(EV_BOARD_I2C_SDA_GPIO);
+    scl_after = ev_hil_gpio_level_or_minus_one(EV_BOARD_I2C_SCL_GPIO);
     ev_hil_log_fault_fixture_levels(name, "after_release", cfg->sda_fault_gpio, EV_BOARD_I2C_SDA_GPIO, EV_BOARD_I2C_SCL_GPIO);
+    ESP_LOGI(EV_HIL_I2C_TAG,
+             "EV_HIL_I2C_BUS_STATE after=sda:%d,scl:%d stuck_status=%s",
+             sda_after,
+             scl_after,
+             ev_hil_status_name(stuck_status));
+    ESP_LOGI(EV_HIL_I2C_TAG, "EV_HIL_I2C_RECOVERY_BEGIN name=%s", name);
     recovery_status = ev_hil_i2c_write_stream(cfg, cfg->rtc_addr_7bit, NULL, 0U);
+    ESP_LOGI(EV_HIL_I2C_TAG, "EV_HIL_I2C_RECOVERY_RESULT status=%s", ev_hil_status_name(recovery_status));
 
-    if (((stuck_status == EV_I2C_ERR_BUS_LOCKED) || (stuck_status == EV_I2C_ERR_TIMEOUT)) &&
-        (recovery_status == EV_I2C_OK)) {
+    if (!injection_coupled) {
+        ESP_LOGE(EV_HIL_I2C_TAG, "EV_HIL_I2C_CASE_RESULT name=%s status=FAIL reason=FIXTURE_NOT_COUPLED", name);
+        ev_hil_fail(result, name, "FIXTURE_NOT_COUPLED");
+    } else if (((stuck_status == EV_I2C_ERR_BUS_LOCKED) || (stuck_status == EV_I2C_ERR_TIMEOUT)) &&
+               (recovery_status == EV_I2C_OK)) {
+        ESP_LOGI(EV_HIL_I2C_TAG, "EV_HIL_I2C_CASE_RESULT name=%s status=PASS", name);
         ev_hil_pass(result, name);
     } else {
         ESP_LOGE(EV_HIL_I2C_TAG,
@@ -609,6 +648,7 @@ static void ev_hil_test_sda_stuck_low(const ev_esp8266_i2c_hil_config_t *cfg, ev
                  EV_BOARD_I2C_SCL_GPIO,
                  ev_hil_status_name(stuck_status),
                  ev_hil_status_name(recovery_status));
+        ESP_LOGE(EV_HIL_I2C_TAG, "EV_HIL_I2C_CASE_RESULT name=%s status=FAIL reason=CONTAINMENT_OR_RECOVERY_FAILED", name);
         ev_hil_fail(result, name, ev_hil_fault_reason_for_sda(stuck_status, recovery_status));
     }
     ev_hil_heap_gate(result, name, before_heap);

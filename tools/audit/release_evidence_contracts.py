@@ -218,6 +218,31 @@ def check_hil_reports(errors: list[str]) -> None:
         errors.append(f"release-evidence: {path.relative_to(ROOT).as_posix()} reports PASS without serial marker evidence")
 
 
+
+def check_i2c_hil_evidence(errors: list[str]) -> None:
+    path = ROOT / "docs" / "release" / "hil_atnel_i2c_report.md"
+    if first_status(path) != "PASS":
+        return
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    m = re.search(r"docs/release/hil_evidence/i2c/[^`| ]+/parsed\.json", text)
+    if not m:
+        errors.append("release-evidence: ATNEL I2C PASS without parsed JSON path")
+        return
+    parsed_path = ROOT / m.group(0)
+    if not parsed_path.is_file():
+        errors.append("release-evidence: ATNEL I2C PASS parsed JSON is missing")
+        return
+    try:
+        import json
+        parsed = json.loads(parsed_path.read_text(encoding="utf-8", errors="ignore"))
+    except Exception:
+        errors.append("release-evidence: ATNEL I2C parsed JSON is invalid")
+        return
+    if parsed.get("status") != "PASS" or parsed.get("case") != "sda-stuck-low-containment":
+        errors.append("release-evidence: ATNEL I2C PASS without sda-stuck-low parsed PASS")
+    if not parsed.get("fixture_coupled", False):
+        errors.append("release-evidence: ATNEL I2C PASS without fixture-coupled evidence")
+
 def self_test() -> None:
     assert status_cells(["foo", "PASS", "bar"]) == ["PASS"]
     assert status_cells(["foo", "NOT_RUN"]) == ["NOT_RUN"]
@@ -230,6 +255,7 @@ def main() -> int:
     mem_status = check_sdk_memory_report(errors)
     check_final_summary(errors, sdk_status, mem_status)
     check_hil_reports(errors)
+    check_i2c_hil_evidence(errors)
     check_sdk_evidence_files(errors)
     if errors:
         for error in errors:

@@ -74,6 +74,27 @@ def check_sdk_evidence_contracts() -> None:
             if token not in text:
                 errors.append(f"static-contracts: SDK evidence tool missing {token}")
 
+
+def check_hil_i2c_evidence_contracts() -> None:
+    parser = ROOT / "tools" / "hil" / "parse_atnel_i2c_hil_log.py"
+    if not parser.is_file():
+        errors.append("static-contracts: missing ATNEL I2C HIL parser")
+    else:
+        text = parser.read_text(encoding="utf-8", errors="ignore")
+        for token in ["sda-stuck-low-containment", "FIXTURE_NOT_COUPLED", "EV_HIL_RESULT PASS", "--self-test"]:
+            if token not in text:
+                errors.append(f"static-contracts: ATNEL I2C parser missing {token}")
+    hil_c = ROOT / "adapters" / "esp8266_rtos_sdk" / "targets" / "atnel_air_esp_motherboard_i2c_hil" / "main" / "ev_i2c_hil.c"
+    if hil_c.is_file():
+        text = hil_c.read_text(encoding="utf-8", errors="ignore")
+        for token in ["EV_HIL_I2C_CASE_BEGIN", "EV_HIL_I2C_SDA_FORCE_LOW", "EV_HIL_I2C_RECOVERY_RESULT", "EV_HIL_I2C_CASE_RESULT"]:
+            if token not in text:
+                errors.append(f"static-contracts: ATNEL I2C HIL firmware missing {token}")
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8", errors="ignore")
+    for target in ["hil-atnel-i2c-evidence", "hil-atnel-i2c-gate"]:
+        if f"{target}:" not in makefile:
+            errors.append(f"static-contracts: Makefile missing {target}")
+
 def strip_comments(text: str) -> str:
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
     text = re.sub(r"//.*", "", text)

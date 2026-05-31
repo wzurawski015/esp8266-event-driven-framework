@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "critical_file_min_line_percent": 20.0,
+  "overall_line_coverage_min_percent": 20.0,
+  "coverage_exceptions": {
+    "runtime/src/ev_delivery_service.c": "covered by delivery host tests and sanitizer gates; gcov attribution is unstable in the initial host coverage subset"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "case": "sda-stuck-low-containment",
+  "failures": [
+    "ATNEL I2C hardware fixture or serial log is not available"
+  ],
+  "reason": "ATNEL I2C hardware fixture or serial log is not available",
+  "status": "ENVIRONMENT_BLOCKED"
+}

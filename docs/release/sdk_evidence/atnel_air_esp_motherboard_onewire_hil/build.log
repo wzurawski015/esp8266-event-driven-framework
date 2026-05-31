@@ -1,0 +1,3 @@
+EV_SDK_BUILD_TARGET=atnel_air_esp_motherboard_onewire_hil
+EV_SDK_BUILD_STATUS=ENVIRONMENT_BLOCKED
+EV_SDK_BUILD_REASON=SDK build toolchain not available: neither IDF_PATH nor docker runner found

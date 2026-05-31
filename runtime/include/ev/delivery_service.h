@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "ev/msg.h"
+#include "ev/qos_contract.h"
 #include "ev/result.h"
 #include "ev/route_table.h"
 
@@ -24,14 +25,16 @@ typedef struct {
     size_t optional_disabled_routes;
     size_t optional_disabled_watchdog_routes;
     size_t optional_disabled_network_routes;
+    size_t rejected_routes;
+    size_t qos_conflict_routes;
 } ev_delivery_report_t;
 
 /**
  * @brief Failure behavior used by delivery when a route target cannot accept a message.
  */
 typedef enum {
-    EV_DELIVERY_QOS_FAILURE_STRICT = 0,
-    EV_DELIVERY_QOS_FAILURE_DROP = 1
+    EV_DELIVERY_QOS_FAILURE_STRICT = EV_QOS_FAILURE_STRICT,
+    EV_DELIVERY_QOS_FAILURE_DROP = EV_QOS_FAILURE_DROP_ALLOWED
 } ev_delivery_qos_failure_policy_t;
 
 void ev_delivery_service_init(ev_delivery_service_t *svc, struct ev_runtime_graph *graph);

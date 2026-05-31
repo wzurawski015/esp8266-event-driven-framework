@@ -1,0 +1,28 @@
+{
+  "baud": "115200",
+  "build_log": "docs/release/sdk_evidence/atnel_air_esp_motherboard_i2c_hil/build.log",
+  "class": "hil_sdk",
+  "family": "atnel",
+  "map_summary": "docs/release/sdk_evidence/atnel_air_esp_motherboard_i2c_hil/map_summary.txt",
+  "path": "adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_i2c_hil",
+  "reason": "SDK build toolchain not available: neither IDF_PATH nor docker runner found",
+  "sdkconfig_effective": "docs/release/sdk_evidence/atnel_air_esp_motherboard_i2c_hil/sdkconfig.effective.txt",
+  "size_log": "docs/release/sdk_evidence/atnel_air_esp_motherboard_i2c_hil/size.log",
+  "stack": {
+    "max_frame": 0,
+    "reason": "no EV_MEM_STACK_USAGE marker",
+    "status": "STACK_NOT_AVAILABLE"
+  },
+  "stack_usage": "docs/release/sdk_evidence/atnel_air_esp_motherboard_i2c_hil/stack_usage.txt",
+  "status": "ENVIRONMENT_BLOCKED",
+  "target": "atnel_air_esp_motherboard_i2c_hil",
+  "timestamp_utc": "2026-05-31T06:59:28Z",
+  "values": {
+    "APP_BIN": 0,
+    "BSS": 0,
+    "DATA": 0,
+    "DRAM": 0,
+    "IRAM": 0,
+    "IROM": 0
+  }
+}

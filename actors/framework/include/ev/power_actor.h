@@ -6,6 +6,7 @@
 #include "ev/compiler.h"
 #include "ev/msg.h"
 #include "ev/port_log.h"
+#include "ev/power_state_machine.h"
 #include "ev/system_port.h"
 #include "ev/result.h"
 
@@ -71,6 +72,12 @@ typedef struct {
     uint32_t sleep_arming_failures;
     uint32_t sleep_disarm_calls;
     uint32_t sleep_disarm_failures;
+    uint32_t transition_count;
+    ev_power_state_t last_state;
+    ev_power_state_t previous_state;
+    ev_power_action_t last_transition_action;
+    ev_result_t last_transition_error;
+    uint32_t last_transition_reason;
     uint32_t log_flush_failures;
     uint32_t deep_sleep_failures;
     uint32_t bad_payload_failures;

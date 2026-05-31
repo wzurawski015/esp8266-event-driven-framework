@@ -177,6 +177,10 @@ ev_result_t ev_msg_set_external_payload(
         ((retain_fn == NULL) || (release_fn == NULL))) {
         return EV_ERR_CONTRACT;
     }
+    if ((meta->payload_kind == EV_PAYLOAD_STREAM_VIEW) &&
+        ((retain_fn != NULL) || (release_fn != NULL) || (lifecycle_ctx != NULL))) {
+        return EV_ERR_CONTRACT;
+    }
 
     rc = ev_msg_release_attached_payload(msg);
     if (rc != EV_OK) {
@@ -293,6 +297,11 @@ ev_result_t ev_msg_validate(const ev_msg_t *msg)
         if (msg->storage == EV_MSG_STORAGE_INLINE) {
             return EV_ERR_CONTRACT;
         }
+        if ((msg->storage == EV_MSG_STORAGE_EXTERNAL) &&
+            ((msg->payload.external.retain_fn != NULL) || (msg->payload.external.release_fn != NULL) ||
+             (msg->payload.external.lifecycle_ctx != NULL))) {
+            return EV_ERR_CONTRACT;
+        }
         if ((msg->storage == EV_MSG_STORAGE_EXTERNAL) && (msg->payload_size > 0U) &&
             ((msg->payload.external.data == NULL) || (msg->payload.external.size != msg->payload_size))) {
             return EV_ERR_CONTRACT;
@@ -331,4 +340,39 @@ const void *ev_msg_payload_data(const ev_msg_t *msg)
 size_t ev_msg_payload_size(const ev_msg_t *msg)
 {
     return (msg != NULL) ? msg->payload_size : 0U;
+}
+
+bool ev_msg_payload_is_inline_contract(const ev_msg_t *msg)
+{
+    ev_payload_kind_t kind = ev_msg_payload_kind(msg);
+    return (kind == EV_PAYLOAD_INLINE) || (kind == EV_PAYLOAD_COPY_FIXED);
+}
+
+bool ev_msg_payload_is_lease_contract(const ev_msg_t *msg)
+{
+    return ev_msg_payload_kind(msg) == EV_PAYLOAD_LEASE;
+}
+
+bool ev_msg_payload_is_stream_view_contract(const ev_msg_t *msg)
+{
+    return ev_msg_payload_kind(msg) == EV_PAYLOAD_STREAM_VIEW;
+}
+
+bool ev_msg_payload_is_zero_copy_contract(const ev_msg_t *msg)
+{
+    ev_payload_kind_t kind = ev_msg_payload_kind(msg);
+    return (kind == EV_PAYLOAD_LEASE) || (kind == EV_PAYLOAD_STREAM_VIEW);
+}
+
+bool ev_msg_payload_requires_release(const ev_msg_t *msg)
+{
+    return (msg != NULL) &&
+           (msg->storage == EV_MSG_STORAGE_EXTERNAL) &&
+           (msg->payload_size > 0U) &&
+           (msg->payload.external.release_fn != NULL);
+}
+
+ev_result_t ev_msg_validate_payload_contract(const ev_msg_t *msg)
+{
+    return ev_msg_validate(msg);
 }

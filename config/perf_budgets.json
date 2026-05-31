@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "metric": "ns_per_op",
+  "policy": "hard budgets are conservative host regression limits; perf-report remains diagnostic",
+  "benchmarks": {
+    "static_publish_tick_fanout": {"baseline_ns_per_op": 6, "hard_max_ns_per_op": 25, "warning_max_ns_per_op": 15, "required": true},
+    "static_publish_with_report": {"baseline_ns_per_op": 5, "hard_max_ns_per_op": 25, "warning_max_ns_per_op": 15, "required": true},
+    "active_publish_tick_fanout": {"baseline_ns_per_op": 58, "hard_max_ns_per_op": 150, "warning_max_ns_per_op": 115, "required": true},
+    "active_publish_fault_single": {"baseline_ns_per_op": 102, "hard_max_ns_per_op": 180, "warning_max_ns_per_op": 140, "required": true},
+    "active_publish_with_delivery_report": {"baseline_ns_per_op": 139, "hard_max_ns_per_op": 260, "warning_max_ns_per_op": 210, "required": true},
+    "runtime_poll_empty": {"baseline_ns_per_op": 134, "hard_max_ns_per_op": 340, "warning_max_ns_per_op": 270, "required": true},
+    "runtime_poll_prefilled_mailbox": {"baseline_ns_per_op": 150, "hard_max_ns_per_op": 450, "warning_max_ns_per_op": 340, "required": true},
+    "runtime_loop_poll_empty": {"baseline_ns_per_op": 373, "hard_max_ns_per_op": 1500, "warning_max_ns_per_op": 900, "required": true},
+    "runtime_loop_poll_prefilled_mailbox": {"baseline_ns_per_op": 158, "hard_max_ns_per_op": 1000, "warning_max_ns_per_op": 650, "required": true}
+  }
+}

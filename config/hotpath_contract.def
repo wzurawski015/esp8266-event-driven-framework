@@ -1,0 +1,22 @@
+# ESP8266 hot-path zero-allocation contract.
+# Format:
+# HOTPATH_FILE(path)
+# ALLOW_INLINE_METADATA_COPY(path, token)
+# This manifest intentionally covers portable runtime/kernel hot-path code only.
+
+HOTPATH_FILE(core/src/ev_msg.c)
+HOTPATH_FILE(core/src/ev_publish.c)
+HOTPATH_FILE(core/src/ev_send.c)
+HOTPATH_FILE(core/src/ev_mailbox.c)
+HOTPATH_FILE(core/src/ev_dispose.c)
+HOTPATH_FILE(core/src/ev_lease_pool.c)
+HOTPATH_FILE(runtime/src/ev_delivery_service.c)
+HOTPATH_FILE(runtime/src/ev_runtime_poll.c)
+HOTPATH_FILE(runtime/src/ev_runtime_loop.c)
+HOTPATH_FILE(runtime/src/ev_actor_publish_port.c)
+HOTPATH_FILE(runtime/src/ev_active_route_table.c)
+
+ALLOW_INLINE_METADATA_COPY(core/src/ev_msg.c, msg->payload.inline_bytes)
+ALLOW_INLINE_METADATA_COPY(core/src/ev_lease_pool.c, ev_lease_slot_data_ptr)
+ALLOW_INLINE_METADATA_COPY(core/src/ev_mailbox.c, mailbox->storage[index] = *msg)
+ALLOW_INLINE_METADATA_COPY(runtime/src/ev_delivery_service.c, send_msg = *msg)

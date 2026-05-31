@@ -182,6 +182,7 @@ void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg,
     ev_reset_reason_t reset_reason;
     ev_demo_app_config_t app_cfg = {0};
     ev_result_t rc;
+    uint32_t smoke_seq = 0U;
 
     if (!ev_runtime_app_config_is_valid(cfg)) {
         return;
@@ -229,6 +230,10 @@ void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg,
         cfg->board_tag,
         "reset reason: %s",
         ev_reset_reason_to_cstr(reset_reason));
+    ev_runtime_app_logf(&log_port, EV_LOG_INFO, cfg->board_tag, "EV_WEMOS_SMOKE_WAKE_REASON reason=%s", ev_reset_reason_to_cstr(reset_reason));
+    if (reset_reason == EV_RESET_REASON_DEEP_SLEEP) {
+        ev_runtime_app_logf(&log_port, EV_LOG_INFO, cfg->board_tag, "EV_POWER_SMOKE_WAKE_BOOT");
+    }
     (void)log_port.flush(log_port.ctx);
 
     app_cfg.app_tag = cfg->board_tag;
@@ -264,6 +269,12 @@ void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg,
             return;
         }
 
+        ++smoke_seq;
+        if ((smoke_seq <= 3U) || ((smoke_seq % 16U) == 0U)) {
+            ev_runtime_app_logf(&log_port, EV_LOG_INFO, cfg->board_tag, "EV_WEMOS_SMOKE_TICK seq=%u", (unsigned)smoke_seq);
+            ev_runtime_app_logf(&log_port, EV_LOG_INFO, cfg->board_tag, "EV_WEMOS_SMOKE_SNAPSHOT seq=%u pending=%u", (unsigned)smoke_seq, (unsigned)ev_demo_app_pending(&s_app));
+            (void)log_port.flush(log_port.ctx);
+        }
         ev_runtime_app_wait_for_work(&s_app, &clock_port, irq_port);
     }
 }

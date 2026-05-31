@@ -1,0 +1,7 @@
+{
+  "failures": [
+    "Wemos hardware or serial log is not available"
+  ],
+  "mode": "smoke",
+  "status": "ENVIRONMENT_BLOCKED"
+}

@@ -1,5 +1,7 @@
 COMPONENT_SRCDIRS := . \
     ../../../../core/src \
+    ../../../../actors/device \
+    ../../../../actors/framework \
     ../../../../runtime/src \
     ../../../../modules/src \
     ../../../../drivers/src \
@@ -10,6 +12,8 @@ COMPONENT_SRCDIRS := . \
 COMPONENT_ADD_INCLUDEDIRS := include \
     ../../../../ports/include \
     ../../../../core/include \
+    ../../../../actors/device/include \
+    ../../../../actors/framework/include \
     ../../../../runtime/include \
     ../../../../modules/include \
     ../../../../drivers/include \

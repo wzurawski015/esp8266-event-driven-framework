@@ -50,6 +50,19 @@ static ev_result_t ev_mailbox_store_at(ev_mailbox_t *mailbox, size_t index, cons
     return EV_OK;
 }
 
+
+static void ev_mailbox_release_retained_queue_copy(const ev_msg_t *msg)
+{
+    ev_msg_t retained_copy;
+
+    if (msg == NULL) {
+        return;
+    }
+
+    retained_copy = *msg;
+    (void)ev_msg_dispose(&retained_copy);
+}
+
 static ev_result_t ev_mailbox_retain_for_queue(const ev_msg_t *msg)
 {
     if (msg == NULL) {
@@ -165,6 +178,7 @@ ev_result_t ev_mailbox_push(ev_mailbox_t *mailbox, const ev_msg_t *msg)
         }
         rc = ev_mailbox_store_at(mailbox, mailbox->tail, msg);
         if (rc != EV_OK) {
+            ev_mailbox_release_retained_queue_copy(msg);
             ++mailbox->stats.rejected;
             return rc;
         }
@@ -185,6 +199,7 @@ ev_result_t ev_mailbox_push(ev_mailbox_t *mailbox, const ev_msg_t *msg)
         }
         rc = ev_mailbox_store_at(mailbox, 0U, msg);
         if (rc != EV_OK) {
+            ev_mailbox_release_retained_queue_copy(msg);
             ++mailbox->stats.rejected;
             return rc;
         }
@@ -211,6 +226,7 @@ ev_result_t ev_mailbox_push(ev_mailbox_t *mailbox, const ev_msg_t *msg)
         }
         rc = ev_mailbox_store_at(mailbox, mailbox->tail, msg);
         if (rc != EV_OK) {
+            ev_mailbox_release_retained_queue_copy(msg);
             ++mailbox->stats.rejected;
             return rc;
         }

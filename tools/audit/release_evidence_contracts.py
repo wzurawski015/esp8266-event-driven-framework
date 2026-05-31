@@ -10,6 +10,87 @@ ROOT = Path(__file__).resolve().parents[2]
 STATUS_VALUES = {"PASS", "FAIL", "NOT_RUN", "ENVIRONMENT_BLOCKED", "NOT_APPLICABLE"}
 SDK_BUILD_REPORT = ROOT / "docs" / "release" / "sdk_build_matrix_report.md"
 SDK_MEMORY_REPORT = ROOT / "docs" / "release" / "sdk_memory_matrix_report.md"
+
+SDK_EVIDENCE_ROOT = ROOT / "docs" / "release" / "sdk_evidence"
+SDK_REAL_EVIDENCE_REPORT = ROOT / "docs" / "release" / "sdk_real_build_map_stack_evidence_report.md"
+
+
+def _evidence_json_for_target(target: str) -> Path:
+    return SDK_EVIDENCE_ROOT / target / "evidence.json"
+
+
+def _load_evidence_for_target(target: str) -> dict:
+    path = _evidence_json_for_target(target)
+    if not path.is_file():
+        return {}
+    try:
+        import json
+        return json.loads(path.read_text(encoding="utf-8", errors="ignore"))
+    except Exception:
+        return {}
+
+
+def check_sdk_evidence_files(errors: list[str]) -> None:
+    rows = table_rows(SDK_BUILD_REPORT)
+    header = next((cells for cells in rows if cells and cells[0] == "Target"), [])
+    if not header:
+        return
+    try:
+        status_index = header.index("Status")
+    except ValueError:
+        return
+    for cells in rows:
+        if not cells or cells[0] == "Target" or len(cells) <= status_index:
+            continue
+        target = cells[0].strip("`")
+        status = cells[status_index]
+        if status != "PASS":
+            continue
+        evidence = _load_evidence_for_target(target)
+        if not evidence:
+            errors.append(f"release-evidence: SDK PASS row has no evidence.json: {target}")
+            continue
+        log_path = evidence.get("build_log", "")
+        if not log_path or not (ROOT / str(log_path)).is_file():
+            errors.append(f"release-evidence: SDK PASS row has no committed build log: {target}")
+        if evidence.get("status") != "PASS":
+            errors.append(f"release-evidence: SDK PASS row evidence status is not PASS: {target}")
+        values = evidence.get("values", {}) if isinstance(evidence.get("values", {}), dict) else {}
+        if not any(int(values.get(key, 0) or 0) > 0 for key in ["IRAM", "DRAM", "BSS", "DATA", "APP_BIN"]):
+            errors.append(f"release-evidence: SDK PASS row has no non-zero memory evidence: {target}")
+
+def check_sdk_import_evidence_contracts(errors: list[str]) -> None:
+    importer = ROOT / "tools" / "release" / "import_sdk_evidence.py"
+    manifest = ROOT / "config" / "sdk_evidence_import.def"
+    report = ROOT / "docs" / "release" / "sdk_imported_build_map_stack_evidence_report.md"
+    if not importer.is_file():
+        errors.append("release-evidence: SDK import tool missing")
+    if not manifest.is_file():
+        errors.append("release-evidence: SDK import manifest missing")
+    if not report.is_file():
+        errors.append("release-evidence: SDK imported evidence report missing")
+    for target_dir in SDK_EVIDENCE_ROOT.glob("*") if SDK_EVIDENCE_ROOT.exists() else []:
+        ev = target_dir / "evidence.json"
+        if not ev.is_file():
+            continue
+        data = _load_evidence_for_target(target_dir.name)
+        if data.get("status") != "PASS":
+            continue
+        log_path = ROOT / str(data.get("build_log", ""))
+        if not log_path.is_file():
+            errors.append(f"release-evidence: imported SDK PASS without committed build log: {target_dir.name}")
+            continue
+        text = log_path.read_text(encoding="utf-8", errors="ignore")
+        if not re.search(r"EV_SDK_BUILD_STATUS=PASS|EV_MEM_REPORT_RESULT PASS", text):
+            errors.append(f"release-evidence: imported SDK PASS without PASS marker: {target_dir.name}")
+        values = data.get("values", {}) if isinstance(data.get("values", {}), dict) else {}
+        if not any(int(values.get(key, 0) or 0) > 0 for key in ["IRAM", "DRAM", "BSS", "DATA", "APP_BIN"]):
+            errors.append(f"release-evidence: imported SDK PASS without non-zero EV_MEM: {target_dir.name}")
+        for rel_key in ["build_log", "size_log", "map_summary", "stack_usage", "sdkconfig_effective"]:
+            rel = data.get(rel_key, "")
+            if rel and str(rel).lower().endswith((".elf", ".bin", ".o", ".a")):
+                errors.append(f"release-evidence: forbidden binary SDK artifact in evidence: {target_dir.name}:{rel}")
+
 FINAL_SUMMARY = ROOT / "docs" / "release" / "final_release_validation_summary.md"
 HIL_REPORTS = [
     ROOT / "docs" / "release" / "hil_atnel_i2c_report.md",
@@ -170,6 +251,115 @@ def check_hil_reports(errors: list[str]) -> None:
         errors.append(f"release-evidence: {path.relative_to(ROOT).as_posix()} reports PASS without serial marker evidence")
 
 
+
+def check_i2c_hil_evidence(errors: list[str]) -> None:
+    path = ROOT / "docs" / "release" / "hil_atnel_i2c_report.md"
+    if first_status(path) != "PASS":
+        return
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    m = re.search(r"docs/release/hil_evidence/i2c/[^`| ]+/parsed\.json", text)
+    if not m:
+        errors.append("release-evidence: ATNEL I2C PASS without parsed JSON path")
+        return
+    parsed_path = ROOT / m.group(0)
+    if not parsed_path.is_file():
+        errors.append("release-evidence: ATNEL I2C PASS parsed JSON is missing")
+        return
+    try:
+        import json
+        parsed = json.loads(parsed_path.read_text(encoding="utf-8", errors="ignore"))
+    except Exception:
+        errors.append("release-evidence: ATNEL I2C parsed JSON is invalid")
+        return
+    if parsed.get("status") != "PASS" or parsed.get("case") != "sda-stuck-low-containment":
+        errors.append("release-evidence: ATNEL I2C PASS without sda-stuck-low parsed PASS")
+    if not parsed.get("fixture_coupled", False):
+        errors.append("release-evidence: ATNEL I2C PASS without fixture-coupled evidence")
+    if not parsed.get("serial_sha256"):
+        errors.append("release-evidence: ATNEL I2C PASS without serial SHA-256")
+
+
+def _parsed_json_path_from_report(path: Path) -> Path | None:
+    if not path.is_file():
+        return None
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    m = re.search(r"docs/release/hil_evidence/[^`| ]+/parsed\.json", text)
+    if not m:
+        return None
+    return ROOT / m.group(0)
+
+
+def check_wemos_hil_evidence(errors: list[str]) -> None:
+    reports = [
+        ROOT / "docs" / "release" / "wemos_esp_wroom_02_18650_smoke_report.md",
+        ROOT / "docs" / "release" / "wemos_esp_wroom_02_18650_deep_sleep_wake_report.md",
+    ]
+    for path in reports:
+        if first_status(path) != "PASS":
+            continue
+        parsed_path = _parsed_json_path_from_report(path)
+        if parsed_path is None or not parsed_path.is_file():
+            errors.append(f"release-evidence: {path.relative_to(ROOT).as_posix()} PASS without parsed JSON")
+            continue
+        try:
+            import json
+            parsed = json.loads(parsed_path.read_text(encoding="utf-8", errors="ignore"))
+        except Exception:
+            errors.append(f"release-evidence: {path.relative_to(ROOT).as_posix()} parsed JSON invalid")
+            continue
+        if parsed.get("status") != "PASS":
+            errors.append(f"release-evidence: {path.relative_to(ROOT).as_posix()} PASS but parsed status is not PASS")
+        if not parsed.get("serial_sha256"):
+            errors.append(f"release-evidence: {path.relative_to(ROOT).as_posix()} PASS without serial SHA-256")
+        if "deep_sleep" in path.name and parsed.get("mode") != "deepsleep":
+            errors.append("release-evidence: Wemos deep-sleep PASS without deepsleep parsed mode")
+
+
+def check_eventflow_evidence(errors: list[str]) -> None:
+    reports = [
+        ROOT / "docs" / "release" / "eventflow_hardware_evidence_report.md",
+        ROOT / "docs" / "release" / "eventflow_final_hardware_release_report.md",
+    ]
+    for report in reports:
+        if first_status(report) != "PASS":
+            continue
+        parsed_path = _parsed_json_path_from_report(report)
+        if parsed_path is None or not parsed_path.is_file():
+            errors.append(f"release-evidence: {report.relative_to(ROOT).as_posix()} PASS without parsed JSON")
+            continue
+        try:
+            import json
+            parsed = json.loads(parsed_path.read_text(encoding="utf-8", errors="ignore"))
+        except Exception:
+            errors.append(f"release-evidence: {report.relative_to(ROOT).as_posix()} parsed JSON invalid")
+            continue
+        if parsed.get("status") != "PASS":
+            errors.append(f"release-evidence: {report.relative_to(ROOT).as_posix()} PASS but parsed status is not PASS")
+        required_names = {"sdk_esp8266_generic_dev", "sdk_atnel_i2c_hil", "sdk_wemos_smoke", "atnel_i2c_sda_stuck_low", "wemos_smoke", "wemos_deep_sleep_wake"}
+        seen = set()
+        for source in parsed.get("sources", []):
+            if source.get("required"):
+                seen.add(source.get("name"))
+                if source.get("status") != "PASS":
+                    errors.append(f"release-evidence: eventflow PASS with non-PASS source {source.get('name')}")
+                if not source.get("path_sha256"):
+                    errors.append(f"release-evidence: eventflow PASS source lacks SHA-256 {source.get('name')}")
+        missing = required_names - seen
+        if missing:
+            errors.append("release-evidence: eventflow PASS missing required sources: " + ",".join(sorted(missing)))
+
+
+def check_hil_import_contracts(errors: list[str]) -> None:
+    importer = ROOT / "tools" / "hil" / "import_hil_serial_evidence.py"
+    if not importer.is_file():
+        errors.append("release-evidence: HIL serial import tool missing")
+    for rel in [
+        "docs/release/hil_serial_evidence_import_workflow.md",
+        "docs/release/hil_real_atnel_wemos_evidence_report.md",
+    ]:
+        if not (ROOT / rel).is_file():
+            errors.append(f"release-evidence: HIL import documentation missing: {rel}")
+
 def self_test() -> None:
     assert status_cells(["foo", "PASS", "bar"]) == ["PASS"]
     assert status_cells(["foo", "NOT_RUN"]) == ["NOT_RUN"]
@@ -182,6 +372,12 @@ def main() -> int:
     mem_status = check_sdk_memory_report(errors)
     check_final_summary(errors, sdk_status, mem_status)
     check_hil_reports(errors)
+    check_eventflow_evidence(errors)
+    check_wemos_hil_evidence(errors)
+    check_i2c_hil_evidence(errors)
+    check_sdk_evidence_files(errors)
+    check_sdk_import_evidence_contracts(errors)
+    check_hil_import_contracts(errors)
     if errors:
         for error in errors:
             print(error, file=sys.stderr)

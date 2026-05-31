@@ -1,0 +1,8 @@
+// Hardware event-flow evidence manifest.
+// Fields: name, kind, path, required.
+EV_EVENTFLOW_SOURCE(sdk_esp8266_generic_dev, sdk, docs/release/sdk_evidence/esp8266_generic_dev/evidence.json, required)
+EV_EVENTFLOW_SOURCE(sdk_atnel_i2c_hil, sdk, docs/release/sdk_evidence/atnel_air_esp_motherboard_i2c_hil/evidence.json, required)
+EV_EVENTFLOW_SOURCE(sdk_wemos_smoke, sdk, docs/release/sdk_evidence/wemos_esp_wroom_02_18650/evidence.json, required)
+EV_EVENTFLOW_SOURCE(atnel_i2c_sda_stuck_low, hil_i2c, docs/release/hil_evidence/i2c/current/parsed.json, required)
+EV_EVENTFLOW_SOURCE(wemos_smoke, hil_wemos_smoke, docs/release/hil_evidence/wemos_smoke/current/parsed.json, required)
+EV_EVENTFLOW_SOURCE(wemos_deep_sleep_wake, hil_wemos_deepsleep, docs/release/hil_evidence/wemos_deepsleep/current/parsed.json, required)

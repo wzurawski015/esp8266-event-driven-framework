@@ -1,0 +1,12 @@
+#
+# Stage 2A2 minimal target skeleton defaults.
+#
+# This file intentionally stays conservative.
+# Materialize sdkconfig via:
+#
+#   ./tools/fw sdk-defconfig
+#
+# Then refine board- and environment-specific values with:
+#
+#   ./tools/fw sdk-menuconfig
+#

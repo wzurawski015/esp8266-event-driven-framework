@@ -277,6 +277,27 @@ def check_wemos_hil_evidence(errors: list[str]) -> None:
         if "deep_sleep" in path.name and parsed.get("mode") != "deepsleep":
             errors.append("release-evidence: Wemos deep-sleep PASS without deepsleep parsed mode")
 
+
+def check_eventflow_evidence(errors: list[str]) -> None:
+    report = ROOT / "docs" / "release" / "eventflow_hardware_evidence_report.md"
+    if first_status(report) != "PASS":
+        return
+    parsed_path = _parsed_json_path_from_report(report)
+    if parsed_path is None or not parsed_path.is_file():
+        errors.append("release-evidence: eventflow PASS without parsed JSON")
+        return
+    try:
+        import json
+        parsed = json.loads(parsed_path.read_text(encoding="utf-8", errors="ignore"))
+    except Exception:
+        errors.append("release-evidence: eventflow parsed JSON invalid")
+        return
+    if parsed.get("status") != "PASS":
+        errors.append("release-evidence: eventflow report PASS but parsed status is not PASS")
+    for source in parsed.get("sources", []):
+        if source.get("required") and source.get("status") != "PASS":
+            errors.append(f"release-evidence: eventflow PASS with non-PASS source {source.get('name')}")
+
 def self_test() -> None:
     assert status_cells(["foo", "PASS", "bar"]) == ["PASS"]
     assert status_cells(["foo", "NOT_RUN"]) == ["NOT_RUN"]
@@ -289,6 +310,7 @@ def main() -> int:
     mem_status = check_sdk_memory_report(errors)
     check_final_summary(errors, sdk_status, mem_status)
     check_hil_reports(errors)
+    check_eventflow_evidence(errors)
     check_wemos_hil_evidence(errors)
     check_i2c_hil_evidence(errors)
     check_sdk_evidence_files(errors)

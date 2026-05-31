@@ -119,6 +119,26 @@ def check_wemos_evidence_contracts() -> None:
         if f"{target}:" not in makefile:
             errors.append(f"static-contracts: Makefile missing {target}")
 
+
+def check_eventflow_evidence_contracts() -> None:
+    manifest = ROOT / "config" / "eventflow_hardware_evidence.def"
+    tool = ROOT / "tools" / "hil" / "eventflow_evidence_gate.py"
+    if not manifest.is_file():
+        errors.append("static-contracts: missing eventflow hardware evidence manifest")
+    if not tool.is_file():
+        errors.append("static-contracts: missing eventflow evidence gate")
+    else:
+        text = tool.read_text(encoding="utf-8", errors="ignore")
+        for token in ["EVENTFLOW_HARDWARE_EVIDENCE_GATE", "ENVIRONMENT_BLOCKED", "--self-test", "config/eventflow_hardware_evidence.def"]:
+            if token not in text:
+                errors.append(f"static-contracts: eventflow gate missing {token}")
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8", errors="ignore")
+    for target in ["eventflow-hardware-evidence-report", "eventflow-hardware-evidence-gate"]:
+        if f"{target}:" not in makefile:
+            errors.append(f"static-contracts: Makefile missing {target}")
+    for patch in ROOT.glob("*.patch"):
+        errors.append(f"static-contracts: root patch artifact is not allowed in production snapshot: {patch.name}")
+
 def strip_comments(text: str) -> str:
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
     text = re.sub(r"//.*", "", text)

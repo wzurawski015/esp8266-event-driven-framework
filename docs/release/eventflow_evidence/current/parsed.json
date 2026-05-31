@@ -1,0 +1,53 @@
+{
+  "sources": [
+    {
+      "kind": "sdk",
+      "name": "sdk_esp8266_generic_dev",
+      "path": "docs/release/sdk_evidence/esp8266_generic_dev/evidence.json",
+      "reason": "SDK build toolchain not available: neither IDF_PATH nor docker runner found",
+      "required": true,
+      "status": "ENVIRONMENT_BLOCKED"
+    },
+    {
+      "kind": "sdk",
+      "name": "sdk_atnel_i2c_hil",
+      "path": "docs/release/sdk_evidence/atnel_air_esp_motherboard_i2c_hil/evidence.json",
+      "reason": "SDK build toolchain not available: neither IDF_PATH nor docker runner found",
+      "required": true,
+      "status": "ENVIRONMENT_BLOCKED"
+    },
+    {
+      "kind": "sdk",
+      "name": "sdk_wemos_smoke",
+      "path": "docs/release/sdk_evidence/wemos_esp_wroom_02_18650/evidence.json",
+      "reason": "SDK build toolchain not available: neither IDF_PATH nor docker runner found",
+      "required": true,
+      "status": "ENVIRONMENT_BLOCKED"
+    },
+    {
+      "kind": "hil_i2c",
+      "name": "atnel_i2c_sda_stuck_low",
+      "path": "docs/release/hil_evidence/i2c/current/parsed.json",
+      "reason": "ATNEL I2C hardware fixture or serial log is not available",
+      "required": true,
+      "status": "ENVIRONMENT_BLOCKED"
+    },
+    {
+      "kind": "hil_wemos_smoke",
+      "name": "wemos_smoke",
+      "path": "docs/release/hil_evidence/wemos_smoke/current/parsed.json",
+      "reason": "",
+      "required": true,
+      "status": "ENVIRONMENT_BLOCKED"
+    },
+    {
+      "kind": "hil_wemos_deepsleep",
+      "name": "wemos_deep_sleep_wake",
+      "path": "docs/release/hil_evidence/wemos_deepsleep/current/parsed.json",
+      "reason": "",
+      "required": true,
+      "status": "ENVIRONMENT_BLOCKED"
+    }
+  ],
+  "status": "ENVIRONMENT_BLOCKED"
+}

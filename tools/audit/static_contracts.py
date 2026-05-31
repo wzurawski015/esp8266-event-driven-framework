@@ -828,6 +828,66 @@ if adapter_c.exists():
     if "next_tick_ms" in adapter_text or "next_tick_100ms_ms" in adapter_text:
         errors.append("ESP8266 runtime adapter must not read legacy demo tick fields")
 
+
+# Zero-UB hardening contracts.
+makefile_path = ROOT / "Makefile"
+makefile_text = makefile_path.read_text(encoding="utf-8", errors="ignore") if makefile_path.exists() else ""
+zero_ub_targets = [
+    "host-gcc-analyzer-gate",
+    "host-static-analysis-gate",
+    "static-analysis-gate",
+    "host-coverage-test",
+    "coverage-report",
+    "coverage-gate",
+    "fuzz-smoke-gate",
+    "fuzz-sanitize-gate",
+    "ub-hardening-gate",
+]
+for target in zero_ub_targets:
+    if f"{target}:" not in makefile_text:
+        errors.append(f"zero-UB hardening target missing from Makefile: {target}")
+
+def make_target_body(target: str) -> str:
+    marker = f"\n{target}:"
+    idx = makefile_text.find(marker)
+    if idx < 0:
+        idx = makefile_text.find(f"{target}:")
+    if idx < 0:
+        return ""
+    rest = makefile_text[idx + 1:]
+    lines = rest.splitlines()[1:]
+    body = []
+    for line in lines:
+        if line and not line.startswith("\t") and not line.startswith(" "):
+            break
+        body.append(line)
+    return "\n".join(body)
+
+for target in ["static-analysis-gate", "coverage-gate", "fuzz-smoke-gate", "fuzz-sanitize-gate", "ub-hardening-gate"]:
+    body = make_target_body(target)
+    if body and "echo" in body and "$(PYTHON)" not in body and "./$(BUILD_DIR)" not in body and "$(MAKE)" not in body:
+        errors.append(f"zero-UB target appears echo-only: {target}")
+for rel in [
+    "tools/safety/static_analysis_gate.py",
+    "tools/safety/coverage_gate.py",
+    "tools/safety/fuzz_runner.py",
+    "config/coverage_budgets.json",
+    "tests/host/test_deterministic_fuzz_contracts.c",
+    "docs/architecture/zero_ub_hardening_contract.md",
+    "docs/release/zero_ub_static_analysis_coverage_fuzz_report.md",
+    "docs/release/coverage_gate_report.md",
+]:
+    if not (ROOT / rel).exists():
+        errors.append(f"zero-UB hardening artifact missing: {rel}")
+if "test_deterministic_fuzz_contracts" not in makefile_text:
+    errors.append("deterministic fuzz contract test is not registered in Makefile")
+if "--coverage" not in makefile_text and "-fprofile-arcs" not in makefile_text:
+    errors.append("coverage target does not use a coverage compiler mode")
+if "EV_UB_HARDENING_ALLOW_BLOCKED" not in makefile_text:
+    errors.append("ub-hardening-gate must distinguish blocked tools from fake PASS")
+if "host-sanitize-test || true" in makefile_text or "fuzz-sanitize-gate || true" in makefile_text:
+    errors.append("sanitizer/fuzz sanitizer gates must not be suppressed with || true in Makefile")
+
 if errors:
     for error in errors:
         print(error)

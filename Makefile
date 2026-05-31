@@ -11,6 +11,8 @@ HOST_SANITIZE_CFLAGS ?= -std=c17 -Wall -Wextra -Wpedantic -Werror -O1 -g -fno-om
 HOST_SANITIZE_LDFLAGS ?= -fsanitize=address,undefined
 HOST_TSAN_CFLAGS ?= -std=c17 -Wall -Wextra -Wpedantic -Werror -O1 -g -fno-omit-frame-pointer -fsanitize=thread $(HOST_BASE_DEFINES) $(HOST_INCLUDE_FLAGS)
 HOST_TSAN_LDFLAGS ?= -fsanitize=thread
+COVERAGE_CFLAGS ?= -std=c17 -Wall -Wextra -Wpedantic -Werror -O0 -g --coverage $(HOST_BASE_DEFINES) $(HOST_INCLUDE_FLAGS)
+COVERAGE_LDFLAGS ?= --coverage
 CLANG_TIDY ?= clang-tidy
 CLANG_TIDY_CHECKS ?= -*,clang-analyzer-*,bugprone-*,cert-*,performance-*,portability-*,-bugprone-easily-swappable-parameters
 BENCH_CFLAGS ?= $(filter-out -O0,$(CFLAGS)) -O2 -D_POSIX_C_SOURCE=200809L
@@ -156,9 +158,20 @@ HOST_TESTS := \
     test_delivery_trace_timestamp \
     test_actor_layering_contract \
     test_demo_composition_root_contract \
+    test_deterministic_fuzz_contracts \
     test_delivery_command_network_framework
 
 HOST_TEST_BINS := $(addprefix $(BUILD_DIR)/,$(HOST_TESTS))
+
+COVERAGE_TESTS := \
+    test_msg_contract \
+    test_mailbox_contract \
+    test_lease_pool_contract \
+    test_zero_copy_payload_contract \
+    test_power_state_machine \
+    test_qos_contract_table \
+    test_deterministic_fuzz_contracts
+
 
 PROPERTY_TESTS := \
     test_framework_property
@@ -174,7 +187,7 @@ BENCH_BINS := $(addprefix $(BENCH_BUILD_DIR)/,$(BENCH_TESTS))
 BENCH_RESULTS := $(BENCH_BUILD_DIR)/results.txt
 PERF_BUDGETS ?= config/perf_budgets.json
 
-.PHONY: all host-test property-test host-strict-test host-sanitize-cc-check host-sanitize-test host-tsan-cc-check host-tsan-test clang-tidy-gate safety-gate hotpath-zero-alloc-gate bench perf-report perf-budget-gate perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts qos-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate sdk-build-evidence sdk-map-stack-evidence sdk-evidence-gate hil-atnel-i2c-flash hil-atnel-i2c-monitor hil-atnel-i2c-evidence hil-atnel-i2c-gate hil-wemos-smoke-flash hil-wemos-smoke-monitor hil-wemos-smoke-evidence hil-wemos-smoke-gate hil-wemos-deepsleep-wake-gate eventflow-hardware-evidence-report eventflow-hardware-evidence-gate production-release-gate quality-gate release-gate docgen docs clean
+.PHONY: all host-test property-test host-strict-test host-sanitize-cc-check host-sanitize-test host-tsan-cc-check host-tsan-test clang-tidy-gate host-gcc-analyzer-gate host-static-analysis-gate static-analysis-gate host-coverage-test coverage-report coverage-gate fuzz-smoke-gate fuzz-sanitize-gate ub-hardening-gate safety-gate hotpath-zero-alloc-gate bench perf-report perf-budget-gate perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts qos-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate sdk-build-evidence sdk-map-stack-evidence sdk-evidence-gate hil-atnel-i2c-flash hil-atnel-i2c-monitor hil-atnel-i2c-evidence hil-atnel-i2c-gate hil-wemos-smoke-flash hil-wemos-smoke-monitor hil-wemos-smoke-evidence hil-wemos-smoke-gate hil-wemos-deepsleep-wake-gate eventflow-hardware-evidence-report eventflow-hardware-evidence-gate production-release-gate quality-gate release-gate docgen docs clean
 .SECONDARY: $(COMMON_OBJS) $(BENCH_COMMON_OBJS)
 
 all: host-test
@@ -252,6 +265,44 @@ clang-tidy-gate:
 			-checks='$(CLANG_TIDY_CHECKS)' -- $(HOST_STRICT_CFLAGS); \
 		echo "clang-tidy-gate passed"; \
 	fi
+
+host-gcc-analyzer-gate:
+	$(PYTHON) tools/safety/static_analysis_gate.py --backend gcc-analyzer
+
+host-static-analysis-gate: host-gcc-analyzer-gate
+	@echo "host-static-analysis-gate passed"
+
+static-analysis-gate:
+	$(PYTHON) tools/safety/static_analysis_gate.py
+	@echo "static-analysis-gate passed"
+
+host-coverage-test:
+	@echo "host-coverage-test: gcov critical host subset"
+	@$(MAKE) --no-print-directory BUILD_DIR=build/host-coverage CFLAGS="$(COVERAGE_CFLAGS)" LDFLAGS="$(COVERAGE_LDFLAGS) $(LDFLAGS)" routegen $(addprefix build/host-coverage/,$(COVERAGE_TESTS))
+	@set -e; for t in $(addprefix build/host-coverage/,$(COVERAGE_TESTS)); do ./$$t; done
+	@echo "host-coverage-test passed"
+
+coverage-report: host-coverage-test
+	$(PYTHON) tools/safety/coverage_gate.py --report-only
+
+coverage-gate: host-coverage-test
+	$(PYTHON) tools/safety/coverage_gate.py
+
+fuzz-smoke-gate: routegen $(BUILD_DIR)/test_deterministic_fuzz_contracts
+	./$(BUILD_DIR)/test_deterministic_fuzz_contracts
+	@echo "fuzz-smoke-gate passed"
+
+fuzz-sanitize-gate: host-sanitize-cc-check
+	@$(MAKE) --no-print-directory BUILD_DIR=build/fuzz-sanitize CFLAGS="$(HOST_SANITIZE_CFLAGS)" LDFLAGS="$(HOST_SANITIZE_LDFLAGS) $(LDFLAGS)" routegen build/fuzz-sanitize/test_deterministic_fuzz_contracts
+	./build/fuzz-sanitize/test_deterministic_fuzz_contracts
+	@echo "fuzz-sanitize-gate passed"
+
+ub-hardening-gate: host-strict-test host-sanitize-test host-tsan-test fuzz-smoke-gate
+	@set -e; \
+	if $(MAKE) --no-print-directory static-analysis-gate; then :; else rc=$$?; if [ "$$rc" = "77" ] && [ "$${EV_UB_HARDENING_ALLOW_BLOCKED:-1}" = "1" ]; then echo "ub-hardening-gate static-analysis ENVIRONMENT_BLOCKED_ALLOWED"; else exit $$rc; fi; fi; \
+	if $(MAKE) --no-print-directory coverage-gate; then :; else rc=$$?; if [ "$$rc" = "77" ] && [ "$${EV_UB_HARDENING_ALLOW_BLOCKED:-1}" = "1" ]; then echo "ub-hardening-gate coverage ENVIRONMENT_BLOCKED_ALLOWED"; else exit $$rc; fi; fi; \
+	if $(MAKE) --no-print-directory fuzz-sanitize-gate; then :; else rc=$$?; if [ "$$rc" = "77" ] && [ "$${EV_UB_HARDENING_ALLOW_BLOCKED:-1}" = "1" ]; then echo "ub-hardening-gate fuzz-sanitize ENVIRONMENT_BLOCKED_ALLOWED"; else exit $$rc; fi; fi
+	@echo "ub-hardening-gate passed"
 
 safety-gate: host-strict-test host-sanitize-test
 	@echo "safety-gate passed"

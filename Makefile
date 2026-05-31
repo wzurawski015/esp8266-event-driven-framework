@@ -172,8 +172,9 @@ BENCH_TESTS := \
     bench_runtime_poll
 BENCH_BINS := $(addprefix $(BENCH_BUILD_DIR)/,$(BENCH_TESTS))
 BENCH_RESULTS := $(BENCH_BUILD_DIR)/results.txt
+PERF_BUDGETS ?= config/perf_budgets.json
 
-.PHONY: all host-test property-test host-strict-test host-sanitize-cc-check host-sanitize-test host-tsan-cc-check host-tsan-test clang-tidy-gate safety-gate hotpath-zero-alloc-gate bench perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts qos-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate production-release-gate quality-gate release-gate docgen docs clean
+.PHONY: all host-test property-test host-strict-test host-sanitize-cc-check host-sanitize-test host-tsan-cc-check host-tsan-test clang-tidy-gate safety-gate hotpath-zero-alloc-gate bench perf-report perf-budget-gate perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts qos-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate production-release-gate quality-gate release-gate docgen docs clean
 .SECONDARY: $(COMMON_OBJS) $(BENCH_COMMON_OBJS)
 
 all: host-test
@@ -264,11 +265,18 @@ bench: routegen $(BENCH_BINS)
 	@mkdir -p $(BENCH_BUILD_DIR)
 	@: > $(BENCH_RESULTS)
 	@set -e; for t in $(BENCH_BINS); do ./$$t | tee -a $(BENCH_RESULTS); done
-	@$(PYTHON) tools/bench_report.py $(BENCH_RESULTS)
 	@echo "bench passed"
 
-perf-gate: bench
-	@echo "perf-gate passed (report-only baseline)"
+perf-report: bench
+	@$(PYTHON) tools/bench_report.py --report-only --budget $(PERF_BUDGETS) $(BENCH_RESULTS)
+	@echo "perf-report passed (report-only)"
+
+perf-budget-gate: bench
+	@$(PYTHON) tools/bench_report.py --strict --budget $(PERF_BUDGETS) $(BENCH_RESULTS)
+	@echo "perf-budget-gate passed"
+
+perf-gate: perf-budget-gate
+	@echo "perf-gate passed (hard regression budgets)"
 
 routegen:
 	$(PYTHON) tools/routegen/routegen.py

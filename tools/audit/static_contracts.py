@@ -464,6 +464,40 @@ def validate_power_state_machine_contract() -> None:
         errors.append("power state machine source is not registered in Makefile")
 
 
+def validate_perf_budget_contract() -> None:
+    required = ["config/perf_budgets.json", "tools/bench_report.py", "docs/perf/perf_regression_budget_policy.md", "docs/release/perf_regression_budget_report.md", "docs/specs/performance_baseline.md"]
+    for rel in required:
+        if not (ROOT / rel).exists():
+            errors.append(f"perf budget artifact missing: {rel}")
+    makefile_path = ROOT / "Makefile"
+    if not makefile_path.exists():
+        errors.append("Makefile missing for perf budget contract")
+        return
+    makefile = makefile_path.read_text(encoding="utf-8", errors="ignore")
+    for target in ["perf-report", "perf-budget-gate", "perf-gate"]:
+        if re.search(rf"^{re.escape(target)}\s*:", makefile, flags=re.MULTILINE) is None:
+            errors.append(f"perf target missing: {target}")
+    m = re.search(r"^perf-gate\s*:(.*)$", makefile, flags=re.MULTILINE)
+    if m is None or "perf-budget-gate" not in m.group(1):
+        errors.append("perf-gate must depend on perf-budget-gate")
+    if "perf-gate passed (report-only baseline)" in makefile:
+        errors.append("perf-gate must not be report-only baseline")
+    budget_body = extract_make_target_body(makefile, "perf-budget-gate")
+    if "--strict" not in budget_body or "tools/bench_report.py" not in budget_body:
+        errors.append("perf-budget-gate must invoke bench_report.py --strict")
+    report_body = extract_make_target_body(makefile, "perf-report")
+    if "--report-only" not in report_body:
+        errors.append("perf-report must be explicit report-only mode")
+    bench_report = (ROOT / "tools" / "bench_report.py").read_text(encoding="utf-8", errors="ignore") if (ROOT / "tools" / "bench_report.py").exists() else ""
+    for token in ["load_budgets", "hard_max_ns_per_op", "--self-test", "duplicate benchmark", "missing benchmark"]:
+        if token not in bench_report:
+            errors.append(f"bench_report.py missing budget/parser contract token: {token}")
+    budget_text = (ROOT / "config" / "perf_budgets.json").read_text(encoding="utf-8", errors="ignore") if (ROOT / "config" / "perf_budgets.json").exists() else ""
+    for bench in ["static_publish_tick_fanout", "active_publish_tick_fanout", "runtime_poll_empty", "runtime_poll_prefilled_mailbox", "runtime_loop_poll_empty", "runtime_loop_poll_prefilled_mailbox"]:
+        if bench not in budget_text:
+            errors.append(f"perf budget missing required benchmark: {bench}")
+
+
 static_contract_self_test()
 validate_power_state_machine_contract()
 validate_layering_contract_document()
@@ -475,6 +509,7 @@ validate_route_qos_contract()
 validate_trace_timestamp_contract()
 validate_host_safety_gate_contract()
 validate_hotpath_zero_alloc_contract_registration()
+validate_perf_budget_contract()
 
 for artifact in iter_repo_files(ROOT):
     if is_ignored_path(artifact):

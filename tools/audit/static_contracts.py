@@ -908,6 +908,31 @@ if import_tool.exists():
         if token not in import_text:
             errors.append(f"SDK import tool missing required capability token: {token}")
 
+
+# HIL serial import contracts.
+for rel in [
+    "tools/hil/import_hil_serial_evidence.py",
+    "docs/release/hil_serial_evidence_import_workflow.md",
+    "docs/release/hil_real_atnel_wemos_evidence_report.md",
+]:
+    if not (ROOT / rel).exists():
+        errors.append(f"HIL serial evidence import artifact missing: {rel}")
+for target in ["hil-import-atnel-i2c-evidence", "hil-import-wemos-smoke-evidence", "hil-import-wemos-deepsleep-evidence", "hil-import-all-evidence", "hil-real-evidence-gate"]:
+    if f"{target}:" not in makefile_text:
+        errors.append(f"HIL serial evidence target missing from Makefile: {target}")
+atnel_parser = ROOT / "tools" / "hil" / "parse_atnel_i2c_hil_log.py"
+wemos_parser = ROOT / "tools" / "hil" / "parse_wemos_smoke_log.py"
+if atnel_parser.exists():
+    text = atnel_parser.read_text(encoding="utf-8", errors="ignore")
+    for token in ["EV_HIL_I2C_CASE_BEGIN", "EV_HIL_I2C_BUS_STATE", "EV_HIL_I2C_RECOVERY_BEGIN", "EV_HIL_RESULT PASS failures=0 skipped=0"]:
+        if token not in text:
+            errors.append(f"ATNEL HIL parser missing strict marker token: {token}")
+if wemos_parser.exists():
+    text = wemos_parser.read_text(encoding="utf-8", errors="ignore")
+    for token in ["EV_WEMOS_SMOKE_RESULT", "EV_POWER_SMOKE_SLEEP_REQUEST", "EV_POWER_SMOKE_WAKE_REASON", "EV_POWER_SMOKE_RESULT"]:
+        if token not in text:
+            errors.append(f"Wemos parser missing strict marker token: {token}")
+
 if errors:
     for error in errors:
         print(error)

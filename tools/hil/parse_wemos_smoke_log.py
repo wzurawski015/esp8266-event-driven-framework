@@ -30,7 +30,11 @@ STATE_ORDER = [
 ]
 STATE_RE = re.compile(r"EV_POWER_SMOKE_STATE\s+([A-Z_]+)")
 DEEP_ENTER_RE = re.compile(r"EV_POWER_SMOKE_DEEP_SLEEP_ENTER")
+SLEEP_REQUEST_RE = re.compile(r"EV_POWER_SMOKE_SLEEP_REQUEST\s+duration_us=([0-9]+)")
 WAKE_BOOT_RE = re.compile(r"EV_POWER_SMOKE_WAKE_BOOT")
+WAKE_REASON_RE = re.compile(r"EV_POWER_SMOKE_WAKE_REASON\s+reason=([^\s]+)")
+POWER_RESULT_RE = re.compile(r"EV_POWER_SMOKE_RESULT\s+PASS")
+SMOKE_RESULT_RE = re.compile(r"EV_WEMOS_SMOKE_RESULT\s+PASS")
 SECRET_RE = re.compile(r"(WIFI_PASSWORD|COMMAND_TOKEN|EV_BOARD_NET_WIFI_PASSWORD|EV_BOARD_NET_COMMAND_TOKEN)\S*")
 
 
@@ -64,6 +68,8 @@ def parse_text(text: str, *, require_deepsleep: bool) -> dict[str, object]:
         failures.append("fewer than 3 tick markers")
     if len(snaps) < 3:
         failures.append("fewer than 3 snapshot markers")
+    if not SMOKE_RESULT_RE.search(text):
+        failures.append("missing EV_WEMOS_SMOKE_RESULT PASS")
     if not monotonic(ticks):
         failures.append("tick sequence is not strictly increasing")
     if not monotonic(snaps):
@@ -71,6 +77,8 @@ def parse_text(text: str, *, require_deepsleep: bool) -> dict[str, object]:
     if RESET_FAIL_RE.search(text):
         failures.append("reset/failure marker observed")
     if require_deepsleep:
+        if not SLEEP_REQUEST_RE.search(text):
+            failures.append("missing EV_POWER_SMOKE_SLEEP_REQUEST duration_us marker")
         cursor = 0
         for expected in STATE_ORDER:
             try:
@@ -82,6 +90,10 @@ def parse_text(text: str, *, require_deepsleep: bool) -> dict[str, object]:
             failures.append("missing deep-sleep enter marker")
         if not WAKE_BOOT_RE.search(text):
             failures.append("missing wake-boot marker")
+        if not WAKE_REASON_RE.search(text):
+            failures.append("missing EV_POWER_SMOKE_WAKE_REASON marker")
+        if not POWER_RESULT_RE.search(text):
+            failures.append("missing EV_POWER_SMOKE_RESULT PASS")
     return {
         "status": "PASS" if not failures else "FAIL",
         "mode": "deepsleep" if require_deepsleep else "smoke",
@@ -122,7 +134,8 @@ def write_evidence(text: str, evidence_dir: Path, *, require_deepsleep: bool) ->
         f"{sha256(serial)}  serial.log\n{sha256(evidence_dir / 'parsed.json')}  parsed.json\n",
         encoding="utf-8",
     )
-    write_report(parsed, evidence_dir, DEEPSLEEP_REPORT if require_deepsleep else SMOKE_REPORT, serial)
+    if evidence_dir.resolve().is_relative_to((ROOT / "docs" / "release").resolve()):
+        write_report(parsed, evidence_dir, DEEPSLEEP_REPORT if require_deepsleep else SMOKE_REPORT, serial)
     return 0 if parsed["status"] == "PASS" else 1
 
 
@@ -156,9 +169,10 @@ EV_WEMOS_SMOKE_TICK seq=2
 EV_WEMOS_SMOKE_SNAPSHOT seq=2
 EV_WEMOS_SMOKE_TICK seq=3
 EV_WEMOS_SMOKE_SNAPSHOT seq=3
+EV_WEMOS_SMOKE_RESULT PASS
 """
     assert parse_text(smoke, require_deepsleep=False)["status"] == "PASS"
-    deep = smoke + "\n".join(f"EV_POWER_SMOKE_STATE {state}" for state in STATE_ORDER) + "\nEV_POWER_SMOKE_DEEP_SLEEP_ENTER\nEV_POWER_SMOKE_WAKE_BOOT\n"
+    deep = smoke + "EV_POWER_SMOKE_SLEEP_REQUEST duration_us=1000000\n" + "\n".join(f"EV_POWER_SMOKE_STATE {state}" for state in STATE_ORDER) + "\nEV_POWER_SMOKE_DEEP_SLEEP_ENTER\nEV_POWER_SMOKE_WAKE_BOOT\nEV_POWER_SMOKE_WAKE_REASON reason=timer\nEV_POWER_SMOKE_RESULT PASS\n"
     assert parse_text(deep, require_deepsleep=True)["status"] == "PASS"
     assert parse_text(smoke.replace("seq=2", "seq=1"), require_deepsleep=False)["status"] == "FAIL"
     assert parse_text(deep.replace("EV_POWER_SMOKE_WAKE_BOOT", ""), require_deepsleep=True)["status"] == "FAIL"
@@ -173,12 +187,13 @@ def main() -> int:
     ap.add_argument("--log", type=Path)
     ap.add_argument("--deepsleep", action="store_true")
     ap.add_argument("--environment-blocked", action="store_true")
+    ap.add_argument("--evidence-dir", type=Path)
     args = ap.parse_args()
     if args.self_test:
         return self_test()
     if args.environment_blocked or args.log is None:
         return environment_blocked(require_deepsleep=args.deepsleep)
-    return write_evidence(args.log.read_text(encoding="utf-8", errors="ignore"), DEEPSLEEP_EVIDENCE if args.deepsleep else SMOKE_EVIDENCE, require_deepsleep=args.deepsleep)
+    return write_evidence(args.log.read_text(encoding="utf-8", errors="ignore"), args.evidence_dir or (DEEPSLEEP_EVIDENCE if args.deepsleep else SMOKE_EVIDENCE), require_deepsleep=args.deepsleep)
 
 if __name__ == "__main__":
     raise SystemExit(main())

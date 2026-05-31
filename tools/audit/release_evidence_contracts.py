@@ -275,6 +275,8 @@ def check_i2c_hil_evidence(errors: list[str]) -> None:
         errors.append("release-evidence: ATNEL I2C PASS without sda-stuck-low parsed PASS")
     if not parsed.get("fixture_coupled", False):
         errors.append("release-evidence: ATNEL I2C PASS without fixture-coupled evidence")
+    if not parsed.get("serial_sha256"):
+        errors.append("release-evidence: ATNEL I2C PASS without serial SHA-256")
 
 
 def _parsed_json_path_from_report(path: Path) -> Path | None:
@@ -307,6 +309,8 @@ def check_wemos_hil_evidence(errors: list[str]) -> None:
             continue
         if parsed.get("status") != "PASS":
             errors.append(f"release-evidence: {path.relative_to(ROOT).as_posix()} PASS but parsed status is not PASS")
+        if not parsed.get("serial_sha256"):
+            errors.append(f"release-evidence: {path.relative_to(ROOT).as_posix()} PASS without serial SHA-256")
         if "deep_sleep" in path.name and parsed.get("mode") != "deepsleep":
             errors.append("release-evidence: Wemos deep-sleep PASS without deepsleep parsed mode")
 
@@ -331,6 +335,18 @@ def check_eventflow_evidence(errors: list[str]) -> None:
         if source.get("required") and source.get("status") != "PASS":
             errors.append(f"release-evidence: eventflow PASS with non-PASS source {source.get('name')}")
 
+
+def check_hil_import_contracts(errors: list[str]) -> None:
+    importer = ROOT / "tools" / "hil" / "import_hil_serial_evidence.py"
+    if not importer.is_file():
+        errors.append("release-evidence: HIL serial import tool missing")
+    for rel in [
+        "docs/release/hil_serial_evidence_import_workflow.md",
+        "docs/release/hil_real_atnel_wemos_evidence_report.md",
+    ]:
+        if not (ROOT / rel).is_file():
+            errors.append(f"release-evidence: HIL import documentation missing: {rel}")
+
 def self_test() -> None:
     assert status_cells(["foo", "PASS", "bar"]) == ["PASS"]
     assert status_cells(["foo", "NOT_RUN"]) == ["NOT_RUN"]
@@ -348,6 +364,7 @@ def main() -> int:
     check_i2c_hil_evidence(errors)
     check_sdk_evidence_files(errors)
     check_sdk_import_evidence_contracts(errors)
+    check_hil_import_contracts(errors)
     if errors:
         for error in errors:
             print(error, file=sys.stderr)

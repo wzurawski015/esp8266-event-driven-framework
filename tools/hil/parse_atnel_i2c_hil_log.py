@@ -13,11 +13,14 @@ ROOT = Path(__file__).resolve().parents[2]
 REPORT = ROOT / "docs" / "release" / "hil_atnel_i2c_report.md"
 DEFAULT_EVIDENCE = ROOT / "docs" / "release" / "hil_evidence" / "i2c" / "current"
 GLOBAL_PASS = re.compile(r"EV_HIL_RESULT PASS failures=0 skipped=0")
+CASE_BEGIN = re.compile(r"EV_HIL_I2C_CASE_BEGIN\s+name=sda-stuck-low-containment")
 CASE_PASS = re.compile(r"EV_HIL_I2C_CASE_RESULT\s+name=sda-stuck-low-containment\s+status=PASS")
 CASE_FAIL = re.compile(r"EV_HIL_I2C_CASE_RESULT\s+name=sda-stuck-low-containment\s+status=FAIL(?:\s+reason=([^\s]+))?")
 COUPLED = re.compile(r"EV_HIL_I2C_SDA_FORCE_LOW\s+requested=1\s+observed=1")
 UNCoupled = re.compile(r"EV_HIL_I2C_SDA_FORCE_LOW\s+requested=1\s+observed=0|FIXTURE_NOT_COUPLED")
-RECOVERY_PASS = re.compile(r"EV_HIL_I2C_RECOVERY_RESULT\s+status=OK")
+BUS_STATE = re.compile(r"EV_HIL_I2C_BUS_STATE")
+RECOVERY_BEGIN = re.compile(r"EV_HIL_I2C_RECOVERY_BEGIN")
+RECOVERY_PASS = re.compile(r"EV_HIL_I2C_RECOVERY_RESULT\s+status=(?:PASS|OK)")
 SECRET_RE = re.compile(r"(WIFI_PASSWORD|COMMAND_TOKEN|EV_BOARD_NET_WIFI_PASSWORD|EV_BOARD_NET_COMMAND_TOKEN)\S*")
 
 
@@ -37,8 +40,11 @@ def parse_text(text: str) -> dict[str, object]:
     redacted = redact(text)
     fixture_not_coupled = bool(UNCoupled.search(redacted))
     has_global_pass = bool(GLOBAL_PASS.search(redacted))
+    has_case_begin = bool(CASE_BEGIN.search(redacted))
     has_case_pass = bool(CASE_PASS.search(redacted))
     has_coupled = bool(COUPLED.search(redacted))
+    has_bus_state = bool(BUS_STATE.search(redacted))
+    has_recovery_begin = bool(RECOVERY_BEGIN.search(redacted))
     has_recovery_pass = bool(RECOVERY_PASS.search(redacted))
     fail_reason = None
     m = CASE_FAIL.search(redacted)
@@ -49,10 +55,16 @@ def parse_text(text: str) -> dict[str, object]:
         failures.append("FIXTURE_NOT_COUPLED")
     if not has_global_pass:
         failures.append("missing EV_HIL_RESULT PASS failures=0 skipped=0")
+    if not has_case_begin:
+        failures.append("missing EV_HIL_I2C_CASE_BEGIN marker")
     if not has_case_pass:
         failures.append("missing sda-stuck-low-containment PASS marker")
     if not has_coupled:
         failures.append("missing observed SDA-low coupling marker")
+    if not has_bus_state:
+        failures.append("missing EV_HIL_I2C_BUS_STATE marker")
+    if not has_recovery_begin:
+        failures.append("missing EV_HIL_I2C_RECOVERY_BEGIN marker")
     if not has_recovery_pass:
         failures.append("missing recovery PASS/OK marker")
     if fail_reason:
@@ -61,8 +73,11 @@ def parse_text(text: str) -> dict[str, object]:
         "status": "PASS" if not failures else "FAIL",
         "case": "sda-stuck-low-containment",
         "global_pass": has_global_pass,
+        "case_begin": has_case_begin,
         "case_pass": has_case_pass,
         "fixture_coupled": has_coupled and not fixture_not_coupled,
+        "bus_state": has_bus_state,
+        "recovery_begin": has_recovery_begin,
         "recovery_pass": has_recovery_pass,
         "failures": failures,
     }
@@ -99,7 +114,8 @@ def write_evidence(text: str, evidence_dir: Path, source: Path | None = None) ->
         f"{sha256(serial)}  serial.log\n{sha256(evidence_dir / 'parsed.json')}  parsed.json\n",
         encoding="utf-8",
     )
-    write_report(parsed, evidence_dir, serial)
+    if evidence_dir.resolve().is_relative_to((ROOT / "docs" / "release").resolve()):
+        write_report(parsed, evidence_dir, serial)
     return 0 if parsed["status"] == "PASS" else 1
 
 
@@ -124,7 +140,9 @@ def self_test() -> int:
     valid = """
 EV_HIL_I2C_CASE_BEGIN name=sda-stuck-low-containment
 EV_HIL_I2C_SDA_FORCE_LOW requested=1 observed=1
-EV_HIL_I2C_RECOVERY_RESULT status=OK
+EV_HIL_I2C_BUS_STATE before=idle during=stuck after=recovered
+EV_HIL_I2C_RECOVERY_BEGIN
+EV_HIL_I2C_RECOVERY_RESULT status=PASS
 EV_HIL_I2C_CASE_RESULT name=sda-stuck-low-containment status=PASS
 EV_HIL_RESULT PASS failures=0 skipped=0
 """

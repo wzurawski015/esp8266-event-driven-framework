@@ -64,6 +64,7 @@ RUNTIME_SRCS := \
     runtime/src/ev_runtime_poll.c \
     runtime/src/ev_runtime_loop.c \
     runtime/src/ev_power_manager.c \
+    runtime/src/ev_power_state_machine.c \
     runtime/src/ev_fault_bus.c \
     runtime/src/ev_metrics_registry.c \
     runtime/src/ev_trace_ring.c \
@@ -113,6 +114,7 @@ HOST_TESTS := \
     test_domain_pump_contract \
     test_system_pump_contract \
     test_power_actor_contract \
+    test_power_state_machine \
     test_watchdog_actor_contract \
     test_demo_app_watchdog_contract \
     test_demo_app_sleep_quiescence \

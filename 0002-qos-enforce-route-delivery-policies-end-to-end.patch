@@ -1,0 +1,691 @@
+From ade9f9ac4b0d76cbdb70f45df2d86a821b1fc8bf Mon Sep 17 00:00:00 2001
+From: oai <a@b.c>
+Date: Sat, 30 May 2026 20:13:17 +0000
+Subject: [PATCH 2/3] qos: enforce route delivery policies end to end
+
+---
+ Makefile                                      |  10 +-
+ docs/architecture/qos_delivery_contract.md    |  16 ++
+ .../qos_end_to_end_enforcement_report.md      |   6 +
+ docs/specs/route-qos.md                       |  11 ++
+ runtime/include/ev/delivery_service.h         |   7 +-
+ runtime/include/ev/qos_contract.h             |  65 ++++++++
+ runtime/src/ev_delivery_service.c             |  22 +--
+ runtime/src/ev_qos_contract.c                 | 149 ++++++++++++++++++
+ runtime/src/ev_runtime_graph.c                |  38 ++---
+ tests/host/test_qos_contract_table.c          |  36 +++++
+ .../test_qos_route_module_compatibility.c     |  37 +++++
+ tools/audit/qos_contract_check.py             |  40 +++++
+ tools/audit/static_contracts.py               |  34 ++--
+ 13 files changed, 413 insertions(+), 58 deletions(-)
+ create mode 100644 docs/architecture/qos_delivery_contract.md
+ create mode 100644 docs/release/qos_end_to_end_enforcement_report.md
+ create mode 100644 runtime/include/ev/qos_contract.h
+ create mode 100644 runtime/src/ev_qos_contract.c
+ create mode 100644 tests/host/test_qos_contract_table.c
+ create mode 100644 tests/host/test_qos_route_module_compatibility.c
+ create mode 100755 tools/audit/qos_contract_check.py
+
+diff --git a/Makefile b/Makefile
+index b99950e..b35e947 100644
+--- a/Makefile
++++ b/Makefile
+@@ -61,6 +61,7 @@ RUNTIME_SRCS := \
+     runtime/src/ev_ingress_service.c \
+     runtime/src/ev_quiescence_service.c \
+     runtime/src/ev_delivery_service.c \
++    runtime/src/ev_qos_contract.c \
+     runtime/src/ev_runtime_poll.c \
+     runtime/src/ev_runtime_loop.c \
+     runtime/src/ev_power_manager.c \
+@@ -104,6 +105,8 @@ HOST_TESTS := \
+     test_route_spans \
+     test_active_route_table_spans \
+     test_route_qos_delivery_policy \
++    test_qos_contract_table \
++    test_qos_route_module_compatibility \
+     test_dispatch_contract \
+     test_mailbox_contract \
+     test_actor_runtime \
+@@ -170,7 +173,7 @@ BENCH_TESTS := \
+ BENCH_BINS := $(addprefix $(BENCH_BUILD_DIR)/,$(BENCH_TESTS))
+ BENCH_RESULTS := $(BENCH_BUILD_DIR)/results.txt
+ 
+-.PHONY: all host-test property-test host-strict-test host-sanitize-cc-check host-sanitize-test host-tsan-cc-check host-tsan-test clang-tidy-gate safety-gate hotpath-zero-alloc-gate bench perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate production-release-gate quality-gate release-gate docgen docs clean
++.PHONY: all host-test property-test host-strict-test host-sanitize-cc-check host-sanitize-test host-tsan-cc-check host-tsan-test clang-tidy-gate safety-gate hotpath-zero-alloc-gate bench perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts qos-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate production-release-gate quality-gate release-gate docgen docs clean
+ .SECONDARY: $(COMMON_OBJS) $(BENCH_COMMON_OBJS)
+ 
+ all: host-test
+@@ -295,6 +298,9 @@ private-repo-secrets-policy:
+ release-evidence-contracts:
+ 	$(PYTHON) tools/audit/release_evidence_contracts.py
+ 
++qos-contracts:
++	$(PYTHON) tools/audit/qos_contract_check.py
++
+ public-release-safety-gate:
+ 	PUBLIC_RELEASE=1 $(PYTHON) tools/audit/private_repo_secrets_policy.py
+ 
+@@ -316,7 +322,7 @@ sdk-memory-release-gate:
+ 	EV_SDK_MEMORY_REQUIRE_PASS=1 $(PYTHON) tools/sdk_memory_matrix.py
+ 
+ .NOTPARALLEL: quality-gate
+-quality-gate: clean routegen-check static-contracts hotpath-zero-alloc-gate actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts memory-budget host-test property-test
++quality-gate: clean routegen-check static-contracts hotpath-zero-alloc-gate actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts qos-contracts memory-budget host-test property-test
+ 	@echo "quality-gate passed"
+ 
+ release-gate: quality-gate docgen docs
+diff --git a/docs/architecture/qos_delivery_contract.md b/docs/architecture/qos_delivery_contract.md
+new file mode 100644
+index 0000000..aca05b7
+--- /dev/null
++++ b/docs/architecture/qos_delivery_contract.md
+@@ -0,0 +1,16 @@
++# QoS delivery contract
++
++Route QoS is an end-to-end contract between route configuration, actor-module route policy, mailbox behavior, delivery reports, and release evidence.
++
++| QoS | Failure behavior | Module policy meaning |
++|---|---|---|
++| `EV_ROUTE_QOS_CRITICAL` | strict | Accepted by default modules and as compatibility traffic by specialized modules. |
++| `EV_ROUTE_QOS_WAKEUP_CRITICAL` | strict, wakeup relevant | Accepted only by wakeup-policy modules. |
++| `EV_ROUTE_QOS_COMMAND` | strict, command relevant | Accepted only by command-policy modules. |
++| `EV_ROUTE_QOS_BEST_EFFORT` | drop allowed | Accepted by default and telemetry-policy modules. |
++| `EV_ROUTE_QOS_LOSSY` | drop allowed | Accepted by default and telemetry-policy modules. |
++| `EV_ROUTE_QOS_TELEMETRY` | drop allowed, telemetry relevant | Accepted only by telemetry-policy modules. |
++| `EV_ROUTE_QOS_COALESCED` | algorithm-not-yet-promoted | drop-allowed until a mailbox replacement algorithm is promoted. |
++| `EV_ROUTE_QOS_LATEST_ONLY` | algorithm-not-yet-promoted | drop-allowed until a mailbox replacement algorithm is promoted. |
++
++`route_policy_flags` is a historical ABI field and is treated as a single accepted route QoS class, not a bitmask. The semantic accessor is `ev_actor_module_route_policy_accepts_qos()`.
+diff --git a/docs/release/qos_end_to_end_enforcement_report.md b/docs/release/qos_end_to_end_enforcement_report.md
+new file mode 100644
+index 0000000..a6c8285
+--- /dev/null
++++ b/docs/release/qos_end_to_end_enforcement_report.md
+@@ -0,0 +1,6 @@
++# QoS end-to-end enforcement report
++
++This patch centralizes route QoS behavior in `ev_qos_contract`, validates route/module compatibility before active delivery, and exposes `rejected_routes` plus `qos_conflict_routes` in delivery reports.
++It does not change the deep sleep state machine, mailbox capacities, route fanout semantics, actor placement, graph storage, demo composition-root structure, hotpath zero-allocation rules, or perf budgets.
++
++`EV_ROUTE_QOS_COALESCED` and `EV_ROUTE_QOS_LATEST_ONLY` remain drop allowed and algorithm-not-yet-promoted until a bounded mailbox replacement/coalescing algorithm is promoted with tests.
+diff --git a/docs/specs/route-qos.md b/docs/specs/route-qos.md
+index 2a4c293..1a43f4d 100644
+--- a/docs/specs/route-qos.md
++++ b/docs/specs/route-qos.md
+@@ -102,3 +102,14 @@ is the source of truth for disabled-route semantics.
+   beyond the existing mailbox kind behavior and the drop-allowed failure policy.
+ - Delivery trace timestamps are still outside this contract and currently remain
+   part of the trace timestamp follow-up work.
++
++## End-to-end contract enforcement
++
++The current end-to-end contract is implemented by `ev_qos_contract`:
++
++- `ev_qos_contract_for(qos)` returns the central behavior table.
++- `ev_actor_module_route_policy_accepts_qos(descriptor, qos)` documents the historical `route_policy_flags` field as a single accepted QoS class.
++- `ev_qos_validate_route_against_module(route, descriptor, report)` runs before active delivery.
++- Delivery reports expose `rejected_routes` and `qos_conflict_routes` so partial rejection is visible.
++
++`EV_ROUTE_QOS_COALESCED` and `EV_ROUTE_QOS_LATEST_ONLY` are explicit `algorithm-not-yet-promoted` classes in this patch. They remain drop-allowed until a bounded mailbox replacement/coalescing algorithm is promoted with its own tests and performance evidence.
+diff --git a/runtime/include/ev/delivery_service.h b/runtime/include/ev/delivery_service.h
+index ca51e65..164c098 100644
+--- a/runtime/include/ev/delivery_service.h
++++ b/runtime/include/ev/delivery_service.h
+@@ -5,6 +5,7 @@
+ #include <stdint.h>
+ 
+ #include "ev/msg.h"
++#include "ev/qos_contract.h"
+ #include "ev/result.h"
+ #include "ev/route_table.h"
+ 
+@@ -24,14 +25,16 @@ typedef struct {
+     size_t optional_disabled_routes;
+     size_t optional_disabled_watchdog_routes;
+     size_t optional_disabled_network_routes;
++    size_t rejected_routes;
++    size_t qos_conflict_routes;
+ } ev_delivery_report_t;
+ 
+ /**
+  * @brief Failure behavior used by delivery when a route target cannot accept a message.
+  */
+ typedef enum {
+-    EV_DELIVERY_QOS_FAILURE_STRICT = 0,
+-    EV_DELIVERY_QOS_FAILURE_DROP = 1
++    EV_DELIVERY_QOS_FAILURE_STRICT = EV_QOS_FAILURE_STRICT,
++    EV_DELIVERY_QOS_FAILURE_DROP = EV_QOS_FAILURE_DROP_ALLOWED
+ } ev_delivery_qos_failure_policy_t;
+ 
+ void ev_delivery_service_init(ev_delivery_service_t *svc, struct ev_runtime_graph *graph);
+diff --git a/runtime/include/ev/qos_contract.h b/runtime/include/ev/qos_contract.h
+new file mode 100644
+index 0000000..1e67a64
+--- /dev/null
++++ b/runtime/include/ev/qos_contract.h
+@@ -0,0 +1,65 @@
++#ifndef EV_QOS_CONTRACT_H
++#define EV_QOS_CONTRACT_H
++
++#include <stdint.h>
++#include "ev/result.h"
++#include "ev/route_table.h"
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++struct ev_actor_module_descriptor;
++
++typedef enum ev_qos_failure_behavior {
++    EV_QOS_FAILURE_STRICT = 0,
++    EV_QOS_FAILURE_DROP_ALLOWED = 1,
++    EV_QOS_FAILURE_COALESCE = 2,
++    EV_QOS_FAILURE_REPLACE_LATEST = 3
++} ev_qos_failure_behavior_t;
++
++typedef struct ev_qos_contract {
++    ev_route_qos_t qos;
++    ev_qos_failure_behavior_t failure_behavior;
++    uint8_t requires_reliable_delivery;
++    uint8_t allows_drop;
++    uint8_t allows_coalesce;
++    uint8_t allows_latest_replace;
++    uint8_t wakeup_relevant;
++    uint8_t command_relevant;
++    uint8_t telemetry_relevant;
++} ev_qos_contract_t;
++
++typedef enum ev_qos_contract_violation {
++    EV_QOS_CONTRACT_OK = 0,
++    EV_QOS_CONTRACT_INVALID_QOS = 1,
++    EV_QOS_CONTRACT_MODULE_POLICY_MISMATCH = 2,
++    EV_QOS_CONTRACT_WAKEUP_POLICY_MISMATCH = 3,
++    EV_QOS_CONTRACT_COMMAND_POLICY_MISMATCH = 4,
++    EV_QOS_CONTRACT_TELEMETRY_POLICY_MISMATCH = 5,
++    EV_QOS_CONTRACT_UNPROMOTED_ALGORITHM = 6
++} ev_qos_contract_violation_t;
++
++typedef struct ev_qos_contract_report {
++    ev_qos_contract_violation_t violation;
++    ev_route_qos_t route_qos;
++    uint32_t module_route_policy;
++    uint8_t accepted;
++} ev_qos_contract_report_t;
++
++ev_result_t ev_qos_contract_for(ev_route_qos_t qos, ev_qos_contract_t *out_contract);
++ev_qos_failure_behavior_t ev_qos_failure_behavior(ev_route_qos_t qos);
++int ev_qos_failure_is_drop_allowed(ev_route_qos_t qos);
++int ev_qos_failure_is_strict(ev_route_qos_t qos);
++int ev_actor_module_route_policy_accepts_qos(const struct ev_actor_module_descriptor *descriptor, ev_route_qos_t qos);
++ev_result_t ev_qos_validate_route_against_module(const ev_route_t *route,
++                                                 const struct ev_actor_module_descriptor *descriptor,
++                                                 ev_qos_contract_report_t *out_report);
++const char *ev_qos_failure_behavior_name(ev_qos_failure_behavior_t behavior);
++const char *ev_qos_contract_violation_name(ev_qos_contract_violation_t violation);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* EV_QOS_CONTRACT_H */
+diff --git a/runtime/src/ev_delivery_service.c b/runtime/src/ev_delivery_service.c
+index 3178be7..7119491 100644
+--- a/runtime/src/ev_delivery_service.c
++++ b/runtime/src/ev_delivery_service.c
+@@ -5,6 +5,7 @@
+ #include "ev/active_route_table.h"
+ #include "ev/fault_bus.h"
+ #include "ev/metrics_registry.h"
++#include "ev/qos_contract.h"
+ #include "ev/runtime_graph.h"
+ #include "ev/trace_ring.h"
+ #include "ev_runtime_graph_internal.h"
+@@ -84,30 +85,17 @@ static void ev_delivery_trace(ev_runtime_graph_t *graph, const ev_route_t *route
+ 
+ ev_delivery_qos_failure_policy_t ev_delivery_qos_failure_policy(ev_route_qos_t qos)
+ {
+-    switch (qos) {
+-    case EV_ROUTE_QOS_BEST_EFFORT:
+-    case EV_ROUTE_QOS_LOSSY:
+-    case EV_ROUTE_QOS_COALESCED:
+-    case EV_ROUTE_QOS_LATEST_ONLY:
+-    case EV_ROUTE_QOS_TELEMETRY:
+-        return EV_DELIVERY_QOS_FAILURE_DROP;
+-
+-    case EV_ROUTE_QOS_CRITICAL:
+-    case EV_ROUTE_QOS_WAKEUP_CRITICAL:
+-    case EV_ROUTE_QOS_COMMAND:
+-    default:
+-        return EV_DELIVERY_QOS_FAILURE_STRICT;
+-    }
++    return (ev_qos_failure_is_drop_allowed(qos) != 0) ? EV_DELIVERY_QOS_FAILURE_DROP : EV_DELIVERY_QOS_FAILURE_STRICT;
+ }
+ 
+ int ev_delivery_qos_failure_is_drop(ev_route_qos_t qos)
+ {
+-    return ev_delivery_qos_failure_policy(qos) == EV_DELIVERY_QOS_FAILURE_DROP;
++    return ev_qos_failure_is_drop_allowed(qos);
+ }
+ 
+ int ev_delivery_qos_failure_is_strict(ev_route_qos_t qos)
+ {
+-    return ev_delivery_qos_failure_policy(qos) == EV_DELIVERY_QOS_FAILURE_STRICT;
++    return ev_qos_failure_is_strict(qos);
+ }
+ 
+ static ev_result_t ev_delivery_deliver_one(ev_runtime_graph_t *graph, const ev_route_t *route, const ev_msg_t *msg, ev_delivery_report_t *local)
+@@ -169,8 +157,10 @@ static ev_result_t ev_delivery_publish_active(ev_runtime_graph_t *graph, const e
+         }
+         if (entry->state != EV_ACTIVE_ROUTE_ENABLED) {
+             local->dropped++;
++            local->rejected_routes++;
+             (void)ev_metric_increment(&EV_RUNTIME_GRAPH_IMPL(graph)->metrics, EV_METRIC_ROUTE_VALIDATION_REJECTED, 1U);
+             if (entry->state == EV_ACTIVE_ROUTE_REJECTED_QOS_CONFLICT) {
++                local->qos_conflict_routes++;
+                 (void)ev_metric_increment(&EV_RUNTIME_GRAPH_IMPL(graph)->metrics, EV_METRIC_ROUTE_QOS_CONFLICT, 1U);
+             }
+             ev_delivery_emit_fault(graph, msg->source_actor, entry->route.target_actor, msg->event_id, entry->reason);
+diff --git a/runtime/src/ev_qos_contract.c b/runtime/src/ev_qos_contract.c
+new file mode 100644
+index 0000000..5bed81f
+--- /dev/null
++++ b/runtime/src/ev_qos_contract.c
+@@ -0,0 +1,149 @@
++#include "ev/qos_contract.h"
++
++#include <string.h>
++
++#include "ev/active_route_table.h"
++#include "ev/actor_module.h"
++
++static void ev_qos_report_reset(ev_qos_contract_report_t *report, ev_route_qos_t qos, uint32_t policy)
++{
++    if (report != NULL) {
++        (void)memset(report, 0, sizeof(*report));
++        report->route_qos = qos;
++        report->module_route_policy = policy;
++        report->violation = EV_QOS_CONTRACT_OK;
++    }
++}
++
++const char *ev_qos_failure_behavior_name(ev_qos_failure_behavior_t behavior)
++{
++    switch (behavior) {
++    case EV_QOS_FAILURE_STRICT: return "strict";
++    case EV_QOS_FAILURE_DROP_ALLOWED: return "drop_allowed";
++    case EV_QOS_FAILURE_COALESCE: return "coalesce";
++    case EV_QOS_FAILURE_REPLACE_LATEST: return "replace_latest";
++    default: return "unknown";
++    }
++}
++
++const char *ev_qos_contract_violation_name(ev_qos_contract_violation_t violation)
++{
++    switch (violation) {
++    case EV_QOS_CONTRACT_OK: return "ok";
++    case EV_QOS_CONTRACT_INVALID_QOS: return "invalid_qos";
++    case EV_QOS_CONTRACT_MODULE_POLICY_MISMATCH: return "module_policy_mismatch";
++    case EV_QOS_CONTRACT_WAKEUP_POLICY_MISMATCH: return "wakeup_policy_mismatch";
++    case EV_QOS_CONTRACT_COMMAND_POLICY_MISMATCH: return "command_policy_mismatch";
++    case EV_QOS_CONTRACT_TELEMETRY_POLICY_MISMATCH: return "telemetry_policy_mismatch";
++    case EV_QOS_CONTRACT_UNPROMOTED_ALGORITHM: return "unpromoted_algorithm";
++    default: return "unknown";
++    }
++}
++
++ev_result_t ev_qos_contract_for(ev_route_qos_t qos, ev_qos_contract_t *out_contract)
++{
++    ev_qos_contract_t c;
++    if (out_contract == NULL) {
++        return EV_ERR_INVALID_ARG;
++    }
++    (void)memset(&c, 0, sizeof(c));
++    c.qos = qos;
++    switch (qos) {
++    case EV_ROUTE_QOS_CRITICAL:
++        c.failure_behavior = EV_QOS_FAILURE_STRICT; c.requires_reliable_delivery = 1U; break;
++    case EV_ROUTE_QOS_WAKEUP_CRITICAL:
++        c.failure_behavior = EV_QOS_FAILURE_STRICT; c.requires_reliable_delivery = 1U; c.wakeup_relevant = 1U; break;
++    case EV_ROUTE_QOS_COMMAND:
++        c.failure_behavior = EV_QOS_FAILURE_STRICT; c.requires_reliable_delivery = 1U; c.command_relevant = 1U; break;
++    case EV_ROUTE_QOS_BEST_EFFORT:
++    case EV_ROUTE_QOS_LOSSY:
++        c.failure_behavior = EV_QOS_FAILURE_DROP_ALLOWED; c.allows_drop = 1U; break;
++    case EV_ROUTE_QOS_TELEMETRY:
++        c.failure_behavior = EV_QOS_FAILURE_DROP_ALLOWED; c.allows_drop = 1U; c.telemetry_relevant = 1U; break;
++    case EV_ROUTE_QOS_COALESCED:
++        c.failure_behavior = EV_QOS_FAILURE_DROP_ALLOWED; c.allows_drop = 1U; break;
++    case EV_ROUTE_QOS_LATEST_ONLY:
++        c.failure_behavior = EV_QOS_FAILURE_DROP_ALLOWED; c.allows_drop = 1U; break;
++    default:
++        return EV_ERR_OUT_OF_RANGE;
++    }
++    *out_contract = c;
++    return EV_OK;
++}
++
++ev_qos_failure_behavior_t ev_qos_failure_behavior(ev_route_qos_t qos)
++{
++    ev_qos_contract_t contract;
++    if (ev_qos_contract_for(qos, &contract) != EV_OK) {
++        return EV_QOS_FAILURE_STRICT;
++    }
++    return contract.failure_behavior;
++}
++
++int ev_qos_failure_is_drop_allowed(ev_route_qos_t qos)
++{
++    return ev_qos_failure_behavior(qos) != EV_QOS_FAILURE_STRICT;
++}
++
++int ev_qos_failure_is_strict(ev_route_qos_t qos)
++{
++    return ev_qos_failure_behavior(qos) == EV_QOS_FAILURE_STRICT;
++}
++
++int ev_actor_module_route_policy_accepts_qos(const ev_actor_module_descriptor_t *descriptor, ev_route_qos_t qos)
++{
++    uint32_t policy;
++    if ((descriptor == NULL) || (ev_route_qos_is_valid(qos) == 0)) {
++        return 0;
++    }
++    policy = descriptor->route_policy_flags;
++    if (policy == 0U || qos == (ev_route_qos_t)policy) {
++        return 1;
++    }
++    if ((policy == EV_ROUTE_QOS_WAKEUP_CRITICAL) && (qos == EV_ROUTE_QOS_CRITICAL)) {
++        return 1;
++    }
++    if ((policy == EV_ROUTE_QOS_TELEMETRY) && ((qos == EV_ROUTE_QOS_TELEMETRY) || (qos == EV_ROUTE_QOS_BEST_EFFORT) || (qos == EV_ROUTE_QOS_LOSSY) || (qos == EV_ROUTE_QOS_CRITICAL))) {
++        return 1;
++    }
++    if ((policy == EV_ROUTE_QOS_COMMAND) && ((qos == EV_ROUTE_QOS_COMMAND) || (qos == EV_ROUTE_QOS_CRITICAL))) {
++        return 1;
++    }
++    return 0;
++}
++
++ev_result_t ev_qos_validate_route_against_module(const ev_route_t *route,
++                                                 const ev_actor_module_descriptor_t *descriptor,
++                                                 ev_qos_contract_report_t *out_report)
++{
++    ev_qos_contract_t contract;
++    uint32_t policy = (descriptor != NULL) ? descriptor->route_policy_flags : 0U;
++    if ((route == NULL) || (descriptor == NULL)) {
++        ev_qos_report_reset(out_report, EV_ROUTE_QOS_CRITICAL, policy);
++        if (out_report != NULL) { out_report->violation = EV_QOS_CONTRACT_MODULE_POLICY_MISMATCH; }
++        return EV_ERR_INVALID_ARG;
++    }
++    ev_qos_report_reset(out_report, route->qos, policy);
++    if (ev_qos_contract_for(route->qos, &contract) != EV_OK) {
++        if (out_report != NULL) { out_report->violation = EV_QOS_CONTRACT_INVALID_QOS; }
++        return EV_ERR_OUT_OF_RANGE;
++    }
++    if (ev_actor_module_route_policy_accepts_qos(descriptor, route->qos) == 0) {
++        if (out_report != NULL) { out_report->violation = EV_QOS_CONTRACT_MODULE_POLICY_MISMATCH; }
++        return EV_ERR_POLICY;
++    }
++    if ((contract.wakeup_relevant != 0U) && (policy != EV_ROUTE_QOS_WAKEUP_CRITICAL)) {
++        if (out_report != NULL) { out_report->violation = EV_QOS_CONTRACT_WAKEUP_POLICY_MISMATCH; }
++        return EV_ERR_POLICY;
++    }
++    if ((contract.command_relevant != 0U) && (policy != EV_ROUTE_QOS_COMMAND)) {
++        if (out_report != NULL) { out_report->violation = EV_QOS_CONTRACT_COMMAND_POLICY_MISMATCH; }
++        return EV_ERR_POLICY;
++    }
++    if ((contract.telemetry_relevant != 0U) && (policy != EV_ROUTE_QOS_TELEMETRY)) {
++        if (out_report != NULL) { out_report->violation = EV_QOS_CONTRACT_TELEMETRY_POLICY_MISMATCH; }
++        return EV_ERR_POLICY;
++    }
++    if (out_report != NULL) { out_report->accepted = 1U; }
++    return EV_OK;
++}
+diff --git a/runtime/src/ev_runtime_graph.c b/runtime/src/ev_runtime_graph.c
+index b6dcbcc..4bbb156 100644
+--- a/runtime/src/ev_runtime_graph.c
++++ b/runtime/src/ev_runtime_graph.c
+@@ -7,6 +7,7 @@
+ #include "ev/compiler.h"
+ #include "ev/event_catalog.h"
+ #include "ev/metrics_registry.h"
++#include "ev/qos_contract.h"
+ #include "ev/runtime_ports.h"
+ #include "ev/runtime_board_profile.h"
+ #include "ev_runtime_graph_internal.h"
+@@ -192,30 +193,6 @@ ev_result_t ev_runtime_builder_set_route_validation_flags(ev_runtime_builder_t *
+     return EV_OK;
+ }
+ 
+-static int ev_runtime_builder_route_qos_supported(const ev_actor_module_descriptor_t *descriptor, ev_route_qos_t qos)
+-{
+-    if (descriptor == NULL) {
+-        return 0;
+-    }
+-    if (ev_route_qos_is_valid(qos) == 0) {
+-        return 0;
+-    }
+-    if ((descriptor->route_policy_flags != 0U) && (qos != (ev_route_qos_t)descriptor->route_policy_flags)) {
+-        if ((descriptor->route_policy_flags == EV_ROUTE_QOS_WAKEUP_CRITICAL) && (qos == EV_ROUTE_QOS_CRITICAL)) {
+-            return 1;
+-        }
+-        if ((descriptor->route_policy_flags == EV_ROUTE_QOS_TELEMETRY) &&
+-            ((qos == EV_ROUTE_QOS_TELEMETRY) || (qos == EV_ROUTE_QOS_BEST_EFFORT) || (qos == EV_ROUTE_QOS_LOSSY) || (qos == EV_ROUTE_QOS_CRITICAL))) {
+-            return 1;
+-        }
+-        if ((descriptor->route_policy_flags == EV_ROUTE_QOS_COMMAND) && ((qos == EV_ROUTE_QOS_COMMAND) || (qos == EV_ROUTE_QOS_CRITICAL))) {
+-            return 1;
+-        }
+-        return 0;
+-    }
+-    return 1;
+-}
+-
+ static ev_active_route_state_t ev_runtime_builder_classify_route(ev_runtime_builder_t *builder, const ev_route_t *route, ev_result_t *out_reason)
+ {
+     const ev_actor_module_descriptor_t *descriptor;
+@@ -247,11 +224,16 @@ static ev_active_route_state_t ev_runtime_builder_classify_route(ev_runtime_buil
+         }
+         return EV_ACTIVE_ROUTE_REJECTED_INVALID_ACTOR;
+     }
+-    if (ev_runtime_builder_route_qos_supported(descriptor, route->qos) == 0) {
+-        if (out_reason != NULL) {
+-            *out_reason = EV_ERR_POLICY;
++    {
++        ev_qos_contract_report_t qos_report;
++        ev_result_t qos_rc = ev_qos_validate_route_against_module(route, descriptor, &qos_report);
++        if (qos_rc != EV_OK) {
++            (void)qos_report;
++            if (out_reason != NULL) {
++                *out_reason = qos_rc;
++            }
++            return EV_ACTIVE_ROUTE_REJECTED_QOS_CONFLICT;
+         }
+-        return EV_ACTIVE_ROUTE_REJECTED_QOS_CONFLICT;
+     }
+     if (builder->requested[route->target_actor] != 0U) {
+         if (out_reason != NULL) {
+diff --git a/tests/host/test_qos_contract_table.c b/tests/host/test_qos_contract_table.c
+new file mode 100644
+index 0000000..7f3d346
+--- /dev/null
++++ b/tests/host/test_qos_contract_table.c
+@@ -0,0 +1,36 @@
++#include <assert.h>
++#include <string.h>
++#include "ev/qos_contract.h"
++#include "ev/actor_module.h"
++
++static void expect_contract(ev_route_qos_t qos, ev_qos_failure_behavior_t behavior, int reliable, int drop, int wakeup, int command, int telemetry)
++{
++    ev_qos_contract_t c;
++    assert(ev_qos_contract_for(qos, &c) == EV_OK);
++    assert(c.qos == qos);
++    assert(c.failure_behavior == behavior);
++    assert(c.requires_reliable_delivery == (uint8_t)reliable);
++    assert(c.allows_drop == (uint8_t)drop);
++    assert(c.wakeup_relevant == (uint8_t)wakeup);
++    assert(c.command_relevant == (uint8_t)command);
++    assert(c.telemetry_relevant == (uint8_t)telemetry);
++}
++
++int main(void)
++{
++    expect_contract(EV_ROUTE_QOS_CRITICAL, EV_QOS_FAILURE_STRICT, 1, 0, 0, 0, 0);
++    expect_contract(EV_ROUTE_QOS_WAKEUP_CRITICAL, EV_QOS_FAILURE_STRICT, 1, 0, 1, 0, 0);
++    expect_contract(EV_ROUTE_QOS_COMMAND, EV_QOS_FAILURE_STRICT, 1, 0, 0, 1, 0);
++    expect_contract(EV_ROUTE_QOS_BEST_EFFORT, EV_QOS_FAILURE_DROP_ALLOWED, 0, 1, 0, 0, 0);
++    expect_contract(EV_ROUTE_QOS_LOSSY, EV_QOS_FAILURE_DROP_ALLOWED, 0, 1, 0, 0, 0);
++    expect_contract(EV_ROUTE_QOS_TELEMETRY, EV_QOS_FAILURE_DROP_ALLOWED, 0, 1, 0, 0, 1);
++    expect_contract(EV_ROUTE_QOS_COALESCED, EV_QOS_FAILURE_DROP_ALLOWED, 0, 1, 0, 0, 0);
++    expect_contract(EV_ROUTE_QOS_LATEST_ONLY, EV_QOS_FAILURE_DROP_ALLOWED, 0, 1, 0, 0, 0);
++    assert(ev_qos_contract_for((ev_route_qos_t)99, &(ev_qos_contract_t){0}) == EV_ERR_OUT_OF_RANGE);
++    assert(ev_qos_failure_is_drop_allowed(EV_ROUTE_QOS_TELEMETRY) != 0);
++    assert(ev_qos_failure_is_strict(EV_ROUTE_QOS_COMMAND) != 0);
++    assert(strcmp(ev_qos_failure_behavior_name(EV_QOS_FAILURE_STRICT), "strict") == 0);
++    assert(ev_actor_module_route_policy_accepts_qos(ev_actor_module_find(ACT_POWER), EV_ROUTE_QOS_WAKEUP_CRITICAL) != 0);
++    assert(ev_actor_module_route_policy_accepts_qos(ev_actor_module_find(ACT_NETWORK), EV_ROUTE_QOS_COMMAND) == 0);
++    return 0;
++}
+diff --git a/tests/host/test_qos_route_module_compatibility.c b/tests/host/test_qos_route_module_compatibility.c
+new file mode 100644
+index 0000000..f7b4ad2
+--- /dev/null
++++ b/tests/host/test_qos_route_module_compatibility.c
+@@ -0,0 +1,37 @@
++#include <assert.h>
++#include "ev/qos_contract.h"
++#include "ev/actor_module.h"
++
++static ev_route_t make_route(ev_event_id_t event_id, ev_actor_id_t actor, ev_route_qos_t qos)
++{
++    ev_route_t route = { event_id, actor, qos, 0U, 0U };
++    return route;
++}
++
++static void expect_route(ev_event_id_t event_id, ev_actor_id_t actor, ev_route_qos_t qos, ev_result_t expected, ev_qos_contract_violation_t violation)
++{
++    ev_route_t route = make_route(event_id, actor, qos);
++    const ev_actor_module_descriptor_t *module = ev_actor_module_find(actor);
++    ev_qos_contract_report_t report;
++    ev_result_t rc;
++    assert(module != NULL);
++    rc = ev_qos_validate_route_against_module(&route, module, &report);
++    assert(rc == expected);
++    assert(report.route_qos == qos);
++    assert(report.module_route_policy == module->route_policy_flags);
++    assert(report.violation == violation);
++    assert(report.accepted == ((expected == EV_OK) ? 1U : 0U));
++}
++
++int main(void)
++{
++    expect_route(EV_SYS_GOTO_SLEEP_CMD, ACT_POWER, EV_ROUTE_QOS_WAKEUP_CRITICAL, EV_OK, EV_QOS_CONTRACT_OK);
++    expect_route(EV_NET_MQTT_MSG_RX, ACT_COMMAND, EV_ROUTE_QOS_COMMAND, EV_OK, EV_QOS_CONTRACT_OK);
++    expect_route(EV_TIME_UPDATED, ACT_NETWORK, EV_ROUTE_QOS_TELEMETRY, EV_OK, EV_QOS_CONTRACT_OK);
++    expect_route(EV_FAULT_REPORTED, ACT_FAULT, EV_ROUTE_QOS_CRITICAL, EV_OK, EV_QOS_CONTRACT_OK);
++    expect_route(EV_TIME_UPDATED, ACT_COMMAND, EV_ROUTE_QOS_TELEMETRY, EV_ERR_POLICY, EV_QOS_CONTRACT_MODULE_POLICY_MISMATCH);
++    expect_route(EV_NET_MQTT_MSG_RX, ACT_NETWORK, EV_ROUTE_QOS_COMMAND, EV_ERR_POLICY, EV_QOS_CONTRACT_MODULE_POLICY_MISMATCH);
++    expect_route(EV_SYS_GOTO_SLEEP_CMD, ACT_NETWORK, EV_ROUTE_QOS_WAKEUP_CRITICAL, EV_ERR_POLICY, EV_QOS_CONTRACT_MODULE_POLICY_MISMATCH);
++    expect_route(EV_TICK_1S, ACT_APP, (ev_route_qos_t)99, EV_ERR_OUT_OF_RANGE, EV_QOS_CONTRACT_INVALID_QOS);
++    return 0;
++}
+diff --git a/tools/audit/qos_contract_check.py b/tools/audit/qos_contract_check.py
+new file mode 100755
+index 0000000..e40f595
+--- /dev/null
++++ b/tools/audit/qos_contract_check.py
+@@ -0,0 +1,40 @@
++#!/usr/bin/env python3
++from __future__ import annotations
++import re
++from pathlib import Path
++ROOT = Path(__file__).resolve().parents[2]
++QOS_VALUES = ["EV_ROUTE_QOS_CRITICAL","EV_ROUTE_QOS_BEST_EFFORT","EV_ROUTE_QOS_LOSSY","EV_ROUTE_QOS_COALESCED","EV_ROUTE_QOS_LATEST_ONLY","EV_ROUTE_QOS_WAKEUP_CRITICAL","EV_ROUTE_QOS_TELEMETRY","EV_ROUTE_QOS_COMMAND"]
++def read(rel: str) -> str:
++    path = ROOT / rel
++    if not path.exists():
++        raise SystemExit(f"qos-contract-check: missing {rel}")
++    return path.read_text(encoding="utf-8", errors="ignore")
++def strip_comments(text: str) -> str:
++    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
++    return re.sub(r"//.*", "", text)
++def main() -> int:
++    errors=[]
++    source=strip_comments(read("runtime/src/ev_qos_contract.c")); delivery=strip_comments(read("runtime/src/ev_delivery_service.c")); graph=strip_comments(read("runtime/src/ev_runtime_graph.c"))
++    docs=read("docs/specs/route-qos.md")+read("docs/architecture/qos_delivery_contract.md")+read("docs/release/qos_end_to_end_enforcement_report.md")
++    tests=read("tests/host/test_qos_contract_table.c")+read("tests/host/test_qos_route_module_compatibility.c")+read("tests/host/test_route_qos_delivery_policy.c")
++    makefile=read("Makefile")
++    for qos in QOS_VALUES:
++        if qos not in source: errors.append(f"qos contract source does not cover {qos}")
++        if qos not in docs: errors.append(f"qos docs do not cover {qos}")
++        if qos not in tests: errors.append(f"qos tests do not cover {qos}")
++    if "ev_qos_validate_route_against_module" not in graph: errors.append("runtime builder must use ev_qos_validate_route_against_module")
++    if "ev_qos_failure_is_drop_allowed" not in delivery or "EV_ROUTE_QOS_BEST_EFFORT" in delivery: errors.append("delivery behavior must go through central QoS contract")
++    header=read("runtime/include/ev/delivery_service.h")
++    for field in ["rejected_routes","qos_conflict_routes"]:
++        if field not in header: errors.append(f"delivery report missing {field}")
++    if "qos-contracts" not in makefile or "tools/audit/qos_contract_check.py" not in makefile: errors.append("Makefile must register qos-contracts")
++    for test_name in ["test_qos_contract_table","test_qos_route_module_compatibility"]:
++        if test_name not in makefile: errors.append(f"host test not registered: {test_name}")
++    if "drop-allowed until a mailbox replacement algorithm is promoted" not in docs: errors.append("docs must not overclaim coalesced/latest-only algorithms")
++    if errors:
++        for e in errors: print("qos-contract-check: "+e)
++        return 1
++    print("qos contract check passed")
++    return 0
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/tools/audit/static_contracts.py b/tools/audit/static_contracts.py
+index 7ceb823..64d8baf 100755
+--- a/tools/audit/static_contracts.py
++++ b/tools/audit/static_contracts.py
+@@ -290,20 +290,34 @@ def static_contract_self_test() -> None:
+ 
+ 
+ def validate_route_qos_contract() -> None:
+-    report_path = ROOT / "docs" / "release" / "route_qos_enforcement_report.md"
+-    if not report_path.exists():
+-        errors.append("route QoS enforcement report missing: docs/release/route_qos_enforcement_report.md")
+-
++    required = ["runtime/include/ev/qos_contract.h", "runtime/src/ev_qos_contract.c", "tools/audit/qos_contract_check.py", "tests/host/test_qos_contract_table.c", "tests/host/test_qos_route_module_compatibility.c", "docs/architecture/qos_delivery_contract.md", "docs/release/qos_end_to_end_enforcement_report.md"]
++    for rel in required:
++        if not (ROOT / rel).exists():
++            errors.append(f"QoS contract artifact missing: {rel}")
++    delivery_header = ROOT / "runtime" / "include" / "ev" / "delivery_service.h"
++    if delivery_header.exists():
++        header_text = delivery_header.read_text(encoding="utf-8", errors="ignore")
++        for field in ["rejected_routes", "qos_conflict_routes"]:
++            if field not in header_text:
++                errors.append(f"delivery report missing QoS visibility field: {field}")
+     delivery_path = ROOT / "runtime" / "src" / "ev_delivery_service.c"
+     if delivery_path.exists():
+         code = strip_comments(delivery_path.read_text(encoding="utf-8", errors="ignore"))
+-        if re.search(
+-            r"EV_ROUTE_QOS_CRITICAL\s*\|\|[^;{}]*"
+-            r"EV_ROUTE_QOS_WAKEUP_CRITICAL\s*\|\|[^;{}]*"
+-            r"EV_ROUTE_QOS_COMMAND",
+-            code,
+-        ) is not None:
++        if re.search(r"EV_ROUTE_QOS_CRITICAL\s*\|\|[^;{}]*" r"EV_ROUTE_QOS_WAKEUP_CRITICAL\s*\|\|[^;{}]*" r"EV_ROUTE_QOS_COMMAND", code) is not None:
+             errors.append("delivery service reintroduced hand-coded strict QoS disjunction")
++        if "ev_qos_failure_is_drop_allowed" not in code:
++            errors.append("delivery service must use central QoS failure behavior")
++    graph_path = ROOT / "runtime" / "src" / "ev_runtime_graph.c"
++    if graph_path.exists() and "ev_qos_validate_route_against_module" not in strip_comments(graph_path.read_text(encoding="utf-8", errors="ignore")):
++        errors.append("runtime builder must validate route/module QoS before hot path")
++    makefile_path = ROOT / "Makefile"
++    if makefile_path.exists():
++        makefile = makefile_path.read_text(encoding="utf-8", errors="ignore")
++        if "qos-contracts" not in makefile or "tools/audit/qos_contract_check.py" not in makefile:
++            errors.append("QoS contract checker must be registered in Makefile")
++        for test_name in ["test_qos_contract_table", "test_qos_route_module_compatibility"]:
++            if test_name not in makefile:
++                errors.append(f"QoS host test not registered in Makefile: {test_name}")
+ 
+ def validate_trace_timestamp_contract() -> None:
+     delivery_path = ROOT / "runtime" / "src" / "ev_delivery_service.c"
+-- 
+2.47.3
+

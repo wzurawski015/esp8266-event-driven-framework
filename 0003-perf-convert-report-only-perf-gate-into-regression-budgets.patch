@@ -1,0 +1,556 @@
+From f8881445df15a647eef73743f55420fa42620fb3 Mon Sep 17 00:00:00 2001
+From: oai <a@b.c>
+Date: Sat, 30 May 2026 20:14:00 +0000
+Subject: [PATCH 3/3] perf: convert report-only perf-gate into regression
+ budgets
+
+---
+ Makefile                                      |  16 ++-
+ config/perf_budgets.json                      |  16 +++
+ docs/perf/perf_regression_budget_policy.md    |   3 +
+ docs/release/perf_regression_budget_report.md |  25 ++++
+ docs/release/performance_baseline_report.md   |  86 ++---------
+ docs/specs/performance_baseline.md            |  97 +++----------
+ tools/audit/static_contracts.py               |  35 +++++
+ tools/bench_report.py                         | 134 +++++++++++-------
+ 8 files changed, 205 insertions(+), 207 deletions(-)
+ create mode 100644 config/perf_budgets.json
+ create mode 100644 docs/perf/perf_regression_budget_policy.md
+ create mode 100644 docs/release/perf_regression_budget_report.md
+
+diff --git a/Makefile b/Makefile
+index b35e947..dadd472 100644
+--- a/Makefile
++++ b/Makefile
+@@ -172,8 +172,9 @@ BENCH_TESTS := \
+     bench_runtime_poll
+ BENCH_BINS := $(addprefix $(BENCH_BUILD_DIR)/,$(BENCH_TESTS))
+ BENCH_RESULTS := $(BENCH_BUILD_DIR)/results.txt
++PERF_BUDGETS ?= config/perf_budgets.json
+ 
+-.PHONY: all host-test property-test host-strict-test host-sanitize-cc-check host-sanitize-test host-tsan-cc-check host-tsan-test clang-tidy-gate safety-gate hotpath-zero-alloc-gate bench perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts qos-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate production-release-gate quality-gate release-gate docgen docs clean
++.PHONY: all host-test property-test host-strict-test host-sanitize-cc-check host-sanitize-test host-tsan-cc-check host-tsan-test clang-tidy-gate safety-gate hotpath-zero-alloc-gate bench perf-report perf-budget-gate perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts qos-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate production-release-gate quality-gate release-gate docgen docs clean
+ .SECONDARY: $(COMMON_OBJS) $(BENCH_COMMON_OBJS)
+ 
+ all: host-test
+@@ -264,11 +265,18 @@ bench: routegen $(BENCH_BINS)
+ 	@mkdir -p $(BENCH_BUILD_DIR)
+ 	@: > $(BENCH_RESULTS)
+ 	@set -e; for t in $(BENCH_BINS); do ./$$t | tee -a $(BENCH_RESULTS); done
+-	@$(PYTHON) tools/bench_report.py $(BENCH_RESULTS)
+ 	@echo "bench passed"
+ 
+-perf-gate: bench
+-	@echo "perf-gate passed (report-only baseline)"
++perf-report: bench
++	@$(PYTHON) tools/bench_report.py --report-only --budget $(PERF_BUDGETS) $(BENCH_RESULTS)
++	@echo "perf-report passed (report-only)"
++
++perf-budget-gate: bench
++	@$(PYTHON) tools/bench_report.py --strict --budget $(PERF_BUDGETS) $(BENCH_RESULTS)
++	@echo "perf-budget-gate passed"
++
++perf-gate: perf-budget-gate
++	@echo "perf-gate passed (hard regression budgets)"
+ 
+ routegen:
+ 	$(PYTHON) tools/routegen/routegen.py
+diff --git a/config/perf_budgets.json b/config/perf_budgets.json
+new file mode 100644
+index 0000000..b0a4cc6
+--- /dev/null
++++ b/config/perf_budgets.json
+@@ -0,0 +1,16 @@
++{
++  "version": 1,
++  "metric": "ns_per_op",
++  "policy": "hard budgets are conservative host regression limits; perf-report remains diagnostic",
++  "benchmarks": {
++    "static_publish_tick_fanout": {"baseline_ns_per_op": 6, "hard_max_ns_per_op": 25, "warning_max_ns_per_op": 15, "required": true},
++    "static_publish_with_report": {"baseline_ns_per_op": 5, "hard_max_ns_per_op": 25, "warning_max_ns_per_op": 15, "required": true},
++    "active_publish_tick_fanout": {"baseline_ns_per_op": 58, "hard_max_ns_per_op": 150, "warning_max_ns_per_op": 115, "required": true},
++    "active_publish_fault_single": {"baseline_ns_per_op": 102, "hard_max_ns_per_op": 180, "warning_max_ns_per_op": 140, "required": true},
++    "active_publish_with_delivery_report": {"baseline_ns_per_op": 139, "hard_max_ns_per_op": 260, "warning_max_ns_per_op": 210, "required": true},
++    "runtime_poll_empty": {"baseline_ns_per_op": 134, "hard_max_ns_per_op": 340, "warning_max_ns_per_op": 270, "required": true},
++    "runtime_poll_prefilled_mailbox": {"baseline_ns_per_op": 150, "hard_max_ns_per_op": 450, "warning_max_ns_per_op": 340, "required": true},
++    "runtime_loop_poll_empty": {"baseline_ns_per_op": 373, "hard_max_ns_per_op": 1500, "warning_max_ns_per_op": 900, "required": true},
++    "runtime_loop_poll_prefilled_mailbox": {"baseline_ns_per_op": 158, "hard_max_ns_per_op": 1000, "warning_max_ns_per_op": 650, "required": true}
++  }
++}
+diff --git a/docs/perf/perf_regression_budget_policy.md b/docs/perf/perf_regression_budget_policy.md
+new file mode 100644
+index 0000000..f6b77f3
+--- /dev/null
++++ b/docs/perf/perf_regression_budget_policy.md
+@@ -0,0 +1,3 @@
++# Performance regression budget policy
++
++`perf-gate` is a hard regression gate. `perf-report` remains available for report-only diagnosis. Budgets live in `config/perf_budgets.json` and are intentionally conservative to tolerate host noise while catching large regressions.
+diff --git a/docs/release/perf_regression_budget_report.md b/docs/release/perf_regression_budget_report.md
+new file mode 100644
+index 0000000..73ec4a3
+--- /dev/null
++++ b/docs/release/perf_regression_budget_report.md
+@@ -0,0 +1,25 @@
++# Performance regression budget report
++
++## Summary
++
++This patch converts `perf-gate` from report-only into hard regression-budget enforcement.
++
++## Files changed
++
++- `config/perf_budgets.json` defines the required benchmark set and hard/warning limits.
++- `tools/bench_report.py` validates benchmark output, budget schema, required/duplicate metrics, and hard budget violations.
++- `Makefile` splits `perf-report`, `perf-budget-gate`, and `perf-gate`.
++- `docs/specs/performance_baseline.md` defines the required benchmark contract.
++- `docs/release/performance_baseline_report.md` documents the promoted gate posture.
++
++## Gate behavior
++
++`perf-report` remains diagnostic. `perf-budget-gate` and `perf-gate` enforce hard budgets. Report-only mode cannot hide a hard-budget failure in the release gate.
++
++## Validation
++
++Expected validation includes `python3 tools/bench_report.py --self-test`, `make perf-report`, `make perf-budget-gate`, and `make perf-gate`.
++
++## Scope exclusions
++
++No runtime semantics, power protocol, QoS semantics, mailbox layout, route table semantics, actor placement, SDK/HIL behavior, or zero-copy payload contract are changed by this patch.
+diff --git a/docs/release/performance_baseline_report.md b/docs/release/performance_baseline_report.md
+index 8883e32..9ae4ce2 100644
+--- a/docs/release/performance_baseline_report.md
++++ b/docs/release/performance_baseline_report.md
+@@ -1,83 +1,25 @@
+ # Performance baseline report
+ 
+-## Scope
++This report records the current host microbenchmark surface and its promotion from a purely report-only baseline to a regression-budgeted gate.
+ 
+-This release note records the first report-only host microbenchmark layer for the
+-framework hot path. The patch adds measurement infrastructure only. It does not
+-change runtime semantics, SDK/HIL targets, BSP wiring, actor placement, or product
+-features.
++## Current gate posture
+ 
+-## Baseline state observed before the patch
++| Target | Meaning |
++|---|---|
++| `make perf-report` | Runs benchmarks and validates output schema in report-only mode. |
++| `make perf-budget-gate` | Runs benchmarks and enforces `config/perf_budgets.json`. |
++| `make perf-gate` | Hard gate alias for `perf-budget-gate`. |
+ 
+-The current archive already has a strong structural foundation:
++`perf-gate` is no longer report-only. It fails on missing benchmarks, malformed output, invalid budget schema, duplicate metrics, and hard budget violations.
+ 
+-- generated route table: 53 routes;
+-- generated exact mailbox layout: 17 actors and 144 mailbox slots;
+-- active-route spans are present and checked;
+-- route QoS behavior is centralized in the delivery service;
+-- graph internal field access is already denied outside the runtime boundary;
+-- host, property, static-contract, memory-budget, and SDK matrix checks pass.
++## Required benchmarks
+ 
+-## Added measurement surface
++The current budget file covers nine required measurements: static publish, active publish, report bookkeeping, direct runtime poll, and public runtime loop poll. These are the hot-path surfaces most sensitive to accidental route scanning, mailbox overhead, report bookkeeping overhead, or wrapper regressions.
+ 
+-The patch introduces:
++## Budget philosophy
+ 
+-- `tests/bench/bench_runtime_publish.c` for static publish, active publish,
+-  fanout, single-target, and publish-report measurements;
+-- `tests/bench/bench_runtime_poll.c` for direct runtime poll and public
+-  runtime-loop poll measurements;
+-- `tests/bench/bench_support.h` for a small shared host timing/report contract;
+-- `tools/bench_report.py` for schema validation of benchmark output;
+-- `make bench` and `make perf-gate` targets;
+-- this report and the updated performance-baseline specification.
++The thresholds are conservative host regression budgets. They are not marketed as ESP8266 hardware latency claims. The limits are selected to let the current code pass with normal host noise while catching large accidental slowdowns. Timing-budget refreshes require a release note with evidence; silently loosening limits is not acceptable.
+ 
+-## Gate posture
++## Non-goals
+ 
+-`perf-gate` is deliberately report-only. It fails when benchmark binaries fail,
+-when a required benchmark line is missing, or when the output schema is invalid.
+-It does not fail on absolute timing values.
+-
+-This is the correct first step because fixed timing budgets without variance data
+-would create a false sense of precision and would make CI sensitive to host noise.
+-
+-## Current technical exceptions
+-
+-| Exception | Status | Impact on this patch |
+-|---|---|---|
+-| Device actors still live under `core/src` | Known temporary architecture exception | No movement attempted. |
+-| `ev_runtime_graph_t` is still public | Known temporary static-storage exception | Benchmarks use public APIs and avoid direct graph-field access. |
+-| Delivery trace uses `timestamp_us = 0U` | Known trace exception | Host benchmark timing is independent of runtime trace timestamps. |
+-| Wemos `board_secrets.local.h` is deliberately tracked | Private lab exception | File is preserved and untouched; no new secrets are introduced. |
+-
+-## Enforcement path
+-
+-Recommended next steps:
+-
+-1. Run `make bench` on at least three comparable host sessions and archive
+-   `build/bench/results.txt` outputs.
+-2. Add a non-failing trend report before any hard thresholds.
+-3. Add conservative warning budgets after variance is understood.
+-4. Only then promote selected metrics into hard release gates.
+-5. Continue with `sdk: add stack-usage and map-budget release gates` or
+-   `trace: timestamp delivery records from monotonic clock port`, depending on
+-   whether release evidence or observability is the next priority.
+-
+-## Validation commands
+-
+-The patch is expected to pass:
+-
+-```sh
+-git diff --check
+-python3 tools/routegen/routegen.py
+-python3 tools/routegen/mailbox_layoutgen.py --check
+-python3 tools/audit/routegen_check.py
+-python3 tools/audit/static_contracts.py
+-python3 tools/audit/actor_module_descriptor_consistency.py
+-python3 tools/audit/memory_budget.py
+-./tools/fw sdk-matrix-check
+-make host-test
+-make property-test
+-make quality-gate
+-make bench
+-make perf-gate
+-```
++This report does not change runtime semantics, power-state behavior, QoS semantics, mailbox layout, actor placement, SDK/HIL targets, or the zero-allocation hotpath contract.
+diff --git a/docs/specs/performance_baseline.md b/docs/specs/performance_baseline.md
+index ec751f6..6a942d2 100644
+--- a/docs/specs/performance_baseline.md
++++ b/docs/specs/performance_baseline.md
+@@ -1,85 +1,30 @@
+-# Performance Baseline
++# Performance baseline specification
+ 
+-This specification defines the first host-side performance baseline for the
+-framework hot path. It is intentionally **measurement-only** in this iteration:
+-`make bench` and `make perf-gate` validate that every required benchmark runs and
+-emits machine-readable numbers, but they do not enforce fixed nanosecond limits.
+-Hard thresholds should be introduced only after several comparable host runs are
+-recorded on a stable reference machine.
++The ESP8266 framework keeps two separate performance modes:
+ 
+-## Non-negotiable quality gates
++- `perf-report`: diagnostic/report-only benchmark output for local trend work;
++- `perf-gate`: hard regression-budget enforcement using `config/perf_budgets.json`.
+ 
+-1. **ISR execution time:** GPIO ISR handlers must execute in bounded time and must
+-   not loop over unconfigured lines.
+-2. **Bounded execution:** the application/runtime poll path must respect drain
+-   budgets so that one actor or domain cannot monopolize the cooperative loop.
+-3. **Zero-heap policy:** dynamic allocation is forbidden after bootstrap. Runtime
+-   queues and mailboxes are statically allocated, and adapter hot paths must not
+-   rely on hidden SDK heap allocation.
+-4. **Deep-sleep entry:** the system must flush asynchronous log and platform
+-   buffers before entering deep sleep.
+-5. **Hot-path visibility:** publish and poll costs must be measurable on the host
+-   before architectural refactors are allowed to claim performance neutrality.
++## Required benchmarks
+ 
+-## Host microbenchmark contract
++The budget file and benchmark output must contain exactly these required metrics:
+ 
+-The host benchmark suite lives under `tests/bench/` and is invoked through:
++| Benchmark | Scope |
++|---|---|
++| `static_publish_tick_fanout` | Static route fanout publish hot path. |
++| `static_publish_with_report` | Static publish with delivery report bookkeeping. |
++| `active_publish_tick_fanout` | Active route span publish hot path. |
++| `active_publish_fault_single` | Fault event active delivery path. |
++| `active_publish_with_delivery_report` | Active publish with report bookkeeping. |
++| `runtime_poll_empty` | Runtime poll when no work is ready. |
++| `runtime_poll_prefilled_mailbox` | Runtime poll through queued actor messages. |
++| `runtime_loop_poll_empty` | Public runtime loop wrapper, no work ready. |
++| `runtime_loop_poll_prefilled_mailbox` | Public runtime loop wrapper with queued actor messages. |
+ 
+-```sh
+-make bench
+-make perf-gate
+-```
++## Budget policy
+ 
+-`make bench` builds framework objects with `BENCH_CFLAGS`, runs each benchmark
+-binary, stores raw output in `build/bench/results.txt`, and validates the output
+-with `tools/bench_report.py`. `make perf-gate` is currently a report-only alias
+-that depends on `bench`.
++Budgets are intentionally conservative host-side regression limits, not absolute claims about ESP8266 cycle counts. A budget must be tight enough to catch large regressions but loose enough to avoid random failures from host scheduler noise. Refreshing a budget is allowed only with a new baseline report explaining the hardware, compiler, command, old value, new value, and reason.
+ 
+-Each benchmark emits one line in this format:
++## Failure conditions
+ 
+-```text
+-BENCH <name> iterations=<n> logical_ops=<n> total_ns=<n> ns_per_iter=<n> ns_per_op=<n> checksum=<n>
+-```
+-
+-The checksum is not a correctness oracle; it prevents the benchmark body from
+-collapsing into an unused loop and gives the report parser a deterministic field
+-to validate.
+-
+-## Required benchmark set
+-
+-The first baseline covers these hot paths:
+-
+-| Benchmark | What it measures | Notes |
+-|---|---|---|
+-| `static_publish_tick_fanout` | Static route-table publish for a high-fanout event | Uses `EV_TICK_1S`. |
+-| `static_publish_with_report` | Static publish with `ev_publish_report_t` accounting | Uses the same fanout event. |
+-| `active_publish_tick_fanout` | Active-route publish for a high-fanout event | Uses a fully built host graph and resets target mailboxes between timed batches. |
+-| `active_publish_fault_single` | Active-route publish for a single-target event | Uses `EV_FAULT_REPORTED`. |
+-| `active_publish_with_delivery_report` | Active-route publish with `ev_delivery_report_t` accounting | Uses the single-target fault route. |
+-| `runtime_poll_empty` | Direct runtime poll with no pending work | Measures empty scheduler/timer overhead. |
+-| `runtime_poll_prefilled_mailbox` | Direct runtime poll with actor mailbox work | Times the poll call only; mailbox fill is outside the timed region. |
+-| `runtime_loop_poll_empty` | Public runtime-loop poll with no pending work | Uses the public `ev_runtime_loop_poll_once` entrypoint. |
+-| `runtime_loop_poll_prefilled_mailbox` | Public runtime-loop poll with actor mailbox work | Times the loop poll call only; mailbox fill is outside the timed region. |
+-
+-## Interpretation rules
+-
+-- A single host run is evidence, not a contract.
+-- Compare results only across the same compiler, optimization flags, CPU governor,
+-  and host load profile.
+-- The first release gate must remain report-only. A later commit may add warning
+-  budgets, and a still later commit may add hard budgets after variance is known.
+-- Benchmark code must not introduce runtime semantics, SDK/HIL behavior, or new
+-  application features.
+-
+-## Current exceptions and caveats
+-
+-- `ev_runtime_graph_t` is still public for static storage ownership. Benchmarks use
+-  public graph APIs and public actor-runtime/mailbox APIs, but this should be
+-  revisited when the graph becomes fully opaque.
+-- Concrete device actors still live in `core/src`; this benchmark patch measures
+-  the current layout rather than moving it.
+-- Delivery trace timestamps still use `timestamp_us = 0U`; timing reported here is
+-  host-side benchmark timing, not runtime trace timing.
+-- The Wemos ESP-WROOM-02 18650 BSP includes a private, deliberately tracked
+-  `board_secrets.local.h` in this lab repository. The benchmark patch does not
+-  modify it and does not add new secrets.
++`perf-gate` must fail if a required benchmark is missing, duplicated, malformed, has non-positive iteration/timing fields, violates a hard budget, or if the budget file is missing/inconsistent with the required benchmark set. `perf-report` may print diagnostics without enforcing timing budgets.
+diff --git a/tools/audit/static_contracts.py b/tools/audit/static_contracts.py
+index 64d8baf..b30d783 100755
+--- a/tools/audit/static_contracts.py
++++ b/tools/audit/static_contracts.py
+@@ -464,6 +464,40 @@ def validate_power_state_machine_contract() -> None:
+         errors.append("power state machine source is not registered in Makefile")
+ 
+ 
++def validate_perf_budget_contract() -> None:
++    required = ["config/perf_budgets.json", "tools/bench_report.py", "docs/perf/perf_regression_budget_policy.md", "docs/release/perf_regression_budget_report.md", "docs/specs/performance_baseline.md"]
++    for rel in required:
++        if not (ROOT / rel).exists():
++            errors.append(f"perf budget artifact missing: {rel}")
++    makefile_path = ROOT / "Makefile"
++    if not makefile_path.exists():
++        errors.append("Makefile missing for perf budget contract")
++        return
++    makefile = makefile_path.read_text(encoding="utf-8", errors="ignore")
++    for target in ["perf-report", "perf-budget-gate", "perf-gate"]:
++        if re.search(rf"^{re.escape(target)}\s*:", makefile, flags=re.MULTILINE) is None:
++            errors.append(f"perf target missing: {target}")
++    m = re.search(r"^perf-gate\s*:(.*)$", makefile, flags=re.MULTILINE)
++    if m is None or "perf-budget-gate" not in m.group(1):
++        errors.append("perf-gate must depend on perf-budget-gate")
++    if "perf-gate passed (report-only baseline)" in makefile:
++        errors.append("perf-gate must not be report-only baseline")
++    budget_body = extract_make_target_body(makefile, "perf-budget-gate")
++    if "--strict" not in budget_body or "tools/bench_report.py" not in budget_body:
++        errors.append("perf-budget-gate must invoke bench_report.py --strict")
++    report_body = extract_make_target_body(makefile, "perf-report")
++    if "--report-only" not in report_body:
++        errors.append("perf-report must be explicit report-only mode")
++    bench_report = (ROOT / "tools" / "bench_report.py").read_text(encoding="utf-8", errors="ignore") if (ROOT / "tools" / "bench_report.py").exists() else ""
++    for token in ["load_budgets", "hard_max_ns_per_op", "--self-test", "duplicate benchmark", "missing benchmark"]:
++        if token not in bench_report:
++            errors.append(f"bench_report.py missing budget/parser contract token: {token}")
++    budget_text = (ROOT / "config" / "perf_budgets.json").read_text(encoding="utf-8", errors="ignore") if (ROOT / "config" / "perf_budgets.json").exists() else ""
++    for bench in ["static_publish_tick_fanout", "active_publish_tick_fanout", "runtime_poll_empty", "runtime_poll_prefilled_mailbox", "runtime_loop_poll_empty", "runtime_loop_poll_prefilled_mailbox"]:
++        if bench not in budget_text:
++            errors.append(f"perf budget missing required benchmark: {bench}")
++
++
+ static_contract_self_test()
+ validate_power_state_machine_contract()
+ validate_layering_contract_document()
+@@ -475,6 +509,7 @@ validate_route_qos_contract()
+ validate_trace_timestamp_contract()
+ validate_host_safety_gate_contract()
+ validate_hotpath_zero_alloc_contract_registration()
++validate_perf_budget_contract()
+ 
+ for artifact in iter_repo_files(ROOT):
+     if is_ignored_path(artifact):
+diff --git a/tools/bench_report.py b/tools/bench_report.py
+index b72cc7f..93c7754 100755
+--- a/tools/bench_report.py
++++ b/tools/bench_report.py
+@@ -1,84 +1,108 @@
+ #!/usr/bin/env python3
+ from __future__ import annotations
+ 
++import argparse
++import json
+ from pathlib import Path
+ import re
+ import sys
++import tempfile
+ 
+ REQUIRED_BENCHMARKS = {
+-    "static_publish_tick_fanout",
+-    "static_publish_with_report",
+-    "active_publish_tick_fanout",
+-    "active_publish_fault_single",
+-    "active_publish_with_delivery_report",
+-    "runtime_poll_empty",
+-    "runtime_poll_prefilled_mailbox",
+-    "runtime_loop_poll_empty",
+-    "runtime_loop_poll_prefilled_mailbox",
++    "static_publish_tick_fanout", "static_publish_with_report", "active_publish_tick_fanout",
++    "active_publish_fault_single", "active_publish_with_delivery_report", "runtime_poll_empty",
++    "runtime_poll_prefilled_mailbox", "runtime_loop_poll_empty", "runtime_loop_poll_prefilled_mailbox",
+ }
+-
+-LINE_RE = re.compile(
+-    r"^BENCH\s+(?P<name>[A-Za-z0-9_]+)\s+"
+-    r"iterations=(?P<iterations>\d+)\s+"
+-    r"logical_ops=(?P<logical_ops>\d+)\s+"
+-    r"total_ns=(?P<total_ns>\d+)\s+"
+-    r"ns_per_iter=(?P<ns_per_iter>\d+)\s+"
+-    r"ns_per_op=(?P<ns_per_op>\d+)\s+"
+-    r"checksum=(?P<checksum>\d+)\s*$"
+-)
+-
++LINE_RE = re.compile(r"^BENCH\s+(?P<name>[A-Za-z0-9_]+)\s+iterations=(?P<iterations>\d+)\s+logical_ops=(?P<logical_ops>\d+)\s+total_ns=(?P<total_ns>\d+)\s+ns_per_iter=(?P<ns_per_iter>\d+)\s+ns_per_op=(?P<ns_per_op>\d+)\s+checksum=(?P<checksum>\d+)\s*$")
+ 
+ def parse(path: Path) -> dict[str, dict[str, int]]:
+-    results: dict[str, dict[str, int]] = {}
+-    errors: list[str] = []
++    results: dict[str, dict[str, int]] = {}; errors: list[str] = []
+     for line_no, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+         line = raw.strip()
+-        if not line:
+-            continue
+-        match = LINE_RE.match(line)
+-        if match is None:
+-            errors.append(f"{path}:{line_no}: invalid benchmark line: {line}")
+-            continue
+-        name = match.group("name")
++        if not line: continue
++        m = LINE_RE.match(line)
++        if m is None:
++            errors.append(f"{path}:{line_no}: invalid benchmark line: {line}"); continue
++        name = m.group("name")
+         if name in results:
+-            errors.append(f"{path}:{line_no}: duplicate benchmark result: {name}")
+-            continue
+-        values = {key: int(value) for key, value in match.groupdict().items() if key != "name"}
+-        if values["iterations"] <= 0:
+-            errors.append(f"{path}:{line_no}: {name}: iterations must be positive")
+-        if values["logical_ops"] <= 0:
+-            errors.append(f"{path}:{line_no}: {name}: logical_ops must be positive")
+-        if values["total_ns"] <= 0:
+-            errors.append(f"{path}:{line_no}: {name}: total_ns must be positive")
++            errors.append(f"{path}:{line_no}: duplicate benchmark result: {name}"); continue
++        values = {k: int(v) for k, v in m.groupdict().items() if k != "name"}
++        for field in ["iterations", "logical_ops", "total_ns", "ns_per_op"]:
++            if values[field] <= 0: errors.append(f"{path}:{line_no}: {name}: {field} must be positive")
++        if values["checksum"] == 0 and "empty" not in name:
++            errors.append(f"{path}:{line_no}: {name}: checksum must be nonzero")
+         results[name] = values
+     missing = sorted(REQUIRED_BENCHMARKS.difference(results))
+-    if missing:
+-        errors.append("missing benchmark results: " + ", ".join(missing))
++    if missing: errors.append("missing benchmark results: " + ", ".join(missing))
+     extra = sorted(set(results).difference(REQUIRED_BENCHMARKS))
+-    if extra:
+-        errors.append("unexpected benchmark results: " + ", ".join(extra))
++    if extra: errors.append("unexpected benchmark results: " + ", ".join(extra))
+     if errors:
+-        for error in errors:
+-            print(f"error: {error}", file=sys.stderr)
++        for e in errors: print(f"error: {e}", file=sys.stderr)
+         raise SystemExit(1)
+     return results
+ 
++def load_budgets(path: Path) -> dict[str, dict[str, int | bool]]:
++    raw = json.loads(path.read_text(encoding="utf-8"))
++    if raw.get("version") != 1: raise SystemExit("error: perf budget schema version must be 1")
++    benches = raw.get("benchmarks")
++    if not isinstance(benches, dict): raise SystemExit("error: perf budget file missing benchmarks object")
++    missing = sorted(REQUIRED_BENCHMARKS.difference(benches))
++    if missing: raise SystemExit("error: perf budget file missing required benchmarks: " + ", ".join(missing))
++    for name, budget in benches.items():
++        if name not in REQUIRED_BENCHMARKS: raise SystemExit(f"error: perf budget file has unexpected benchmark: {name}")
++        for field in ["baseline_ns_per_op", "hard_max_ns_per_op", "required"]:
++            if field not in budget: raise SystemExit(f"error: perf budget {name} missing {field}")
++        if int(budget["baseline_ns_per_op"]) <= 0 or int(budget["hard_max_ns_per_op"]) <= 0:
++            raise SystemExit(f"error: perf budget {name} has non-positive limits")
++        if int(budget["hard_max_ns_per_op"]) < int(budget["baseline_ns_per_op"]):
++            raise SystemExit(f"error: perf budget {name} hard limit is below baseline")
++    return benches
+ 
+-def main(argv: list[str]) -> int:
+-    if len(argv) != 2:
+-        print("usage: bench_report.py <bench-results.txt>", file=sys.stderr)
+-        return 2
+-    path = Path(argv[1])
+-    results = parse(path)
++def report_results(results: dict[str, dict[str, int]]) -> None:
+     print(f"bench-report passed: {len(results)} benchmarks")
+     for name in sorted(results):
+-        values = results[name]
+-        print(
+-            f"bench-report {name} ns_per_iter={values['ns_per_iter']} "
+-            f"ns_per_op={values['ns_per_op']} logical_ops={values['logical_ops']}"
+-        )
++        v = results[name]
++        print(f"bench-report {name} ns_per_iter={v['ns_per_iter']} ns_per_op={v['ns_per_op']} logical_ops={v['logical_ops']}")
++
++def check_budgets(results: dict[str, dict[str, int]], budgets: dict[str, dict[str, int | bool]], report_only: bool = False) -> int:
++    failures: list[str] = []; warnings: list[str] = []
++    for name in sorted(REQUIRED_BENCHMARKS):
++        v = results[name]; b = budgets[name]; ns = v["ns_per_op"]; hard = int(b["hard_max_ns_per_op"]); warn = int(b.get("warning_max_ns_per_op", hard))
++        if ns > hard: failures.append(f"{name}: ns_per_op={ns} exceeds hard_max_ns_per_op={hard}")
++        elif ns > warn: warnings.append(f"{name}: ns_per_op={ns} exceeds warning_max_ns_per_op={warn}")
++    for w in warnings: print(f"bench-budget warning: {w}")
++    if failures:
++        for f in failures: print(f"bench-budget failure: {f}", file=sys.stderr)
++        if report_only:
++            print("bench-budget report-only: hard-budget failures observed but not enforced"); return 0
++        return 1
++    print(f"bench-budget passed: {len(results)} benchmarks within hard budgets")
+     return 0
+ 
++def self_test() -> int:
++    sample = """BENCH static_publish_tick_fanout iterations=10 logical_ops=90 total_ns=90 ns_per_iter=9 ns_per_op=1 checksum=1\nBENCH static_publish_with_report iterations=10 logical_ops=90 total_ns=90 ns_per_iter=9 ns_per_op=1 checksum=1\nBENCH active_publish_tick_fanout iterations=10 logical_ops=90 total_ns=900 ns_per_iter=90 ns_per_op=10 checksum=1\nBENCH active_publish_fault_single iterations=10 logical_ops=10 total_ns=100 ns_per_iter=10 ns_per_op=10 checksum=1\nBENCH active_publish_with_delivery_report iterations=10 logical_ops=10 total_ns=100 ns_per_iter=10 ns_per_op=10 checksum=1\nBENCH runtime_poll_empty iterations=10 logical_ops=10 total_ns=100 ns_per_iter=10 ns_per_op=10 checksum=0\nBENCH runtime_poll_prefilled_mailbox iterations=10 logical_ops=80 total_ns=800 ns_per_iter=80 ns_per_op=10 checksum=1\nBENCH runtime_loop_poll_empty iterations=10 logical_ops=10 total_ns=100 ns_per_iter=10 ns_per_op=10 checksum=0\nBENCH runtime_loop_poll_prefilled_mailbox iterations=10 logical_ops=80 total_ns=800 ns_per_iter=80 ns_per_op=10 checksum=1\n"""
++    budget = {"version": 1, "benchmarks": {name: {"baseline_ns_per_op": 10, "hard_max_ns_per_op": 20, "required": True} for name in REQUIRED_BENCHMARKS}}
++    with tempfile.TemporaryDirectory() as tmp:
++        d = Path(tmp); rp = d / "r.txt"; bp = d / "b.json"
++        rp.write_text(sample, encoding="utf-8"); bp.write_text(json.dumps(budget), encoding="utf-8")
++        parsed = parse(rp); assert check_budgets(parsed, load_budgets(bp)) == 0
++        rp.write_text(sample + "BENCH runtime_loop_poll_prefilled_mailbox iterations=1 logical_ops=1 total_ns=1 ns_per_iter=1 ns_per_op=1 checksum=1\n", encoding="utf-8")
++        try: parse(rp)
++        except SystemExit: pass
++        else: raise AssertionError("duplicate benchmark was not rejected")
++        budget["benchmarks"]["static_publish_tick_fanout"]["hard_max_ns_per_op"] = 0; bp.write_text(json.dumps(budget), encoding="utf-8")
++        try: load_budgets(bp)
++        except SystemExit: pass
++        else: raise AssertionError("invalid budget was not rejected")
++    print("bench-report self-test passed"); return 0
+ 
++def main(argv: list[str]) -> int:
++    ap = argparse.ArgumentParser(); ap.add_argument("results", nargs="?"); ap.add_argument("--budget", default="config/perf_budgets.json"); ap.add_argument("--report-only", action="store_true"); ap.add_argument("--strict", action="store_true"); ap.add_argument("--self-test", action="store_true")
++    a = ap.parse_args(argv[1:])
++    if a.self_test: return self_test()
++    if a.results is None: ap.error("results file is required unless --self-test is used")
++    results = parse(Path(a.results)); report_results(results)
++    if a.strict or not a.report_only: return check_budgets(results, load_budgets(Path(a.budget)), report_only=a.report_only)
++    return 0
+ if __name__ == "__main__":
+     raise SystemExit(main(sys.argv))
+-- 
+2.47.3
+

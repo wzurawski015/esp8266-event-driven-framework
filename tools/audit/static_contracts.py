@@ -418,7 +418,40 @@ def validate_hotpath_zero_alloc_contract_registration() -> None:
                 errors.append(f"hotpath manifest does not cover required file: {rel}")
 
 
+def validate_power_state_machine_contract() -> None:
+    header = ROOT / "runtime" / "include" / "ev" / "power_state_machine.h"
+    source = ROOT / "runtime" / "src" / "ev_power_state_machine.c"
+    actor = ROOT / "actors" / "framework" / "ev_power_actor.c"
+    test = ROOT / "tests" / "host" / "test_power_state_machine.c"
+    for path in [header, source, actor, test, ROOT / "docs" / "architecture" / "deep_sleep_state_protocol.md", ROOT / "docs" / "release" / "deep_sleep_state_protocol_report.md"]:
+        if not path.exists():
+            errors.append(f"deep sleep protocol artifact missing: {path.relative_to(ROOT).as_posix()}")
+            return
+    header_code = strip_comments(header.read_text(encoding="utf-8", errors="ignore"))
+    for state in ["EV_POWER_STATE_ACTIVE", "EV_POWER_STATE_SLEEP_REQUESTED", "EV_POWER_STATE_DRAINING_RUNTIME", "EV_POWER_STATE_LOG_FLUSHING", "EV_POWER_STATE_PORTS_PREPARE_SLEEP", "EV_POWER_STATE_RTC_STATE_SAVED", "EV_POWER_STATE_ENTERING_DEEP_SLEEP", "EV_POWER_STATE_WAKE_BOOT", "EV_POWER_STATE_REJECTED", "EV_POWER_STATE_FAILED"]:
+        if state not in header_code:
+            errors.append(f"deep sleep state enum missing: {state}")
+    source_code = strip_comments(source.read_text(encoding="utf-8", errors="ignore"))
+    if FORBIDDEN_HEAP.search(source_code):
+        errors.append("power state machine must not use heap allocation")
+    if SDK_INCLUDE.search(source_code):
+        errors.append("power state machine must not include ESP8266 SDK")
+    if FORBIDDEN_BLOCK.search(source_code):
+        errors.append("power state machine must not use blocking primitives")
+    actor_code = strip_comments(actor.read_text(encoding="utf-8", errors="ignore"))
+    if "ev_power_state_machine_step" not in actor_code:
+        errors.append("power actor must use the formal power state machine")
+    if "EV_POWER_ACTION_RTC_STATE_SAVED" not in actor_code:
+        errors.append("power actor must traverse RTC_STATE_SAVED marker before deep sleep")
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8", errors="ignore") if (ROOT / "Makefile").exists() else ""
+    if "test_power_state_machine" not in makefile:
+        errors.append("power state machine host test is not registered in Makefile")
+    if "ev_power_state_machine.c" not in makefile:
+        errors.append("power state machine source is not registered in Makefile")
+
+
 static_contract_self_test()
+validate_power_state_machine_contract()
 validate_layering_contract_document()
 validate_runtime_graph_public_header_opaque()
 validate_runtime_graph_internal_header_boundary()

@@ -7,6 +7,36 @@
 
 #define EV_POWER_US_PER_MS 1000ULL
 
+
+static void ev_power_actor_record_transition(ev_power_actor_ctx_t *ctx, const ev_power_state_machine_t *sm)
+{
+    if ((ctx == NULL) || (sm == NULL)) {
+        return;
+    }
+    ctx->last_state = sm->state;
+    ctx->previous_state = sm->previous_state;
+    ctx->transition_count = sm->transition_count;
+    ctx->last_transition_action = sm->last_action;
+    ctx->last_transition_error = sm->last_error;
+    ctx->last_transition_reason = sm->last_reason;
+}
+
+static ev_result_t ev_power_actor_step(ev_power_actor_ctx_t *ctx,
+                                       ev_power_state_machine_t *sm,
+                                       ev_power_action_t action,
+                                       ev_result_t result,
+                                       ev_power_sleep_reject_reason_t reason)
+{
+    ev_power_transition_input_t input;
+    ev_result_t rc;
+
+    input.result = result;
+    input.reason = (uint32_t)reason;
+    rc = ev_power_state_machine_step(sm, action, &input, NULL);
+    ev_power_actor_record_transition(ctx, sm);
+    return rc;
+}
+
 static void ev_power_actor_set_reject_reason(ev_power_actor_ctx_t *ctx,
                                              ev_power_sleep_reject_reason_t reason)
 {
@@ -149,6 +179,11 @@ ev_result_t ev_power_actor_init(ev_power_actor_ctx_t *ctx,
     ctx->log_port = log_port;
     ctx->log_tag = log_tag;
     ctx->last_reject_reason = EV_POWER_SLEEP_REJECT_NONE;
+    ctx->last_state = EV_POWER_STATE_ACTIVE;
+    ctx->previous_state = EV_POWER_STATE_ACTIVE;
+    ctx->last_transition_action = EV_POWER_ACTION_WAKE_BOOT;
+    ctx->last_transition_error = EV_OK;
+    ctx->last_transition_reason = 0U;
     return EV_OK;
 }
 
@@ -186,6 +221,7 @@ ev_result_t ev_power_actor_handle(void *actor_context, const ev_msg_t *msg)
     const ev_sys_goto_sleep_cmd_t *payload;
     uint64_t duration_us;
     ev_result_t rc;
+    ev_power_state_machine_t sm;
     bool sleep_armed = false;
 
     if ((ctx == NULL) || (msg == NULL)) {
@@ -211,34 +247,43 @@ ev_result_t ev_power_actor_handle(void *actor_context, const ev_msg_t *msg)
         ctx->last_duration_us = duration_us;
         ctx->last_reject_reason = EV_POWER_SLEEP_REJECT_NONE;
         memset(&ctx->last_quiescence_report, 0, sizeof(ctx->last_quiescence_report));
+        ev_power_state_machine_init(&sm);
+        (void)ev_power_actor_step(ctx, &sm, EV_POWER_ACTION_REQUEST_SLEEP, EV_OK, EV_POWER_SLEEP_REJECT_NONE);
 
         if ((ctx->system_port == NULL) || (ctx->system_port->deep_sleep == NULL)) {
             ++ctx->sleep_requests_unsupported;
             ev_power_actor_set_reject_reason(ctx, EV_POWER_SLEEP_REJECT_UNSUPPORTED);
+            (void)ev_power_actor_step(ctx, &sm, EV_POWER_ACTION_DRAIN_REJECTED, EV_ERR_UNSUPPORTED, EV_POWER_SLEEP_REJECT_UNSUPPORTED);
             return EV_OK;
         }
 
         rc = ev_power_actor_arm_sleep(ctx, duration_us, &sleep_armed);
         if (rc != EV_OK) {
+            (void)ev_power_actor_step(ctx, &sm, EV_POWER_ACTION_DRAIN_REJECTED, rc, ctx->last_reject_reason);
             return rc;
         }
+        (void)ev_power_actor_step(ctx, &sm, EV_POWER_ACTION_DRAIN_COMPLETE, EV_OK, EV_POWER_SLEEP_REJECT_NONE);
 
         (void)ev_power_actor_log(ctx, "System entering Deep Sleep");
         rc = ev_power_actor_flush_log(ctx);
         if (rc != EV_OK) {
             ++ctx->log_flush_failures;
             ev_power_actor_reject(ctx, EV_POWER_SLEEP_REJECT_LOG_FLUSH_FAILED);
+            (void)ev_power_actor_step(ctx, &sm, EV_POWER_ACTION_LOG_FLUSH_FAILED, rc, EV_POWER_SLEEP_REJECT_LOG_FLUSH_FAILED);
             if (sleep_armed) {
                 (void)ev_power_actor_disarm_sleep(ctx);
             }
             return rc;
         }
 
+        (void)ev_power_actor_step(ctx, &sm, EV_POWER_ACTION_LOG_FLUSH_COMPLETE, EV_OK, EV_POWER_SLEEP_REJECT_NONE);
+
         if (ctx->system_port->prepare_for_sleep != NULL) {
             rc = ctx->system_port->prepare_for_sleep(ctx->system_port->ctx, duration_us);
             if (rc != EV_OK) {
                 ++ctx->prepare_for_sleep_failures;
                 ev_power_actor_reject(ctx, EV_POWER_SLEEP_REJECT_PREPARE_FAILED);
+                (void)ev_power_actor_step(ctx, &sm, EV_POWER_ACTION_PORTS_PREPARE_FAILED, rc, EV_POWER_SLEEP_REJECT_PREPARE_FAILED);
                 if (sleep_armed) {
                     (void)ev_power_actor_disarm_sleep(ctx);
                 }
@@ -246,17 +291,22 @@ ev_result_t ev_power_actor_handle(void *actor_context, const ev_msg_t *msg)
             }
         }
 
+        (void)ev_power_actor_step(ctx, &sm, EV_POWER_ACTION_PORTS_PREPARED, EV_OK, EV_POWER_SLEEP_REJECT_NONE);
+        (void)ev_power_actor_step(ctx, &sm, EV_POWER_ACTION_RTC_STATE_SAVED, EV_OK, EV_POWER_SLEEP_REJECT_NONE);
+
         ++ctx->sleep_requests_accepted;
         rc = ctx->system_port->deep_sleep(ctx->system_port->ctx, duration_us);
         if (rc != EV_OK) {
             ++ctx->deep_sleep_failures;
             ev_power_actor_set_reject_reason(ctx, EV_POWER_SLEEP_REJECT_DEEP_SLEEP_FAILED);
+            (void)ev_power_actor_step(ctx, &sm, EV_POWER_ACTION_DEEP_SLEEP_FAILED, rc, EV_POWER_SLEEP_REJECT_DEEP_SLEEP_FAILED);
             (void)ev_power_actor_cancel_platform_sleep_prepare(ctx);
             if (sleep_armed) {
                 (void)ev_power_actor_disarm_sleep(ctx);
             }
             return rc;
         }
+        (void)ev_power_actor_step(ctx, &sm, EV_POWER_ACTION_DEEP_SLEEP_ENTERED, EV_OK, EV_POWER_SLEEP_REJECT_NONE);
         if (sleep_armed) {
             (void)ev_power_actor_disarm_sleep(ctx);
         }

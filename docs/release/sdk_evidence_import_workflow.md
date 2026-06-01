@@ -22,8 +22,9 @@ python3 tools/release/import_sdk_evidence.py \
   --stack /path/stack_usage.txt
 ```
 
-Required PASS evidence includes `EV_SDK_BUILD_STATUS=PASS` or `EV_MEM_REPORT_RESULT PASS`
-and non-zero `EV_MEM_*` values.
+Required PASS evidence requires target-specific `EV_SDK_BUILD_TARGET=<target>`,
+`EV_SDK_BUILD_STATUS=PASS`, `EV_SDK_BUILD_RC=0`, non-zero APP_BIN for buildable/HIL/physical target classes,
+and non-zero real memory evidence. `EV_MEM_REPORT_RESULT PASS` is never sufficient as SDK build proof.
 
 ## Hardening note: no mixed terminal transcript
 

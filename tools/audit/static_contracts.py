@@ -955,24 +955,43 @@ for rel in [
 
 # Evidence importer hardening contracts.
 import_tool = ROOT / "tools" / "release" / "import_sdk_evidence.py"
+capture_tool = ROOT / "tools" / "release" / "capture_sdk_evidence.py"
 flash_tool = ROOT / "tools" / "release" / "parse_esptool_flash_log.py"
 if not flash_tool.exists():
     errors.append("evidence hardening: missing tools/release/parse_esptool_flash_log.py")
+legacy_sdk_or_mem_regex = "EV_SDK_BUILD_STATUS=PASS" + "|" + "EV_MEM_REPORT_RESULT PASS"
 if import_tool.exists():
     text = import_tool.read_text(encoding="utf-8", errors="ignore")
-    if "EV_SDK_BUILD_STATUS=PASS|EV_MEM_REPORT_RESULT PASS" in text:
-        errors.append("evidence hardening: SDK importer must not treat EV_MEM_REPORT_RESULT PASS as SDK PASS_RE")
+    if legacy_sdk_or_mem_regex in text:
+        errors.append("evidence hardening: SDK importer must not treat memory-report PASS as SDK PASS_RE")
     for token in ["SDK_TARGET_RE", "SDK_STATUS_PASS_RE", "EV_SDK_BUILD_TARGET", "EV_SDK_BUILD_STATUS=PASS", "target_marker_match", "self-test marker", "mixed transcript", "APP_BIN"]:
         if token not in text:
             errors.append(f"evidence hardening: SDK importer missing strict token {token}")
     if "mixed.log" not in text or "EV_MEM_REPORT_RESULT PASS target=self-test" not in text:
         errors.append("evidence hardening: SDK importer self-test must include mixed transcript negative fixture")
+if not capture_tool.exists():
+    errors.append("canonical SDK evidence: missing tools/release/capture_sdk_evidence.py")
+else:
+    text = capture_tool.read_text(encoding="utf-8", errors="ignore")
+    if legacy_sdk_or_mem_regex in text:
+        errors.append("canonical SDK evidence: capture path must not treat memory-report PASS as SDK build PASS")
+    for token in ["SDK_TARGET_RE", "SDK_STATUS_PASS_RE", "SDK_RC_RE", "EV_SDK_BUILD_TARGET", "EV_SDK_BUILD_STATUS=PASS", "EV_SDK_BUILD_RC", "EV_SDK_BUILD_BEGIN", "EV_SDK_BUILD_END", "marker_summary", "target_marker_match", "mixed transcript", "APP_BIN"]:
+        if token not in text:
+            errors.append(f"canonical SDK evidence: capture tool missing strict token {token}")
+    if "EV_MEM_REPORT_RESULT PASS" not in text or "missing EV_SDK_BUILD_TARGET" not in text:
+        errors.append("canonical SDK evidence: capture self-test must reject memory-report-only PASS")
+fw_tool = ROOT / "tools" / "fw"
+if fw_tool.exists():
+    fw_text = fw_tool.read_text(encoding="utf-8", errors="ignore")
+    for token in ["EV_SDK_BUILD_TARGET=$target_name", "EV_SDK_BUILD_PROJECT=$target_path", "EV_SDK_BUILD_BEGIN", "EV_SDK_BUILD_STATUS=PASS", "EV_SDK_BUILD_STATUS=FAIL", "EV_SDK_BUILD_RC=$rc", "EV_SDK_BUILD_END"]:
+        if token not in fw_text:
+            errors.append(f"canonical SDK evidence: tools/fw missing canonical marker {token}")
 if flash_tool.exists():
     text = flash_tool.read_text(encoding="utf-8", errors="ignore")
     for token in ["Hash of data verified", "Chip is", "ESP8266EX", "flash_evidence.json", "--self-test"]:
         if token not in text:
             errors.append(f"evidence hardening: esptool flash parser missing {token}")
-for target in ["sdk-import-flash-evidence", "sdk-flash-evidence-gate", "evidence-importer-hardening-gate"]:
+for target in ["sdk-import-flash-evidence", "sdk-flash-evidence-gate", "sdk-canonical-evidence-gate", "evidence-importer-hardening-gate"]:
     if f"{target}:" not in makefile_text:
         errors.append(f"evidence hardening target missing from Makefile: {target}")
 for parser_rel in ["tools/hil/parse_atnel_i2c_hil_log.py", "tools/hil/parse_wemos_smoke_log.py"]:
@@ -986,6 +1005,7 @@ for parser_rel in ["tools/hil/parse_atnel_i2c_hil_log.py", "tools/hil/parse_wemo
 for rel in [
     "docs/release/evidence_log_capture_workflow.md",
     "docs/release/evidence_importer_hardening_report.md",
+    "docs/release/sdk_canonical_build_evidence_capture_report.md",
 ]:
     if not (ROOT / rel).is_file():
         errors.append(f"evidence hardening documentation missing: {rel}")

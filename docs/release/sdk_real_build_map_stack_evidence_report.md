@@ -22,3 +22,7 @@ This report is generated from per-target evidence JSON files. It does not conver
 | `adafruit_feather_huzzah_esp8266` | `docs/release/sdk_evidence/adafruit_feather_huzzah_esp8266/evidence.json` | `docs/release/sdk_evidence/adafruit_feather_huzzah_esp8266/sha256sums.txt` |
 
 Impact: this closes the release-evidence gap only when actual SDK logs are committed. In toolchain-blocked environments the reports remain ENVIRONMENT_BLOCKED by design.
+
+## Canonical capture rule
+
+Generated SDK evidence is trustworthy only when the build log contains target-specific canonical SDK markers and non-zero memory evidence. Memory-report PASS alone does not prove that a target was built.

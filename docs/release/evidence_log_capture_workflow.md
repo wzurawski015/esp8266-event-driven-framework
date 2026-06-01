@@ -54,3 +54,7 @@ python3 tools/hil/parse_wemos_smoke_log.py --log serial.log
 Placeholder paths such as `/path/wemos-smoke.log` or `/path/to/build.log` must
 produce controlled `ENVIRONMENT_BLOCKED`, never a Python traceback and never a
 fake PASS.
+
+## Canonical SDK capture markers
+
+`./tools/fw sdk-build-one <target>` must emit `EV_SDK_BUILD_TARGET=<target>`, `EV_SDK_BUILD_PROJECT=<path>`, `EV_SDK_BUILD_BEGIN`, `EV_SDK_BUILD_STATUS=PASS`, `EV_SDK_BUILD_RC=0` and `EV_SDK_BUILD_END`. Memory-report PASS may validate the memory-report tool, but it does not replace target-specific SDK build proof.

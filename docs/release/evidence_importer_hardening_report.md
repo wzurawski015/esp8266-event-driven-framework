@@ -55,3 +55,7 @@ This patch may reject logs that were previously accepted. That is intentional:
 release evidence must be more strict than human terminal transcripts. The result
 improves Evidence-Based Engineering and Event-Driven release credibility by
 removing fake-PASS paths.
+
+## Canonical capture follow-up
+
+Automatic SDK capture follows the same strict policy as manual import: target-specific build target marker, build status PASS, build return code zero, non-zero APP_BIN for required target classes and non-zero real memory evidence. Memory-report PASS alone is never SDK build proof.

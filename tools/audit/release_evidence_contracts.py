@@ -44,6 +44,8 @@ def _sdk_pass_evidence_errors(target: str, evidence: dict, log_text: str | None 
         out.append(f"SDK PASS without exact EV_SDK_BUILD_TARGET marker: {target}")
     if not evidence.get("build_status_marker_seen"):
         out.append(f"SDK PASS without EV_SDK_BUILD_STATUS=PASS: {target}")
+    if evidence.get("build_rc") is not None and int(evidence.get("build_rc", -1) or -1) != 0:
+        out.append(f"SDK PASS without EV_SDK_BUILD_RC=0: {target}")
     if evidence.get("self_test_marker_seen"):
         out.append(f"SDK PASS contains self-test marker: {target}")
     if evidence.get("mixed_transcript_detected"):
@@ -57,6 +59,10 @@ def _sdk_pass_evidence_errors(target: str, evidence: dict, log_text: str | None 
             out.append(f"SDK PASS build log lacks matching EV_SDK_BUILD_TARGET: {target}")
         if "EV_SDK_BUILD_STATUS=PASS" not in log_text:
             out.append(f"SDK PASS build log lacks EV_SDK_BUILD_STATUS=PASS: {target}")
+        if "EV_SDK_BUILD_RC=0" not in log_text:
+            out.append(f"SDK PASS build log lacks EV_SDK_BUILD_RC=0: {target}")
+        if "EV_MEM_REPORT_RESULT PASS" in log_text and "EV_SDK_BUILD_STATUS=PASS" not in log_text:
+            out.append(f"SDK PASS build log uses memory-report PASS without SDK build status: {target}")
         if "EV_MEM_REPORT_RESULT PASS target=self-test" in log_text or "--self-test" in log_text or "SELF_TEST PASS" in log_text:
             out.append(f"SDK PASS build log contains self-test transcript: {target}")
     for rel_key in ["build_log", "size_log", "map_summary", "stack_usage", "sdkconfig_effective"]:
@@ -97,17 +103,37 @@ def check_sdk_evidence_files(errors: list[str]) -> None:
 
 def check_sdk_import_evidence_contracts(errors: list[str]) -> None:
     importer = ROOT / "tools" / "release" / "import_sdk_evidence.py"
+    capture = ROOT / "tools" / "release" / "capture_sdk_evidence.py"
     flash_parser = ROOT / "tools" / "release" / "parse_esptool_flash_log.py"
     manifest = ROOT / "config" / "sdk_evidence_import.def"
     report = ROOT / "docs" / "release" / "sdk_imported_build_map_stack_evidence_report.md"
+    canonical_report = ROOT / "docs" / "release" / "sdk_canonical_build_evidence_capture_report.md"
     if not importer.is_file():
         errors.append("release-evidence: SDK import tool missing")
+    if not capture.is_file():
+        errors.append("release-evidence: SDK capture tool missing")
     if not flash_parser.is_file():
         errors.append("release-evidence: esptool flash parser missing")
     if not manifest.is_file():
         errors.append("release-evidence: SDK import manifest missing")
     if not report.is_file():
         errors.append("release-evidence: SDK imported evidence report missing")
+    if not canonical_report.is_file():
+        errors.append("release-evidence: SDK canonical capture report missing")
+    legacy_sdk_or_mem_regex = "EV_SDK_BUILD_STATUS=PASS" + "|" + "EV_MEM_REPORT_RESULT PASS"
+    if capture.is_file():
+        capture_text = capture.read_text(encoding="utf-8", errors="ignore")
+        if legacy_sdk_or_mem_regex in capture_text:
+            errors.append("release-evidence: SDK capture path still allows memory-report PASS as SDK build PASS")
+        for token in ["EV_SDK_BUILD_TARGET", "EV_SDK_BUILD_STATUS=PASS", "EV_SDK_BUILD_RC", "marker_summary", "mixed transcript", "APP_BIN"]:
+            if token not in capture_text:
+                errors.append(f"release-evidence: SDK capture path missing canonical evidence token: {token}")
+    fw_tool = ROOT / "tools" / "fw"
+    if fw_tool.is_file():
+        fw_text = fw_tool.read_text(encoding="utf-8", errors="ignore")
+        for token in ["EV_SDK_BUILD_TARGET=$target_name", "EV_SDK_BUILD_STATUS=PASS", "EV_SDK_BUILD_STATUS=FAIL", "EV_SDK_BUILD_RC=$rc", "EV_SDK_BUILD_END"]:
+            if token not in fw_text:
+                errors.append(f"release-evidence: tools/fw missing canonical SDK marker: {token}")
     for target_dir in SDK_EVIDENCE_ROOT.glob("*") if SDK_EVIDENCE_ROOT.exists() else []:
         ev = target_dir / "evidence.json"
         if not ev.is_file():

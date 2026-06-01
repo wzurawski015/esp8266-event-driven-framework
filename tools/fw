@@ -925,9 +925,34 @@ sdk_build_one() {
     exit 1
   fi
   target_path=$(python3 "$ROOT_DIR/tools/sdk_matrix.py" path "$target_name")
+  target_variant="${EV_WEMOS_FLASH_VARIANT:-${FW_WEMOS_FLASH_VARIANT:-default}}"
+
+  echo "EV_SDK_BUILD_TARGET=$target_name"
+  echo "EV_SDK_BUILD_PROJECT=$target_path"
+  echo "EV_SDK_BUILD_VARIANT=$target_variant"
+  echo "EV_SDK_BUILD_BEGIN"
+
+  set +e
   FW_SDK_PROJECT_DIR="$target_path" "$0" sdk-defconfig
-  FW_SDK_PROJECT_DIR="$target_path" "$0" sdk-build
-  FW_SDK_PROJECT_DIR="$target_path" "$0" sdk-memory-report
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    FW_SDK_PROJECT_DIR="$target_path" "$0" sdk-build
+    rc=$?
+  fi
+  if [ "$rc" -eq 0 ]; then
+    FW_SDK_PROJECT_DIR="$target_path" "$0" sdk-memory-report
+    rc=$?
+  fi
+  set -e
+
+  if [ "$rc" -eq 0 ]; then
+    echo "EV_SDK_BUILD_STATUS=PASS"
+  else
+    echo "EV_SDK_BUILD_STATUS=FAIL"
+  fi
+  echo "EV_SDK_BUILD_RC=$rc"
+  echo "EV_SDK_BUILD_END"
+  return "$rc"
 }
 
 sdk_build_matrix() {

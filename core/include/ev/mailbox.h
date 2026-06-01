@@ -8,6 +8,29 @@
 #include "ev/mailbox_kind.h"
 #include "ev/msg.h"
 #include "ev/result.h"
+#include "ev/route_table.h"
+
+/**
+ * @brief Observable result of a QoS-aware mailbox delivery attempt.
+ */
+typedef enum ev_mailbox_delivery_effect {
+    EV_MAILBOX_DELIVERY_POSTED = 0,
+    EV_MAILBOX_DELIVERY_DROPPED = 1,
+    EV_MAILBOX_DELIVERY_REPLACED = 2,
+    EV_MAILBOX_DELIVERY_COALESCED = 3,
+    EV_MAILBOX_DELIVERY_REJECTED = 4
+} ev_mailbox_delivery_effect_t;
+
+/**
+ * @brief Diagnostics for a single QoS-aware mailbox enqueue.
+ */
+typedef struct ev_mailbox_delivery_report {
+    ev_mailbox_delivery_effect_t effect;
+    ev_result_t result;
+    size_t queue_depth_before;
+    size_t queue_depth_after;
+    size_t slot_index;
+} ev_mailbox_delivery_report_t;
 
 /**
  * @brief Mailbox diagnostics exposed by the contract-stage runtime.
@@ -40,6 +63,13 @@ typedef struct {
     size_t count;
     ev_mailbox_stats_t stats;
 } ev_mailbox_t;
+
+/**
+ * @brief Reset one per-delivery mailbox report.
+ *
+ * @param report Report to reset.
+ */
+void ev_mailbox_delivery_report_reset(ev_mailbox_delivery_report_t *report);
 
 /**
  * @brief Initialize a mailbox over caller-provided storage.
@@ -79,6 +109,27 @@ ev_result_t ev_mailbox_reset(ev_mailbox_t *mailbox);
  * @return EV_OK on success or an error code.
  */
 ev_result_t ev_mailbox_push(ev_mailbox_t *mailbox, const ev_msg_t *msg);
+
+/**
+ * @brief Post one message using explicit route QoS mailbox semantics.
+ *
+ * `EV_ROUTE_QOS_COALESCED` merges duplicate pending events without queue
+ * growth. `EV_ROUTE_QOS_LATEST_ONLY` replaces the pending event of the same
+ * kind with the latest payload while preserving retain/release correctness.
+ * All paths remain bounded and heap-free.
+ *
+ * @param mailbox Mailbox receiving the message.
+ * @param msg Message to enqueue, coalesce, replace, or drop.
+ * @param qos Route QoS selected before delivery hot path.
+ * @param report Optional per-delivery effect report.
+ * @return EV_OK for posted/coalesced/replaced/drop-allowed outcomes,
+ *         or an error code for strict/rejected paths.
+ */
+ev_result_t ev_mailbox_push_qos(
+    ev_mailbox_t *mailbox,
+    const ev_msg_t *msg,
+    ev_route_qos_t qos,
+    ev_mailbox_delivery_report_t *report);
 
 /**
  * @brief Pop one message from a mailbox.

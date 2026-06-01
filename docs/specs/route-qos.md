@@ -1,8 +1,7 @@
 # Route QoS
 
-`config/routes.def` is the single source of truth for publish fan-out. The
-route generator accepts both the legacy default form and the explicit policy
-form:
+`config/routes.def` is the single source of truth for publish fan-out. The route
+generator accepts both the legacy default form and the explicit policy form:
 
 ```c
 EV_ROUTE(EVENT_ID, TARGET_ACTOR)
@@ -25,40 +24,38 @@ Supported route QoS values are:
 - `EV_ROUTE_QOS_TELEMETRY`
 - `EV_ROUTE_QOS_COMMAND`
 
-The runtime delivery service exposes the failure behavior through one central
-policy API:
+The runtime exposes behavior through one central contract API:
 
 ```c
-ev_delivery_qos_failure_policy(qos)
-ev_delivery_qos_failure_is_drop(qos)
-ev_delivery_qos_failure_is_strict(qos)
+ev_qos_contract_for(qos)
+ev_qos_failure_is_drop_allowed(behavior)
+ev_qos_validate_route_against_module(route, descriptor, report)
 ```
 
-## Failure behavior contract
+## Failure behavior and mailbox semantics
 
-Delivery failure here means that a selected route target cannot accept a message,
-for example because the target mailbox rejected `ev_mailbox_push()`.
-
-| QoS | Failure behavior |
-| --- | --- |
-| `EV_ROUTE_QOS_CRITICAL` | strict |
-| `EV_ROUTE_QOS_WAKEUP_CRITICAL` | strict |
-| `EV_ROUTE_QOS_COMMAND` | strict |
-| `EV_ROUTE_QOS_BEST_EFFORT` | drop-allowed |
-| `EV_ROUTE_QOS_LOSSY` | drop-allowed |
-| `EV_ROUTE_QOS_COALESCED` | drop-allowed |
-| `EV_ROUTE_QOS_LATEST_ONLY` | drop-allowed |
-| `EV_ROUTE_QOS_TELEMETRY` | drop-allowed |
-| invalid / unknown QoS value | strict |
-
-Invalid QoS values are treated as strict. This is the safer failure mode because
-configuration corruption must not silently discard mandatory control traffic.
+| QoS | Failure behavior | Mailbox semantics |
+| --- | --- | --- |
+| `EV_ROUTE_QOS_CRITICAL` | strict | Normal enqueue; mailbox rejection is an error. |
+| `EV_ROUTE_QOS_WAKEUP_CRITICAL` | strict | Normal enqueue; mailbox rejection is an error. |
+| `EV_ROUTE_QOS_COMMAND` | strict | Normal enqueue; mailbox rejection is an error. |
+| `EV_ROUTE_QOS_BEST_EFFORT` | drop-allowed | Normal enqueue; full mailbox may be reported as a policy drop. |
+| `EV_ROUTE_QOS_LOSSY` | drop-allowed | Normal enqueue; full mailbox may be reported as a policy drop. |
+| `EV_ROUTE_QOS_TELEMETRY` | drop-allowed | Normal enqueue; full mailbox may be reported as a policy drop. |
+| `EV_ROUTE_QOS_COALESCED` | coalesce, drop-allowed fallback | Repeated pending event id is coalesced without growing queue depth. |
+| `EV_ROUTE_QOS_LATEST_ONLY` | replace-latest, drop-allowed fallback | Repeated pending event id is replaced by the newest message. |
+| invalid / unknown QoS value | strict | Safer failure mode for corrupted configuration. |
 
 Strict failures return the first delivery error, record `first_error` and
 `first_failed_actor`, emit the existing mailbox-overflow fault path, and may stop
 further delivery through the current fan-out span. Drop-allowed failures are
-reported through `dropped` and metrics, but the publish operation may still
-return `EV_OK`.
+reported through `dropped`/`qos_dropped` and metrics, but the publish operation
+may still return `EV_OK`.
+
+`COALESCED` and `LATEST_ONLY` are not silent drops. Successful coalescing is
+reported through `coalesced`; successful replacement is reported through
+`replaced`. Only the bounded fallback for a full mailbox with no matching pending
+event is counted as a policy drop.
 
 ## Explicitly declared QoS routes
 
@@ -73,17 +70,17 @@ current explicit non-default routes are:
 - `EV_FAULT_REPORTED -> ACT_FAULT`: critical
 
 Network self-state routes, MQTT state routes, and network transmit commands stay
-critical in this patch because they participate in actor-local state coherence
-and backpressure handling.
+critical because they participate in actor-local state coherence and
+backpressure handling.
 
 ## Runtime and mailbox interaction
 
-This patch does not add a new algorithm for coalescing or latest-only delivery.
-Those classes currently inherit drop-allowed failure behavior, while concrete
-mailbox behavior is still determined by the target actor mailbox kind.
-
 The delivery path keeps O(fanout) publish behavior by using generated/static
 route spans or active route spans. It must not scan all routes for every publish.
+
+QoS compatibility is validated before active delivery. During delivery, the
+route QoS is passed to the mailbox through QoS-aware enqueue. The mailbox remains
+bounded and does not allocate heap memory.
 
 ## Demo compatibility delivery
 
@@ -98,18 +95,17 @@ is the source of truth for disabled-route semantics.
 - `route_policy_flags` in `config/modules.def` is historically named as flags,
   but currently behaves as a single accepted QoS class with a few compatibility
   allowances.
-- `COALESCED` and `LATEST_ONLY` do not yet have additional delivery algorithms
-  beyond the existing mailbox kind behavior and the drop-allowed failure policy.
-- Delivery trace timestamps are still outside this contract and currently remain
-  part of the trace timestamp follow-up work.
+- `COALESCED` and `LATEST_ONLY` use bounded same-event-id algorithms. They do
+  not perform semantic payload merging across different event ids and do not
+  replace arbitrary unrelated queued events.
 
 ## End-to-end contract enforcement
 
-The current end-to-end contract is implemented by `ev_qos_contract`:
+The current end-to-end contract is implemented by `ev_qos_contract` and the
+QoS-aware mailbox enqueue path:
 
 - `ev_qos_contract_for(qos)` returns the central behavior table.
 - `ev_actor_module_route_policy_accepts_qos(descriptor, qos)` documents the historical `route_policy_flags` field as a single accepted QoS class.
 - `ev_qos_validate_route_against_module(route, descriptor, report)` runs before active delivery.
-- Delivery reports expose `rejected_routes` and `qos_conflict_routes` so partial rejection is visible.
-
-`EV_ROUTE_QOS_COALESCED` and `EV_ROUTE_QOS_LATEST_ONLY` are explicit `algorithm-not-yet-promoted` classes in this patch. They remain drop-allowed until a bounded mailbox replacement/coalescing algorithm is promoted with its own tests and performance evidence.
+- `ev_mailbox_push_qos(mailbox, msg, qos, report)` applies bounded coalescing/replacement/drop semantics.
+- Delivery reports expose `rejected_routes`, `qos_conflict_routes`, `coalesced`, `replaced`, `qos_dropped`, and `mailbox_policy_rejected`.

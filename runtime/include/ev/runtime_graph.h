@@ -26,7 +26,7 @@
  * The byte count matches the current internal graph implementation; the union
  * member only provides conservative alignment without exposing runtime layout.
  */
-#define EV_RUNTIME_GRAPH_OPAQUE_STORAGE_BYTES 23336U
+#define EV_RUNTIME_GRAPH_OPAQUE_STORAGE_BYTES 23352U
 
 typedef union ev_runtime_graph_opaque_storage {
     unsigned char storage[EV_RUNTIME_GRAPH_OPAQUE_STORAGE_BYTES];

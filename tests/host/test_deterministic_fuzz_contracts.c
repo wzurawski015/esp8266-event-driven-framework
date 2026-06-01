@@ -46,7 +46,9 @@ static void exercise_mailbox_contract(uint32_t r)
     assert(ev_mailbox_init(&mailbox, EV_MAILBOX_FIFO_8, storage, 8U) == EV_OK);
     assert(ev_msg_init_publish(&msg, EV_TICK_1S, ACT_BOOT) == EV_OK);
     for (i = 0; i < n; ++i) {
-        (void)ev_mailbox_push(&mailbox, &msg);
+        ev_route_qos_t qos = (i & 1U) ? EV_ROUTE_QOS_LATEST_ONLY : EV_ROUTE_QOS_COALESCED;
+        (void)ev_mailbox_push_qos(&mailbox, &msg, qos, NULL);
+        assert(ev_mailbox_count(&mailbox) <= ev_mailbox_capacity(&mailbox));
     }
     while (ev_mailbox_pop(&mailbox, &out) == EV_OK) {
         assert(out.event_id == EV_TICK_1S);
@@ -84,6 +86,14 @@ static void exercise_qos_contract(uint32_t r)
     if (qos <= EV_ROUTE_QOS_COMMAND) {
         assert(res == EV_OK);
         assert(c.qos == qos);
+        if (qos == EV_ROUTE_QOS_COALESCED) {
+            assert(c.allows_coalesce != 0U);
+            assert(c.failure_behavior == EV_QOS_FAILURE_COALESCE);
+        }
+        if (qos == EV_ROUTE_QOS_LATEST_ONLY) {
+            assert(c.allows_latest_replace != 0U);
+            assert(c.failure_behavior == EV_QOS_FAILURE_REPLACE_LATEST);
+        }
     } else {
         assert(res == EV_ERR_OUT_OF_RANGE);
     }

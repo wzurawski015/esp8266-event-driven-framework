@@ -378,7 +378,7 @@ def validate_route_qos_contract() -> None:
     delivery_header = ROOT / "runtime" / "include" / "ev" / "delivery_service.h"
     if delivery_header.exists():
         header_text = delivery_header.read_text(encoding="utf-8", errors="ignore")
-        for field in ["rejected_routes", "qos_conflict_routes"]:
+        for field in ["rejected_routes", "qos_conflict_routes", "coalesced", "replaced", "qos_dropped", "mailbox_policy_rejected"]:
             if field not in header_text:
                 errors.append(f"delivery report missing QoS visibility field: {field}")
     delivery_path = ROOT / "runtime" / "src" / "ev_delivery_service.c"
@@ -396,9 +396,32 @@ def validate_route_qos_contract() -> None:
         makefile = makefile_path.read_text(encoding="utf-8", errors="ignore")
         if "qos-contracts" not in makefile or "tools/audit/qos_contract_check.py" not in makefile:
             errors.append("QoS contract checker must be registered in Makefile")
-        for test_name in ["test_qos_contract_table", "test_qos_route_module_compatibility"]:
+        for test_name in ["test_qos_contract_table", "test_qos_route_module_compatibility", "test_qos_mailbox_algorithms"]:
             if test_name not in makefile:
                 errors.append(f"QoS host test not registered in Makefile: {test_name}")
+    mailbox_header = ROOT / "core" / "include" / "ev" / "mailbox.h"
+    mailbox_source = ROOT / "core" / "src" / "ev_mailbox.c"
+    if mailbox_header.exists() and "ev_mailbox_push_qos" not in mailbox_header.read_text(encoding="utf-8", errors="ignore"):
+        errors.append("QoS mailbox enqueue API missing: ev_mailbox_push_qos")
+    if mailbox_source.exists():
+        mailbox_code = strip_comments(mailbox_source.read_text(encoding="utf-8", errors="ignore"))
+        for symbol in ["EV_MAILBOX_DELIVERY_COALESCED", "EV_MAILBOX_DELIVERY_REPLACED", "EV_ROUTE_QOS_COALESCED", "EV_ROUTE_QOS_LATEST_ONLY"]:
+            if symbol not in mailbox_code:
+                errors.append(f"QoS mailbox algorithm missing symbol: {symbol}")
+    qos_source = ROOT / "runtime" / "src" / "ev_qos_contract.c"
+    if qos_source.exists():
+        qos_code = strip_comments(qos_source.read_text(encoding="utf-8", errors="ignore"))
+        if "EV_QOS_FAILURE_COALESCE" not in qos_code or "allows_coalesce" not in qos_code:
+            errors.append("COALESCED QoS must be promoted to a coalesce contract")
+        if "EV_QOS_FAILURE_REPLACE_LATEST" not in qos_code or "allows_latest_replace" not in qos_code:
+            errors.append("LATEST_ONLY QoS must be promoted to a latest-replace contract")
+    docs_text = ""
+    for rel in ["docs/architecture/qos_delivery_contract.md", "docs/specs/route-qos.md", "docs/release/qos_end_to_end_enforcement_report.md"]:
+        path = ROOT / rel
+        if path.exists():
+            docs_text += path.read_text(encoding="utf-8", errors="ignore")
+    if "algorithm-not-yet-" "promoted" in docs_text:
+        errors.append("QoS docs must not leave COALESCED/LATEST_ONLY as an unpromoted algorithm")
 
 def validate_trace_timestamp_contract() -> None:
     delivery_path = ROOT / "runtime" / "src" / "ev_delivery_service.c"

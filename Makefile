@@ -109,6 +109,7 @@ HOST_TESTS := \
     test_route_qos_delivery_policy \
     test_qos_contract_table \
     test_qos_route_module_compatibility \
+    test_qos_mailbox_algorithms \
     test_dispatch_contract \
     test_mailbox_contract \
     test_actor_runtime \
@@ -170,6 +171,7 @@ COVERAGE_TESTS := \
     test_zero_copy_payload_contract \
     test_power_state_machine \
     test_qos_contract_table \
+    test_qos_mailbox_algorithms \
     test_deterministic_fuzz_contracts
 
 

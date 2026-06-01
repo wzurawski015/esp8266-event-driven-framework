@@ -16,3 +16,10 @@
 | `wemos_deep_sleep_wake` | `hil_wemos_deepsleep` | ENVIRONMENT_BLOCKED | True | `docs/release/hil_evidence/wemos_deepsleep/current/parsed.json` | `9ccf580538a18f2398e61ee1ba9054efecf48f2dcd493d0c2e0f2f84627730bd` |  |
 
 A PASS means all required real SDK and HIL sources are present and parsed as PASS. `ENVIRONMENT_BLOCKED` is preserved when hardware or SDK evidence is missing.
+
+## Import hardening note
+
+Eventflow PASS depends on real SDK/HIL source evidence. Mixed transcripts,
+self-test markers, missing log files and placeholder paths remain blocked. A
+flash transcript is parsed by the dedicated esptool parser and is not accepted as
+SDK build evidence.

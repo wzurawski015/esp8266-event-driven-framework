@@ -36,6 +36,7 @@ WAKE_REASON_RE = re.compile(r"EV_POWER_SMOKE_WAKE_REASON\s+reason=([^\s]+)")
 POWER_RESULT_RE = re.compile(r"EV_POWER_SMOKE_RESULT\s+PASS")
 SMOKE_RESULT_RE = re.compile(r"EV_WEMOS_SMOKE_RESULT\s+PASS")
 SECRET_RE = re.compile(r"(WIFI_PASSWORD|COMMAND_TOKEN|EV_BOARD_NET_WIFI_PASSWORD|EV_BOARD_NET_COMMAND_TOKEN)\S*")
+PLACEHOLDER_RE = re.compile(r"(^|/)(path|PATH)/(to/)?|<[^>]+>|YOUR_|/path/", re.I)
 
 
 def redact(text: str) -> str:
@@ -48,6 +49,25 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: fh.read(65536), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def is_placeholder_path(path: Path | str) -> bool:
+    return bool(PLACEHOLDER_RE.search(str(path)))
+
+
+def safe_read_log(path: Path) -> tuple[str, str, str]:
+    if is_placeholder_path(path):
+        return "ENVIRONMENT_BLOCKED", f"placeholder path was supplied: {path}", ""
+    try:
+        if not path.exists():
+            return "ENVIRONMENT_BLOCKED", f"log file not found: {path}", ""
+        if path.is_dir():
+            return "FAIL", f"input path is directory, expected serial log file: {path}", ""
+        return "PASS", "", path.read_text(encoding="utf-8", errors="ignore")
+    except PermissionError as exc:
+        return "FAIL", f"unable to read serial log: {path}: {exc}", ""
+    except OSError as exc:
+        return "FAIL", f"unable to read serial log: {path}: {exc}", ""
 
 
 def monotonic(values: list[int]) -> bool:
@@ -107,8 +127,8 @@ def parse_text(text: str, *, require_deepsleep: bool) -> dict[str, object]:
 def write_report(parsed: dict[str, object], evidence_dir: Path, report: Path, serial: Path | None) -> None:
     status = str(parsed.get("status", "FAIL"))
     reason = "all required markers observed" if status == "PASS" else "; ".join(parsed.get("failures", []))
-    log_rel = serial.relative_to(ROOT).as_posix() if serial and serial.is_file() else ""
-    parsed_rel = (evidence_dir / "parsed.json").relative_to(ROOT).as_posix()
+    log_rel = serial.relative_to(ROOT).as_posix() if serial and serial.is_file() and serial.is_relative_to(ROOT) else ""
+    parsed_rel = (evidence_dir / "parsed.json").relative_to(ROOT).as_posix() if (evidence_dir / "parsed.json").is_relative_to(ROOT) else str(evidence_dir / "parsed.json")
     report.write_text(
         "# Wemos smoke/deep-sleep evidence report\n\n"
         "| Field | Value |\n|---|---|\n"
@@ -117,7 +137,7 @@ def write_report(parsed: dict[str, object], evidence_dir: Path, report: Path, se
         f"| Reason | {reason} |\n"
         f"| Log path | `{log_rel}` |\n"
         f"| Parsed evidence | `{parsed_rel}` |\n\n"
-        "PASS requires deterministic boot/runtime/tick markers; deep-sleep mode also requires ordered power state markers and wake boot.\n",
+        "PASS requires deterministic boot/runtime/tick markers; deep-sleep mode also requires ordered power state markers and wake boot. Placeholder or missing paths are reported as ENVIRONMENT_BLOCKED, not Python tracebacks.\n",
         encoding="utf-8",
     )
 
@@ -127,9 +147,9 @@ def write_evidence(text: str, evidence_dir: Path, *, require_deepsleep: bool) ->
     serial = evidence_dir / "serial.log"
     serial.write_text(redact(text), encoding="utf-8")
     parsed = parse_text(text, require_deepsleep=require_deepsleep)
-    parsed.update({"serial_log": serial.relative_to(ROOT).as_posix(), "serial_sha256": sha256(serial)})
+    parsed.update({"serial_log": serial.relative_to(ROOT).as_posix() if serial.is_relative_to(ROOT) else str(serial), "serial_sha256": sha256(serial)})
     (evidence_dir / "parsed.json").write_text(json.dumps(parsed, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    (evidence_dir / "excerpt.md").write_text("# Wemos evidence excerpt\n\n```text\n" + serial.read_text()[-4000:] + "\n```\n", encoding="utf-8")
+    (evidence_dir / "excerpt.md").write_text("# Wemos evidence excerpt\n\n```text\n" + serial.read_text(encoding="utf-8")[-4000:] + "\n```\n", encoding="utf-8")
     (evidence_dir / "sha256sums.txt").write_text(
         f"{sha256(serial)}  serial.log\n{sha256(evidence_dir / 'parsed.json')}  parsed.json\n",
         encoding="utf-8",
@@ -139,23 +159,24 @@ def write_evidence(text: str, evidence_dir: Path, *, require_deepsleep: bool) ->
     return 0 if parsed["status"] == "PASS" else 1
 
 
-def environment_blocked(*, require_deepsleep: bool) -> int:
-    evidence_dir = DEEPSLEEP_EVIDENCE if require_deepsleep else SMOKE_EVIDENCE
+def environment_blocked(*, require_deepsleep: bool, reason: str = "Wemos hardware or serial log is not available", evidence_dir: Path | None = None) -> int:
+    evidence_dir = evidence_dir or (DEEPSLEEP_EVIDENCE if require_deepsleep else SMOKE_EVIDENCE)
     evidence_dir.mkdir(parents=True, exist_ok=True)
-    parsed = {"status": "ENVIRONMENT_BLOCKED", "mode": "deepsleep" if require_deepsleep else "smoke", "failures": ["Wemos hardware or serial log is not available"]}
+    parsed = {"status": "ENVIRONMENT_BLOCKED", "mode": "deepsleep" if require_deepsleep else "smoke", "reason": reason, "failures": [reason]}
     (evidence_dir / "parsed.json").write_text(json.dumps(parsed, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     report = DEEPSLEEP_REPORT if require_deepsleep else SMOKE_REPORT
-    report.write_text(
-        "# Wemos smoke/deep-sleep evidence report\n\n"
-        "| Field | Value |\n|---|---|\n"
-        "| Status | ENVIRONMENT_BLOCKED |\n"
-        f"| Mode | {parsed['mode']} |\n"
-        "| Reason | Wemos hardware or serial log is not available in this environment. |\n"
-        f"| Parsed evidence | `{(evidence_dir / 'parsed.json').relative_to(ROOT).as_posix()}` |\n\n"
-        "No PASS is declared without real serial evidence.\n",
-        encoding="utf-8",
-    )
-    print(f"EV_WEMOS_EVIDENCE ENVIRONMENT_BLOCKED mode={parsed['mode']}")
+    if evidence_dir.resolve().is_relative_to((ROOT / "docs" / "release").resolve()):
+        report.write_text(
+            "# Wemos smoke/deep-sleep evidence report\n\n"
+            "| Field | Value |\n|---|---|\n"
+            "| Status | ENVIRONMENT_BLOCKED |\n"
+            f"| Mode | {parsed['mode']} |\n"
+            f"| Reason | {reason} |\n"
+            f"| Parsed evidence | `{(evidence_dir / 'parsed.json').relative_to(ROOT).as_posix()}` |\n\n"
+            "No PASS is declared without real serial evidence.\n",
+            encoding="utf-8",
+        )
+    print(f"EV_WEMOS_EVIDENCE ENVIRONMENT_BLOCKED mode={parsed['mode']} reason={reason}")
     return 77
 
 
@@ -177,6 +198,7 @@ EV_WEMOS_SMOKE_RESULT PASS
     assert parse_text(smoke.replace("seq=2", "seq=1"), require_deepsleep=False)["status"] == "FAIL"
     assert parse_text(deep.replace("EV_POWER_SMOKE_WAKE_BOOT", ""), require_deepsleep=True)["status"] == "FAIL"
     assert "<REDACTED>" in redact("COMMAND_TOKEN=secret")
+    assert safe_read_log(Path("/path/wemos-smoke.log"))[0] == "ENVIRONMENT_BLOCKED"
     print("WEMOS_SMOKE_LOG_PARSER_SELF_TEST PASS")
     return 0
 
@@ -189,11 +211,19 @@ def main() -> int:
     ap.add_argument("--environment-blocked", action="store_true")
     ap.add_argument("--evidence-dir", type=Path)
     args = ap.parse_args()
+    evidence_dir = args.evidence_dir or (DEEPSLEEP_EVIDENCE if args.deepsleep else SMOKE_EVIDENCE)
     if args.self_test:
         return self_test()
     if args.environment_blocked or args.log is None:
-        return environment_blocked(require_deepsleep=args.deepsleep)
-    return write_evidence(args.log.read_text(encoding="utf-8", errors="ignore"), args.evidence_dir or (DEEPSLEEP_EVIDENCE if args.deepsleep else SMOKE_EVIDENCE), require_deepsleep=args.deepsleep)
+        return environment_blocked(require_deepsleep=args.deepsleep, evidence_dir=evidence_dir)
+    status, reason, text = safe_read_log(args.log)
+    if status == "ENVIRONMENT_BLOCKED":
+        return environment_blocked(require_deepsleep=args.deepsleep, reason=reason, evidence_dir=evidence_dir)
+    if status == "FAIL":
+        print(f"EV_WEMOS_EVIDENCE FAIL reason={reason}", file=sys.stderr)
+        return 1
+    return write_evidence(text, evidence_dir, require_deepsleep=args.deepsleep)
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

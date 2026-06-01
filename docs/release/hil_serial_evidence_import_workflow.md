@@ -13,3 +13,10 @@ make hil-real-evidence-gate
 
 PASS requires strict marker sequences and parsed JSON. Missing hardware/logs remain
 `ENVIRONMENT_BLOCKED` or `NOT_RUN`.
+
+## Hardening note: placeholder paths
+
+Do not use placeholder paths such as `/path/atnel-i2c.log` or
+`/path/wemos-smoke.log`. Importers now report these as `ENVIRONMENT_BLOCKED`
+without traceback. HIL PASS requires parsed JSON generated from a real serial log
+with the required markers.

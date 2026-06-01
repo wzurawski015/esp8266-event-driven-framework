@@ -952,6 +952,44 @@ for rel in [
     if rel not in (eventflow_tool.read_text(encoding="utf-8", errors="ignore") if eventflow_tool.exists() else ""):
         errors.append(f"eventflow release artifact is not produced by gate: {rel}")
 
+
+# Evidence importer hardening contracts.
+import_tool = ROOT / "tools" / "release" / "import_sdk_evidence.py"
+flash_tool = ROOT / "tools" / "release" / "parse_esptool_flash_log.py"
+if not flash_tool.exists():
+    errors.append("evidence hardening: missing tools/release/parse_esptool_flash_log.py")
+if import_tool.exists():
+    text = import_tool.read_text(encoding="utf-8", errors="ignore")
+    if "EV_SDK_BUILD_STATUS=PASS|EV_MEM_REPORT_RESULT PASS" in text:
+        errors.append("evidence hardening: SDK importer must not treat EV_MEM_REPORT_RESULT PASS as SDK PASS_RE")
+    for token in ["SDK_TARGET_RE", "SDK_STATUS_PASS_RE", "EV_SDK_BUILD_TARGET", "EV_SDK_BUILD_STATUS=PASS", "target_marker_match", "self-test marker", "mixed transcript", "APP_BIN"]:
+        if token not in text:
+            errors.append(f"evidence hardening: SDK importer missing strict token {token}")
+    if "mixed.log" not in text or "EV_MEM_REPORT_RESULT PASS target=self-test" not in text:
+        errors.append("evidence hardening: SDK importer self-test must include mixed transcript negative fixture")
+if flash_tool.exists():
+    text = flash_tool.read_text(encoding="utf-8", errors="ignore")
+    for token in ["Hash of data verified", "Chip is", "ESP8266EX", "flash_evidence.json", "--self-test"]:
+        if token not in text:
+            errors.append(f"evidence hardening: esptool flash parser missing {token}")
+for target in ["sdk-import-flash-evidence", "sdk-flash-evidence-gate", "evidence-importer-hardening-gate"]:
+    if f"{target}:" not in makefile_text:
+        errors.append(f"evidence hardening target missing from Makefile: {target}")
+for parser_rel in ["tools/hil/parse_atnel_i2c_hil_log.py", "tools/hil/parse_wemos_smoke_log.py"]:
+    parser = ROOT / parser_rel
+    if parser.exists():
+        text = parser.read_text(encoding="utf-8", errors="ignore")
+        if "safe_read_log" not in text or "placeholder path was supplied" not in text:
+            errors.append(f"evidence hardening: {parser_rel} must use controlled safe_read_log path validation")
+        if "args.log.read_text" in text:
+            errors.append(f"evidence hardening: {parser_rel} still directly reads args.log")
+for rel in [
+    "docs/release/evidence_log_capture_workflow.md",
+    "docs/release/evidence_importer_hardening_report.md",
+]:
+    if not (ROOT / rel).is_file():
+        errors.append(f"evidence hardening documentation missing: {rel}")
+
 if errors:
     for error in errors:
         print(error)

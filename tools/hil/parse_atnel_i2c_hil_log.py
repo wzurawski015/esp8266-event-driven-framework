@@ -17,11 +17,12 @@ CASE_BEGIN = re.compile(r"EV_HIL_I2C_CASE_BEGIN\s+name=sda-stuck-low-containment
 CASE_PASS = re.compile(r"EV_HIL_I2C_CASE_RESULT\s+name=sda-stuck-low-containment\s+status=PASS")
 CASE_FAIL = re.compile(r"EV_HIL_I2C_CASE_RESULT\s+name=sda-stuck-low-containment\s+status=FAIL(?:\s+reason=([^\s]+))?")
 COUPLED = re.compile(r"EV_HIL_I2C_SDA_FORCE_LOW\s+requested=1\s+observed=1")
-UNCoupled = re.compile(r"EV_HIL_I2C_SDA_FORCE_LOW\s+requested=1\s+observed=0|FIXTURE_NOT_COUPLED")
+UNCOUPLED = re.compile(r"EV_HIL_I2C_SDA_FORCE_LOW\s+requested=1\s+observed=0|FIXTURE_NOT_COUPLED")
 BUS_STATE = re.compile(r"EV_HIL_I2C_BUS_STATE")
 RECOVERY_BEGIN = re.compile(r"EV_HIL_I2C_RECOVERY_BEGIN")
 RECOVERY_PASS = re.compile(r"EV_HIL_I2C_RECOVERY_RESULT\s+status=(?:PASS|OK)")
 SECRET_RE = re.compile(r"(WIFI_PASSWORD|COMMAND_TOKEN|EV_BOARD_NET_WIFI_PASSWORD|EV_BOARD_NET_COMMAND_TOKEN)\S*")
+PLACEHOLDER_RE = re.compile(r"(^|/)(path|PATH)/(to/)?|<[^>]+>|YOUR_|/path/", re.I)
 
 
 def redact(text: str) -> str:
@@ -36,9 +37,28 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def is_placeholder_path(path: Path | str) -> bool:
+    return bool(PLACEHOLDER_RE.search(str(path)))
+
+
+def safe_read_log(path: Path) -> tuple[str, str, str]:
+    if is_placeholder_path(path):
+        return "ENVIRONMENT_BLOCKED", f"placeholder path was supplied: {path}", ""
+    try:
+        if not path.exists():
+            return "ENVIRONMENT_BLOCKED", f"log file not found: {path}", ""
+        if path.is_dir():
+            return "FAIL", f"input path is directory, expected serial log file: {path}", ""
+        return "PASS", "", path.read_text(encoding="utf-8", errors="ignore")
+    except PermissionError as exc:
+        return "FAIL", f"unable to read serial log: {path}: {exc}", ""
+    except OSError as exc:
+        return "FAIL", f"unable to read serial log: {path}: {exc}", ""
+
+
 def parse_text(text: str) -> dict[str, object]:
     redacted = redact(text)
-    fixture_not_coupled = bool(UNCoupled.search(redacted))
+    fixture_not_coupled = bool(UNCOUPLED.search(redacted))
     has_global_pass = bool(GLOBAL_PASS.search(redacted))
     has_case_begin = bool(CASE_BEGIN.search(redacted))
     has_case_pass = bool(CASE_PASS.search(redacted))
@@ -86,8 +106,8 @@ def parse_text(text: str) -> dict[str, object]:
 def write_report(parsed: dict[str, object], evidence_dir: Path, serial_log: Path | None = None) -> None:
     status = str(parsed.get("status", "FAIL"))
     reason = "all required serial markers observed" if status == "PASS" else "; ".join(parsed.get("failures", []))
-    log_rel = serial_log.relative_to(ROOT).as_posix() if serial_log and serial_log.is_file() else ""
-    parsed_rel = (evidence_dir / "parsed.json").relative_to(ROOT).as_posix()
+    log_rel = serial_log.relative_to(ROOT).as_posix() if serial_log and serial_log.is_file() and serial_log.is_relative_to(ROOT) else ""
+    parsed_rel = (evidence_dir / "parsed.json").relative_to(ROOT).as_posix() if (evidence_dir / "parsed.json").is_relative_to(ROOT) else str(evidence_dir / "parsed.json")
     REPORT.write_text(
         "# ATNEL I2C HIL report\n\n"
         "| Field | Value |\n|---|---|\n"
@@ -97,7 +117,7 @@ def write_report(parsed: dict[str, object], evidence_dir: Path, serial_log: Path
         f"| Parsed evidence | `{parsed_rel}` |\n\n"
         "PASS requires `EV_HIL_RESULT PASS failures=0 skipped=0`, "
         "`EV_HIL_I2C_CASE_RESULT name=sda-stuck-low-containment status=PASS`, "
-        "an observed SDA-low coupling marker, and recovery OK.\n",
+        "an observed SDA-low coupling marker, and recovery OK. Placeholder or missing paths are reported as ENVIRONMENT_BLOCKED, not Python tracebacks.\n",
         encoding="utf-8",
     )
 
@@ -107,9 +127,9 @@ def write_evidence(text: str, evidence_dir: Path, source: Path | None = None) ->
     serial = evidence_dir / "serial.log"
     serial.write_text(redact(text), encoding="utf-8")
     parsed = parse_text(text)
-    parsed.update({"serial_log": serial.relative_to(ROOT).as_posix(), "serial_sha256": sha256(serial)})
+    parsed.update({"serial_log": serial.relative_to(ROOT).as_posix() if serial.is_relative_to(ROOT) else str(serial), "serial_sha256": sha256(serial)})
     (evidence_dir / "parsed.json").write_text(json.dumps(parsed, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    (evidence_dir / "excerpt.md").write_text("# ATNEL I2C HIL excerpt\n\n```text\n" + serial.read_text()[-4000:] + "\n```\n", encoding="utf-8")
+    (evidence_dir / "excerpt.md").write_text("# ATNEL I2C HIL excerpt\n\n```text\n" + serial.read_text(encoding="utf-8")[-4000:] + "\n```\n", encoding="utf-8")
     (evidence_dir / "sha256sums.txt").write_text(
         f"{sha256(serial)}  serial.log\n{sha256(evidence_dir / 'parsed.json')}  parsed.json\n",
         encoding="utf-8",
@@ -119,19 +139,20 @@ def write_evidence(text: str, evidence_dir: Path, source: Path | None = None) ->
     return 0 if parsed["status"] == "PASS" else 1
 
 
-def environment_blocked(reason: str) -> int:
-    DEFAULT_EVIDENCE.mkdir(parents=True, exist_ok=True)
+def environment_blocked(reason: str, evidence_dir: Path = DEFAULT_EVIDENCE) -> int:
+    evidence_dir.mkdir(parents=True, exist_ok=True)
     parsed = {"status": "ENVIRONMENT_BLOCKED", "case": "sda-stuck-low-containment", "reason": reason, "failures": [reason]}
-    (DEFAULT_EVIDENCE / "parsed.json").write_text(json.dumps(parsed, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    REPORT.write_text(
-        "# ATNEL I2C HIL report\n\n"
-        "| Field | Value |\n|---|---|\n"
-        "| Status | ENVIRONMENT_BLOCKED |\n"
-        f"| Reason | {reason} |\n"
-        f"| Parsed evidence | `{(DEFAULT_EVIDENCE / 'parsed.json').relative_to(ROOT).as_posix()}` |\n\n"
-        "No PASS is declared without real serial evidence.\n",
-        encoding="utf-8",
-    )
+    (evidence_dir / "parsed.json").write_text(json.dumps(parsed, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if evidence_dir.resolve().is_relative_to((ROOT / "docs" / "release").resolve()):
+        REPORT.write_text(
+            "# ATNEL I2C HIL report\n\n"
+            "| Field | Value |\n|---|---|\n"
+            "| Status | ENVIRONMENT_BLOCKED |\n"
+            f"| Reason | {reason} |\n"
+            f"| Parsed evidence | `{(evidence_dir / 'parsed.json').relative_to(ROOT).as_posix()}` |\n\n"
+            "No PASS is declared without real serial evidence.\n",
+            encoding="utf-8",
+        )
     print(f"EV_HIL_ATNEL_I2C ENVIRONMENT_BLOCKED reason={reason}")
     return 77
 
@@ -150,6 +171,7 @@ EV_HIL_RESULT PASS failures=0 skipped=0
     assert parse_text(valid.replace("EV_HIL_RESULT PASS failures=0 skipped=0", ""))["status"] == "FAIL"
     assert parse_text(valid.replace("observed=1", "observed=0"))["status"] == "FAIL"
     assert "<REDACTED>" in redact("WIFI_PASSWORD=secret")
+    assert safe_read_log(Path("/path/atnel-i2c.log"))[0] == "ENVIRONMENT_BLOCKED"
     print("ATNEL_I2C_HIL_LOG_PARSER_SELF_TEST PASS")
     return 0
 
@@ -164,8 +186,15 @@ def main() -> int:
     if args.self_test:
         return self_test()
     if args.environment_blocked or args.log is None:
-        return environment_blocked("ATNEL I2C hardware fixture or serial log is not available")
-    return write_evidence(args.log.read_text(encoding="utf-8", errors="ignore"), args.evidence_dir, args.log)
+        return environment_blocked("ATNEL I2C hardware fixture or serial log is not available", args.evidence_dir)
+    status, reason, text = safe_read_log(args.log)
+    if status == "ENVIRONMENT_BLOCKED":
+        return environment_blocked(reason, args.evidence_dir)
+    if status == "FAIL":
+        print(f"EV_HIL_ATNEL_I2C FAIL reason={reason}", file=sys.stderr)
+        return 1
+    return write_evidence(text, args.evidence_dir, args.log)
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

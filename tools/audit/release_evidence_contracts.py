@@ -30,6 +30,42 @@ def _load_evidence_for_target(target: str) -> dict:
         return {}
 
 
+def _sdk_pass_evidence_errors(target: str, evidence: dict, log_text: str | None = None) -> list[str]:
+    out: list[str] = []
+    values = evidence.get("values", {}) if isinstance(evidence.get("values", {}), dict) else {}
+    klass = str(evidence.get("class", ""))
+    if evidence.get("status") != "PASS":
+        out.append(f"SDK evidence status is not PASS: {target}")
+    if evidence.get("evidence_kind") != "sdk_build":
+        out.append(f"SDK PASS evidence_kind is not sdk_build: {target}")
+    if evidence.get("target") != target:
+        out.append(f"SDK PASS evidence target mismatch: {target}")
+    if not evidence.get("target_marker_seen") or not evidence.get("target_marker_match"):
+        out.append(f"SDK PASS without exact EV_SDK_BUILD_TARGET marker: {target}")
+    if not evidence.get("build_status_marker_seen"):
+        out.append(f"SDK PASS without EV_SDK_BUILD_STATUS=PASS: {target}")
+    if evidence.get("self_test_marker_seen"):
+        out.append(f"SDK PASS contains self-test marker: {target}")
+    if evidence.get("mixed_transcript_detected"):
+        out.append(f"SDK PASS comes from mixed transcript: {target}")
+    if klass in {"buildable_sdk", "physical_smoke", "hil_sdk"} and int(values.get("APP_BIN", 0) or 0) <= 0:
+        out.append(f"SDK PASS without non-zero APP_BIN: {target}")
+    if klass in {"buildable_sdk", "physical_smoke", "hil_sdk"} and not any(int(values.get(key, 0) or 0) > 0 for key in ["IRAM", "DRAM", "BSS", "DATA", "IROM"]):
+        out.append(f"SDK PASS without non-zero real memory section: {target}")
+    if log_text is not None:
+        if f"EV_SDK_BUILD_TARGET={target}" not in log_text:
+            out.append(f"SDK PASS build log lacks matching EV_SDK_BUILD_TARGET: {target}")
+        if "EV_SDK_BUILD_STATUS=PASS" not in log_text:
+            out.append(f"SDK PASS build log lacks EV_SDK_BUILD_STATUS=PASS: {target}")
+        if "EV_MEM_REPORT_RESULT PASS target=self-test" in log_text or "--self-test" in log_text or "SELF_TEST PASS" in log_text:
+            out.append(f"SDK PASS build log contains self-test transcript: {target}")
+    for rel_key in ["build_log", "size_log", "map_summary", "stack_usage", "sdkconfig_effective"]:
+        rel = str(evidence.get(rel_key, ""))
+        if rel and rel.lower().endswith((".elf", ".bin", ".o", ".a")):
+            out.append(f"forbidden binary SDK artifact in evidence: {target}:{rel}")
+    return out
+
+
 def check_sdk_evidence_files(errors: list[str]) -> None:
     rows = table_rows(SDK_BUILD_REPORT)
     header = next((cells for cells in rows if cells and cells[0] == "Target"), [])
@@ -50,21 +86,24 @@ def check_sdk_evidence_files(errors: list[str]) -> None:
         if not evidence:
             errors.append(f"release-evidence: SDK PASS row has no evidence.json: {target}")
             continue
-        log_path = evidence.get("build_log", "")
-        if not log_path or not (ROOT / str(log_path)).is_file():
+        log_path = ROOT / str(evidence.get("build_log", ""))
+        if not evidence.get("build_log") or not log_path.is_file():
             errors.append(f"release-evidence: SDK PASS row has no committed build log: {target}")
-        if evidence.get("status") != "PASS":
-            errors.append(f"release-evidence: SDK PASS row evidence status is not PASS: {target}")
-        values = evidence.get("values", {}) if isinstance(evidence.get("values", {}), dict) else {}
-        if not any(int(values.get(key, 0) or 0) > 0 for key in ["IRAM", "DRAM", "BSS", "DATA", "APP_BIN"]):
-            errors.append(f"release-evidence: SDK PASS row has no non-zero memory evidence: {target}")
+            log_text = None
+        else:
+            log_text = log_path.read_text(encoding="utf-8", errors="ignore")
+        for err in _sdk_pass_evidence_errors(target, evidence, log_text):
+            errors.append(f"release-evidence: {err}")
 
 def check_sdk_import_evidence_contracts(errors: list[str]) -> None:
     importer = ROOT / "tools" / "release" / "import_sdk_evidence.py"
+    flash_parser = ROOT / "tools" / "release" / "parse_esptool_flash_log.py"
     manifest = ROOT / "config" / "sdk_evidence_import.def"
     report = ROOT / "docs" / "release" / "sdk_imported_build_map_stack_evidence_report.md"
     if not importer.is_file():
         errors.append("release-evidence: SDK import tool missing")
+    if not flash_parser.is_file():
+        errors.append("release-evidence: esptool flash parser missing")
     if not manifest.is_file():
         errors.append("release-evidence: SDK import manifest missing")
     if not report.is_file():
@@ -74,22 +113,28 @@ def check_sdk_import_evidence_contracts(errors: list[str]) -> None:
         if not ev.is_file():
             continue
         data = _load_evidence_for_target(target_dir.name)
-        if data.get("status") != "PASS":
-            continue
-        log_path = ROOT / str(data.get("build_log", ""))
-        if not log_path.is_file():
-            errors.append(f"release-evidence: imported SDK PASS without committed build log: {target_dir.name}")
-            continue
-        text = log_path.read_text(encoding="utf-8", errors="ignore")
-        if not re.search(r"EV_SDK_BUILD_STATUS=PASS|EV_MEM_REPORT_RESULT PASS", text):
-            errors.append(f"release-evidence: imported SDK PASS without PASS marker: {target_dir.name}")
-        values = data.get("values", {}) if isinstance(data.get("values", {}), dict) else {}
-        if not any(int(values.get(key, 0) or 0) > 0 for key in ["IRAM", "DRAM", "BSS", "DATA", "APP_BIN"]):
-            errors.append(f"release-evidence: imported SDK PASS without non-zero EV_MEM: {target_dir.name}")
-        for rel_key in ["build_log", "size_log", "map_summary", "stack_usage", "sdkconfig_effective"]:
-            rel = data.get(rel_key, "")
-            if rel and str(rel).lower().endswith((".elf", ".bin", ".o", ".a")):
-                errors.append(f"release-evidence: forbidden binary SDK artifact in evidence: {target_dir.name}:{rel}")
+        if data.get("status") == "PASS":
+            log_path = ROOT / str(data.get("build_log", ""))
+            log_text = log_path.read_text(encoding="utf-8", errors="ignore") if log_path.is_file() else None
+            for err in _sdk_pass_evidence_errors(target_dir.name, data, log_text):
+                errors.append(f"release-evidence: imported {err}")
+        flash_ev = target_dir / "flash_evidence.json"
+        if flash_ev.is_file():
+            try:
+                import json
+                flash = json.loads(flash_ev.read_text(encoding="utf-8", errors="ignore"))
+            except Exception:
+                errors.append(f"release-evidence: invalid flash evidence JSON: {target_dir.name}")
+                continue
+            if flash.get("status") == "PASS":
+                if flash.get("evidence_kind") != "esptool_flash":
+                    errors.append(f"release-evidence: flash PASS has wrong evidence_kind: {target_dir.name}")
+                if flash.get("target") != target_dir.name:
+                    errors.append(f"release-evidence: flash PASS target mismatch: {target_dir.name}")
+                if flash.get("chip_detected") != "ESP8266EX" or not flash.get("write_seen") or not flash.get("hash_verified"):
+                    errors.append(f"release-evidence: flash PASS without ESP8266EX/write/hash proof: {target_dir.name}")
+                if not flash.get("flash_log_sha256"):
+                    errors.append(f"release-evidence: flash PASS lacks flash log SHA-256: {target_dir.name}")
 
 FINAL_SUMMARY = ROOT / "docs" / "release" / "final_release_validation_summary.md"
 HIL_REPORTS = [

@@ -87,3 +87,7 @@ make hil-wemos-smoke-late-attach-self-test
 This improves Wemos smoke release evidence and Filar 5 by making real runtime
 logs robust to late serial monitor attachment without weakening deep-sleep or
 hardware eventflow requirements.
+
+## Operator interrupt footer
+
+Late-attached Wemos smoke evidence may end with `^C` and `[process exited with code 130]` when the operator stops the monitor. The parser records this as `CONTROLLED_MONITOR_STOP` while preserving the requirement for monotonic tick/snapshot evidence. Deep-sleep/wake evidence remains strict.

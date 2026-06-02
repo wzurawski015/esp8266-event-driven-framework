@@ -16,6 +16,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+import sys
+sys.path.insert(0, str(ROOT / "tools" / "release"))
+from operator_exit_footer import strip_footer
+
 SMOKE_REPORT = ROOT / "docs" / "release" / "wemos_esp_wroom_02_18650_smoke_report.md"
 DEEPSLEEP_REPORT = ROOT / "docs" / "release" / "wemos_esp_wroom_02_18650_deep_sleep_wake_report.md"
 SMOKE_EVIDENCE = ROOT / "docs" / "release" / "hil_evidence" / "wemos_smoke" / "current"
@@ -98,7 +102,8 @@ def enough_runtime_alive(ticks: list[int], snaps: list[int]) -> bool:
 
 
 def parse_text(text: str, *, require_deepsleep: bool, allow_runtime_alive_fallback: bool = False) -> dict[str, object]:
-    text = redact(text)
+    redacted_text = redact(text)
+    text, operator_footer, _operator_footer_text = strip_footer(redacted_text)
     ticks = [int(m.group(1), 10) for m in TICK_RE.finditer(text)]
     snaps = [int(m.group(1), 10) for m in SNAP_RE.finditer(text)]
     states = [m.group(1) for m in STATE_RE.finditer(text)]
@@ -192,11 +197,16 @@ def parse_text(text: str, *, require_deepsleep: bool, allow_runtime_alive_fallba
         "states": states,
         "fallback_reason": fallback_reason,
         "failures": failures,
+        "operator_interrupt_seen": bool(operator_footer.get("operator_interrupt_seen")),
+        "operator_exit_code": operator_footer.get("operator_exit_code"),
+        "operator_exit_signal": operator_footer.get("operator_exit_signal"),
+        "operator_exit_classification": operator_footer.get("operator_exit_classification"),
     }
 
 
 def normalized_text(raw_text: str, parsed: dict[str, object]) -> str:
-    text = redact(raw_text).rstrip() + "\n"
+    text, _operator_footer, _operator_footer_text = strip_footer(redact(raw_text))
+    text = text.rstrip() + "\n"
     if parsed.get("status") == "PASS" and parsed.get("runtime_alive_fallback"):
         text += "EV_WEMOS_SMOKE_RESULT PASS failures=0 skipped=0 mode=runtime_alive_fallback normalized_by=parse_wemos_smoke_log.py\n"
     return text
@@ -229,12 +239,21 @@ def write_report(parsed: dict[str, object], evidence_dir: Path, report: Path, se
 
 def write_evidence(text: str, evidence_dir: Path, *, require_deepsleep: bool, allow_runtime_alive_fallback: bool = False, normalize: bool = False) -> int:
     evidence_dir.mkdir(parents=True, exist_ok=True)
+    redacted_text = redact(text)
+    firmware_text, operator_footer, operator_footer_text = strip_footer(redacted_text)
     parsed = parse_text(text, require_deepsleep=require_deepsleep, allow_runtime_alive_fallback=allow_runtime_alive_fallback)
+    if operator_footer_text:
+        footer = evidence_dir / "operator_footer.log"
+        footer.write_text(operator_footer_text, encoding="utf-8")
+        parsed.update({
+            "operator_footer_log": rel_or_str(footer),
+            "operator_footer_sha256": sha256(footer),
+        })
 
     if normalize:
         raw = evidence_dir / "serial.raw.log"
         norm = evidence_dir / "serial.normalized.log"
-        raw.write_text(redact(text), encoding="utf-8")
+        raw.write_text(redacted_text, encoding="utf-8")
         norm.write_text(normalized_text(text, parsed), encoding="utf-8")
         serial = evidence_dir / "serial.log"
         serial.write_text(norm.read_text(encoding="utf-8"), encoding="utf-8")
@@ -249,7 +268,7 @@ def write_evidence(text: str, evidence_dir: Path, *, require_deepsleep: bool, al
         })
     else:
         serial = evidence_dir / "serial.log"
-        serial.write_text(redact(text), encoding="utf-8")
+        serial.write_text(firmware_text, encoding="utf-8")
         parsed.update({"serial_log": rel_or_str(serial), "serial_sha256": sha256(serial), "normalized": False})
 
     (evidence_dir / "parsed.json").write_text(json.dumps(parsed, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -321,13 +340,18 @@ EV_WEMOS_SMOKE_SNAPSHOT seq=10
     late_pass = parse_text(late, require_deepsleep=False, allow_runtime_alive_fallback=True)
     assert late_pass["status"] == "PASS" and late_pass["runtime_alive_fallback"] is True
     assert parse_text(late.replace("seq=9", "seq=8"), require_deepsleep=False, allow_runtime_alive_fallback=True)["status"] == "FAIL"
-    assert parse_text(late + "panic\n", require_deepsleep=False, allow_runtime_alive_fallback=True)["status"] == "FAIL"
+    footer = "^C\n--- exit ---\n[process exited with code 130 (0x00000082)]\n"
+    with_footer = parse_text(late + footer, require_deepsleep=False, allow_runtime_alive_fallback=True)
+    assert with_footer["status"] == "PASS" and with_footer["operator_exit_code"] == 130
+    assert with_footer["operator_exit_classification"] == "CONTROLLED_MONITOR_STOP"
+    assert parse_text(footer, require_deepsleep=False, allow_runtime_alive_fallback=True)["status"] == "FAIL"
+    assert parse_text(late + "panic\n" + footer, require_deepsleep=False, allow_runtime_alive_fallback=True)["status"] == "FAIL"
     firmware_alive = late + "EV_WEMOS_SMOKE_RESULT PASS failures=0 skipped=0 mode=firmware_runtime_alive\n"
     fw = parse_text(firmware_alive, require_deepsleep=False, allow_runtime_alive_fallback=True)
     assert fw["status"] == "PASS" and fw["firmware_runtime_alive_result_seen"] is True
     deep = smoke + "EV_POWER_SMOKE_SLEEP_REQUEST duration_us=1000000\n" + "\n".join(f"EV_POWER_SMOKE_STATE {state}" for state in STATE_ORDER) + "\nEV_POWER_SMOKE_DEEP_SLEEP_ENTER\nEV_POWER_SMOKE_WAKE_BOOT\nEV_POWER_SMOKE_WAKE_REASON reason=timer\nEV_POWER_SMOKE_RESULT PASS\n"
     assert parse_text(deep, require_deepsleep=True)["status"] == "PASS"
-    assert parse_text(late, require_deepsleep=True, allow_runtime_alive_fallback=True)["status"] == "FAIL"
+    assert parse_text(late + "^C\n[process exited with code 130 (0x00000082)]\n", require_deepsleep=True, allow_runtime_alive_fallback=True)["status"] == "FAIL"
     assert parse_text(deep.replace("EV_POWER_SMOKE_WAKE_BOOT", ""), require_deepsleep=True)["status"] == "FAIL"
     assert "<REDACTED>" in redact("COMMAND_TOKEN=secret")
     assert safe_read_log(Path("/path/wemos-smoke.log"))[0] == "ENVIRONMENT_BLOCKED"

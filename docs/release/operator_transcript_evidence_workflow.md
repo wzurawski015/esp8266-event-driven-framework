@@ -43,3 +43,15 @@ sha256sums.txt
 `serial.raw.log` may be checked by `tools/hil/parse_wemos_smoke_log.py --allow-runtime-alive-fallback --normalize`.  Wemos smoke fallback is accepted only for a clean extracted serial segment, never for the entire mixed transcript.  Deep-sleep/wake evidence remains strict and must not use runtime-alive fallback.
 
 Private repo secrets are allowed by owner policy, but values must be redacted from staged logs and reports.
+
+## Operator monitor exit footer classification
+
+If an operator stops a raw serial monitor with Ctrl+C, a terminal wrapper may append:
+
+```text
+^C
+--- exit ---
+[process exited with code 130 (0x00000082)]
+```
+
+This is `SIGINT` from the operator, not a firmware panic. The splitter records it as `CONTROLLED_MONITOR_STOP` in `manifest.json` and writes the terminal wrapper lines to `operator_footer.log`. The footer is not direct PASS evidence. Smoke PASS still comes only from Wemos markers or the explicit runtime-alive fallback parser.

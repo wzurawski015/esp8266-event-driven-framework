@@ -20,6 +20,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from operator_exit_footer import classify_footer_lines
+# Contract dependency: tools/release/operator_exit_footer.py
+
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_EVIDENCE_ROOT = ROOT / "docs" / "release" / "operator_transcript_evidence"
 
@@ -122,7 +125,7 @@ def contiguous_range(indices: list[int]) -> tuple[int, int] | None:
     return min(indices), max(indices) + 1
 
 
-def classify_segments(lines: list[str], target: str) -> list[Segment]:
+def classify_segments(lines: list[str], target: str, footer_start_index: int | None = None) -> list[Segment]:
     build_indices = [i for i, line in enumerate(lines) if BUILD_HINT_RE.search(line)]
     flash_indices = [i for i, line in enumerate(lines) if FLASH_HINT_RE.search(line)]
 
@@ -159,7 +162,9 @@ def classify_segments(lines: list[str], target: str) -> list[Segment]:
         segments.append(Segment("esptool_flash", flash_range[0], flash_range[1], "flash.log"))
 
     if serial_start is not None:
-        segments.append(Segment("wemos_serial", serial_start, len(lines), "serial.raw.log"))
+        serial_end = footer_start_index if footer_start_index is not None and footer_start_index > serial_start else len(lines)
+        if serial_end > serial_start:
+            segments.append(Segment("wemos_serial", serial_start, serial_end, "serial.raw.log"))
 
     # Sort and avoid obviously overlapping build/flash segments in manifest consumers.
     segments.sort(key=lambda s: (s.start, s.end, s.kind))
@@ -228,8 +233,30 @@ def stage_transcript(*, input_path: Path, target: str, output_dir: Path, run_par
     lines = redacted_text.splitlines()
     source_sha = sha256_file(source_path)
 
-    segments = classify_segments(lines, target)
+    footer_info = classify_footer_lines(lines)
+    footer_start = footer_info.get("footer_start_index")
+    segments = classify_segments(lines, target, int(footer_start) if footer_start is not None else None)
     manifest_segments: list[dict[str, Any]] = []
+
+    operator_footer_entry: dict[str, Any] | None = None
+    footer_start_index = footer_info.get("footer_start_index")
+    footer_end_index = footer_info.get("footer_end_index")
+    if footer_start_index is not None and footer_end_index is not None:
+        footer_start_i = int(footer_start_index)
+        footer_end_i = int(footer_end_index)
+        footer_text = "\n".join(lines[footer_start_i:footer_end_i]).rstrip() + "\n"
+        footer_path = output_dir / "operator_footer.log"
+        write_text(footer_path, footer_text)
+        operator_footer_entry = {
+            "operator_footer_path": "operator_footer.log",
+            "operator_footer_sha256": sha256_file(footer_path),
+            "operator_footer_line_start": footer_start_i + 1,
+            "operator_footer_line_end": footer_end_i,
+            "operator_interrupt_seen": bool(footer_info.get("operator_interrupt_seen")),
+            "operator_exit_code": footer_info.get("operator_exit_code"),
+            "operator_exit_signal": footer_info.get("operator_exit_signal"),
+            "operator_exit_classification": footer_info.get("operator_exit_classification"),
+        }
 
     for segment in segments:
         segment_text = "\n".join(lines[segment.start:segment.end]).rstrip() + "\n"
@@ -296,7 +323,13 @@ def stage_transcript(*, input_path: Path, target: str, output_dir: Path, run_par
         "line_count": len(lines),
         "segments": manifest_segments,
         "policy": "mixed transcript itself is never PASS evidence; only extracted sublogs may be passed to strict parsers",
+        "operator_interrupt_seen": bool(footer_info.get("operator_interrupt_seen")),
+        "operator_exit_code": footer_info.get("operator_exit_code"),
+        "operator_exit_signal": footer_info.get("operator_exit_signal"),
+        "operator_exit_classification": footer_info.get("operator_exit_classification"),
     }
+    if operator_footer_entry is not None:
+        manifest.update(operator_footer_entry)
     write_text(output_dir / "manifest.json", json.dumps(manifest, indent=2, sort_keys=True) + "\n")
 
     excerpt = ["# Operator transcript evidence staging excerpt", "", f"Target: `{target}`", f"Source SHA-256: `{source_sha}`", "", "| Segment | Status | Lines | Path | Reason |", "|---|---:|---:|---|---|"]
@@ -363,6 +396,10 @@ EV_WEMOS_SMOKE_SNAPSHOT seq=11
 EV_WEMOS_SMOKE_TICK seq=12
 EV_WEMOS_SMOKE_SNAPSHOT seq=12
 COMMAND_TOKEN=OPERATOR_TEST_TOKEN_VALUE_SHOULD_REDACT
+^C
+--- exit ---
+[process exited with code 130 (0x00000082)]
+You can now close this terminal with Ctrl+D, or press Enter to restart.
 """
     with tempfile.TemporaryDirectory(dir=str(ROOT / "build" if (ROOT / "build").is_dir() else ROOT)) as td:
         d = Path(td)
@@ -381,6 +418,11 @@ COMMAND_TOKEN=OPERATOR_TEST_TOKEN_VALUE_SHOULD_REDACT
         assert "OPERATOR_TEST_TOKEN_VALUE_SHOULD_REDACT" not in raw and "<REDACTED>" in raw
         assert (d / "stage" / "manifest.json").is_file()
         assert (d / "stage" / "sha256sums.txt").is_file()
+        assert (d / "stage" / "operator_footer.log").is_file()
+        assert manifest["operator_interrupt_seen"] is True
+        assert manifest["operator_exit_code"] == 130
+        assert manifest["operator_exit_classification"] == "CONTROLLED_MONITOR_STOP"
+        assert "process exited" not in (d / "stage" / "serial.raw.log").read_text(encoding="utf-8")
 
     whole_status, _reason, whole_text = safe_read_text(log) if False else ("PASS", "", mixed)
     # Whole transcript contains a reset marker; Wemos parser must reject it even with fallback.

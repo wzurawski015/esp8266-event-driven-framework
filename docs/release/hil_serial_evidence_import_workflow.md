@@ -35,3 +35,7 @@ make hil-import-wemos-smoke-late-attach-evidence
 This invokes `parse_wemos_smoke_log.py --allow-runtime-alive-fallback --normalize`.
 Fallback PASS is only valid for smoke/runtime-alive evidence. It is never accepted
 for Wemos deep-sleep/wake PASS.
+
+## Ctrl+C / exit code 130
+
+A serial transcript may end with code 130 when the operator presses Ctrl+C. Treat this as an operator-controlled monitor stop only after parsing real firmware markers. Do not use code 130 as PASS proof. Do not treat code 130 alone as firmware failure.

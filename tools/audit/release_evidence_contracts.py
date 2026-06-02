@@ -471,6 +471,12 @@ def check_operator_transcript_evidence(errors: list[str]) -> None:
             errors.append(f"release-evidence: operator manifest lacks source SHA-256: {manifest_path.relative_to(ROOT).as_posix()}")
         if manifest.get("status") == "PASS" and manifest.get("evidence_kind") != "operator_transcript_staging":
             errors.append(f"release-evidence: operator transcript PASS has wrong evidence kind: {manifest_path.relative_to(ROOT).as_posix()}")
+        if manifest.get("operator_interrupt_seen"):
+            if manifest.get("operator_exit_code") != 130 or manifest.get("operator_exit_classification") != "CONTROLLED_MONITOR_STOP":
+                errors.append(f"release-evidence: operator interrupt manifest must classify code 130 as CONTROLLED_MONITOR_STOP: {manifest_path.relative_to(ROOT).as_posix()}")
+            for required in ["operator_footer_path", "operator_footer_sha256", "operator_footer_line_start", "operator_footer_line_end"]:
+                if not manifest.get(required):
+                    errors.append(f"release-evidence: operator interrupt manifest missing {required}: {manifest_path.relative_to(ROOT).as_posix()}")
         for seg in manifest.get("segments", []):
             if not seg.get("sha256") or not seg.get("source_line_start") or not seg.get("source_line_end"):
                 errors.append(f"release-evidence: operator segment lacks SHA/source lines: {manifest_path.relative_to(ROOT).as_posix()}:{seg.get('kind')}")
@@ -482,6 +488,8 @@ def check_operator_transcript_evidence(errors: list[str]) -> None:
                     errors.append("release-evidence: operator flash PASS must come from parse_esptool_flash_log.py hash proof")
             if seg.get("kind") == "wemos_serial" and seg.get("status") == "PASS":
                 parser_json = seg.get("parser_json", {}) if isinstance(seg.get("parser_json"), dict) else {}
+                if manifest.get("operator_interrupt_seen") and not (seg.get("runtime_alive_fallback") or parser_json.get("marker_based")):
+                    errors.append("release-evidence: operator code 130 cannot be Wemos smoke PASS without smoke markers or runtime-alive fallback")
                 if seg.get("runtime_alive_fallback") and parser_json.get("mode") != "runtime_alive_fallback":
                     errors.append("release-evidence: operator Wemos fallback PASS lacks runtime_alive_fallback parser mode")
                 if seg.get("source_line_start", 0) <= 0 or not seg.get("sha256"):

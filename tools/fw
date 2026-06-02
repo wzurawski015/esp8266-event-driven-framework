@@ -1209,7 +1209,7 @@ sdk_simple_monitor() {
   require_sdkconfig_file
   require_serial_port
   printf "simple serial monitor: %s @ %s\n" "$SDK_SERIAL_PORT" "$SDK_MONITOR_BAUD" >&2
-  printf "quit with Ctrl+C\n" >&2
+  printf "quit with Ctrl+C (terminal wrappers may report exit code 130; that means operator stopped the monitor, not firmware failure)\n" >&2
   printf "note: runtime logs are expected at %s; earliest ESP8266 ROM boot text may still appear at 74880 baud.\n" "$SDK_MONITOR_BAUD" >&2
   run_in_sdk_with_device_i \
     python3 -u /work/tools/serial_monitor.py "$SDK_SERIAL_PORT" "$SDK_MONITOR_BAUD"

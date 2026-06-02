@@ -28,7 +28,7 @@ SNAP_RE = re.compile(r"EV_WEMOS_SMOKE_SNAPSHOT\s+seq=([0-9]+)")
 SMOKE_RESULT_PASS_RE = re.compile(r"EV_WEMOS_SMOKE_RESULT\s+PASS(?:\s+[^\n]*)?")
 FIRMWARE_RUNTIME_ALIVE_RE = re.compile(r"EV_WEMOS_SMOKE_RESULT\s+PASS[^\n]*mode=firmware_runtime_alive")
 RESET_FAIL_RE = re.compile(
-    r"EV_WEMOS_SMOKE_RESULT\s+FAIL|\bpanic\b|\bfatal\b|\bexception\b|wdt\s+reset|watchdog|rst cause|abort\(",
+    r"EV_WEMOS_SMOKE_RESULT\s+FAIL|\bpanic\b|\bfatal\b|\bexception\b|wdt\s+reset|watchdog|rst cause|Hard resetting via RTS pin|esptool\.py|abort\(",
     re.IGNORECASE,
 )
 STATE_ORDER = [

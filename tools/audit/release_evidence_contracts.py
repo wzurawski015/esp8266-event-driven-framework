@@ -440,6 +440,56 @@ def check_hil_import_contracts(errors: list[str]) -> None:
         if not (ROOT / rel).is_file():
             errors.append(f"release-evidence: HIL import documentation missing: {rel}")
 
+
+def check_operator_transcript_evidence(errors: list[str]) -> None:
+    tool = ROOT / "tools" / "release" / "split_operator_transcript.py"
+    if not tool.is_file():
+        errors.append("release-evidence: operator transcript splitter missing")
+    for rel in [
+        "docs/release/operator_transcript_evidence_workflow.md",
+        "docs/release/operator_transcript_splitter_report.md",
+        "docs/release/operator_transcript_splitter_release_report.md",
+    ]:
+        if not (ROOT / rel).is_file():
+            errors.append(f"release-evidence: operator transcript documentation missing: {rel}")
+
+    root = ROOT / "docs" / "release" / "operator_transcript_evidence"
+    if not root.exists():
+        return
+    try:
+        import json
+    except Exception:
+        errors.append("release-evidence: json module unavailable for operator transcript evidence")
+        return
+    for manifest_path in root.glob("**/manifest.json"):
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8", errors="ignore"))
+        except Exception:
+            errors.append(f"release-evidence: invalid operator transcript manifest: {manifest_path.relative_to(ROOT).as_posix()}")
+            continue
+        if not manifest.get("source_sha256"):
+            errors.append(f"release-evidence: operator manifest lacks source SHA-256: {manifest_path.relative_to(ROOT).as_posix()}")
+        if manifest.get("status") == "PASS" and manifest.get("evidence_kind") != "operator_transcript_staging":
+            errors.append(f"release-evidence: operator transcript PASS has wrong evidence kind: {manifest_path.relative_to(ROOT).as_posix()}")
+        for seg in manifest.get("segments", []):
+            if not seg.get("sha256") or not seg.get("source_line_start") or not seg.get("source_line_end"):
+                errors.append(f"release-evidence: operator segment lacks SHA/source lines: {manifest_path.relative_to(ROOT).as_posix()}:{seg.get('kind')}")
+            if seg.get("kind") == "sdk_build" and seg.get("status") == "PASS" and not seg.get("canonical_sdk_markers_seen"):
+                errors.append("release-evidence: operator build segment cannot be SDK PASS without canonical markers")
+            if seg.get("kind") == "esptool_flash" and seg.get("status") == "PASS":
+                parser_json = seg.get("parser_json", {}) if isinstance(seg.get("parser_json"), dict) else {}
+                if parser_json.get("evidence_kind") != "esptool_flash" or not parser_json.get("hash_verified"):
+                    errors.append("release-evidence: operator flash PASS must come from parse_esptool_flash_log.py hash proof")
+            if seg.get("kind") == "wemos_serial" and seg.get("status") == "PASS":
+                parser_json = seg.get("parser_json", {}) if isinstance(seg.get("parser_json"), dict) else {}
+                if seg.get("runtime_alive_fallback") and parser_json.get("mode") != "runtime_alive_fallback":
+                    errors.append("release-evidence: operator Wemos fallback PASS lacks runtime_alive_fallback parser mode")
+                if seg.get("source_line_start", 0) <= 0 or not seg.get("sha256"):
+                    errors.append("release-evidence: operator Wemos serial PASS lacks source range/SHA")
+        manifest_text = manifest_path.read_text(encoding="utf-8", errors="ignore")
+        if re.search(r"WIFI_PASSWORD|COMMAND_TOKEN", manifest_text) and "<REDACTED>" not in manifest_text:
+            errors.append(f"release-evidence: operator transcript manifest may contain secret token: {manifest_path.relative_to(ROOT).as_posix()}")
+
 def self_test() -> None:
     assert status_cells(["foo", "PASS", "bar"]) == ["PASS"]
     assert status_cells(["foo", "NOT_RUN"]) == ["NOT_RUN"]
@@ -458,6 +508,7 @@ def main() -> int:
     check_sdk_evidence_files(errors)
     check_sdk_import_evidence_contracts(errors)
     check_hil_import_contracts(errors)
+    check_operator_transcript_evidence(errors)
     if errors:
         for error in errors:
             print(error, file=sys.stderr)

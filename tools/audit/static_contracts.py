@@ -1037,6 +1037,37 @@ for rel in [
     if not (ROOT / rel).is_file():
         errors.append(f"evidence hardening documentation missing: {rel}")
 
+
+# Operator transcript splitter contracts.
+splitter = ROOT / "tools" / "release" / "split_operator_transcript.py"
+if not splitter.exists():
+    errors.append("operator transcript evidence: missing tools/release/split_operator_transcript.py")
+else:
+    text = splitter.read_text(encoding="utf-8", errors="ignore")
+    for token in ["operator_transcript.raw.log", "manifest.json", "source_line_start", "source_line_end", "mixed transcript itself is never PASS evidence", "whole transcript", "extracted serial", "--run-parsers", "--self-test"]:
+        if token not in text:
+            errors.append(f"operator transcript evidence: splitter missing contract token {token}")
+    for token in ["parse_esptool_flash_log.py", "parse_wemos_smoke_log.py", "--allow-runtime-alive-fallback", "EV_SDK_BUILD_TARGET"]:
+        if token not in text:
+            errors.append(f"operator transcript evidence: splitter missing parser/SDK token {token}")
+    if "COMMAND_TOKEN=OPERATOR_TEST_TOKEN_VALUE_SHOULD_REDACT" not in text or "<REDACTED>" not in text:
+        errors.append("operator transcript evidence: splitter self-test must cover secret redaction")
+for target in ["operator-transcript-split-self-test", "operator-transcript-stage-evidence", "operator-transcript-evidence-gate"]:
+    if f"{target}:" not in makefile_text:
+        errors.append(f"operator transcript evidence target missing from Makefile: {target}")
+for rel in [
+    "docs/release/operator_transcript_evidence_workflow.md",
+    "docs/release/operator_transcript_splitter_report.md",
+    "docs/release/operator_transcript_splitter_release_report.md",
+]:
+    if not (ROOT / rel).is_file():
+        errors.append(f"operator transcript evidence documentation missing: {rel}")
+if (ROOT / "docs" / "release" / "operator_transcript_evidence_workflow.md").is_file():
+    doc = (ROOT / "docs" / "release" / "operator_transcript_evidence_workflow.md").read_text(encoding="utf-8", errors="ignore")
+    for token in ["mixed transcript", "not direct PASS evidence", "build.log", "flash.log", "serial.raw.log", "canonical SDK markers"]:
+        if token not in doc:
+            errors.append(f"operator transcript workflow missing required phrase: {token}")
+
 if errors:
     for error in errors:
         print(error)

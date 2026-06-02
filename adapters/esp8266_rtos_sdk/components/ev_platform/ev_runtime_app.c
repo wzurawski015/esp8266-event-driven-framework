@@ -43,6 +43,18 @@ static void ev_runtime_app_logf(ev_log_port_t *log_port,
 }
 
 
+static void ev_runtime_app_log_marker(ev_log_port_t *log_port,
+                                      const ev_boot_diag_config_t *cfg,
+                                      const char *marker)
+{
+    if ((cfg == NULL) || (cfg->smoke_markers_enabled == 0U) || (marker == NULL)) {
+        return;
+    }
+
+    ev_runtime_app_logf(log_port, EV_LOG_INFO, cfg->board_tag, "%s", marker);
+}
+
+
 static ev_result_t ev_runtime_app_now_ms(const ev_clock_port_t *clock_port, uint32_t *out_now_ms)
 {
     ev_time_mono_us_t now_us = 0U;
@@ -183,6 +195,7 @@ void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg,
     ev_demo_app_config_t app_cfg = {0};
     ev_result_t rc;
     uint32_t smoke_seq = 0U;
+    bool smoke_result_emitted = false;
 
     if (!ev_runtime_app_config_is_valid(cfg)) {
         return;
@@ -230,6 +243,7 @@ void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg,
         cfg->board_tag,
         "reset reason: %s",
         ev_reset_reason_to_cstr(reset_reason));
+    ev_runtime_app_log_marker(&log_port, cfg, cfg->smoke_boot_marker);
     ev_runtime_app_logf(&log_port, EV_LOG_INFO, cfg->board_tag, "EV_WEMOS_SMOKE_WAKE_REASON reason=%s", ev_reset_reason_to_cstr(reset_reason));
     if (reset_reason == EV_RESET_REASON_DEEP_SLEEP) {
         ev_runtime_app_logf(&log_port, EV_LOG_INFO, cfg->board_tag, "EV_POWER_SMOKE_WAKE_BOOT");
@@ -260,6 +274,9 @@ void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg,
         return;
     }
 
+    ev_runtime_app_log_marker(&log_port, cfg, cfg->smoke_ready_marker);
+    (void)log_port.flush(log_port.ctx);
+
     for (;;) {
         rc = ev_demo_app_poll(&s_app);
         if ((rc != EV_OK) && (rc != EV_ERR_PARTIAL)) {
@@ -273,6 +290,14 @@ void ev_esp8266_runtime_app_run(const ev_boot_diag_config_t *cfg,
         if ((smoke_seq <= 3U) || ((smoke_seq % 16U) == 0U)) {
             ev_runtime_app_logf(&log_port, EV_LOG_INFO, cfg->board_tag, "EV_WEMOS_SMOKE_TICK seq=%u", (unsigned)smoke_seq);
             ev_runtime_app_logf(&log_port, EV_LOG_INFO, cfg->board_tag, "EV_WEMOS_SMOKE_SNAPSHOT seq=%u pending=%u", (unsigned)smoke_seq, (unsigned)ev_demo_app_pending(&s_app));
+            if (!smoke_result_emitted &&
+                (cfg->smoke_markers_enabled != 0U) &&
+                (cfg->smoke_result_marker != NULL) &&
+                (cfg->smoke_runtime_alive_result_after_samples != 0U) &&
+                (smoke_seq >= (uint32_t)cfg->smoke_runtime_alive_result_after_samples)) {
+                ev_runtime_app_log_marker(&log_port, cfg, cfg->smoke_result_marker);
+                smoke_result_emitted = true;
+            }
             (void)log_port.flush(log_port.ctx);
         }
         ev_runtime_app_wait_for_work(&s_app, &clock_port, irq_port);

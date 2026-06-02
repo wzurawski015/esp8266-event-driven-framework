@@ -189,7 +189,7 @@ BENCH_BINS := $(addprefix $(BENCH_BUILD_DIR)/,$(BENCH_TESTS))
 BENCH_RESULTS := $(BENCH_BUILD_DIR)/results.txt
 PERF_BUDGETS ?= config/perf_budgets.json
 
-.PHONY: all host-test property-test host-strict-test host-sanitize-cc-check host-sanitize-test host-tsan-cc-check host-tsan-test clang-tidy-gate host-gcc-analyzer-gate host-static-analysis-gate static-analysis-gate host-coverage-test coverage-report coverage-gate fuzz-smoke-gate fuzz-sanitize-gate ub-hardening-gate safety-gate hotpath-zero-alloc-gate bench perf-report perf-budget-gate perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts qos-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate sdk-build-evidence sdk-map-stack-evidence sdk-evidence-gate sdk-import-evidence sdk-import-evidence-gate sdk-import-flash-evidence sdk-flash-evidence-gate sdk-canonical-evidence-gate sdk-full-evidence-gate evidence-importer-hardening-gate hil-atnel-i2c-flash hil-atnel-i2c-monitor hil-atnel-i2c-evidence hil-atnel-i2c-gate hil-import-atnel-i2c-evidence hil-import-wemos-smoke-evidence hil-import-wemos-deepsleep-evidence hil-import-all-evidence hil-real-evidence-gate hil-wemos-smoke-flash hil-wemos-smoke-monitor hil-wemos-smoke-evidence hil-wemos-smoke-gate hil-wemos-deepsleep-wake-gate eventflow-hardware-evidence-report eventflow-hardware-evidence-gate eventflow-evidence-explain eventflow-release-gate production-release-gate quality-gate release-gate docgen docs clean
+.PHONY: all host-test property-test host-strict-test host-sanitize-cc-check host-sanitize-test host-tsan-cc-check host-tsan-test clang-tidy-gate host-gcc-analyzer-gate host-static-analysis-gate static-analysis-gate host-coverage-test coverage-report coverage-gate fuzz-smoke-gate fuzz-sanitize-gate ub-hardening-gate safety-gate hotpath-zero-alloc-gate bench perf-report perf-budget-gate perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts qos-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate sdk-build-evidence sdk-map-stack-evidence sdk-evidence-gate sdk-import-evidence sdk-import-evidence-gate sdk-import-flash-evidence sdk-flash-evidence-gate sdk-canonical-evidence-gate sdk-full-evidence-gate evidence-importer-hardening-gate hil-atnel-i2c-flash hil-atnel-i2c-monitor hil-atnel-i2c-evidence hil-atnel-i2c-gate hil-import-atnel-i2c-evidence hil-import-wemos-smoke-evidence hil-import-wemos-smoke-late-attach-evidence hil-import-wemos-deepsleep-evidence hil-import-all-evidence hil-wemos-smoke-late-attach-self-test hil-real-evidence-gate hil-wemos-smoke-flash hil-wemos-smoke-monitor hil-wemos-smoke-evidence hil-wemos-smoke-gate hil-wemos-deepsleep-wake-gate eventflow-hardware-evidence-report eventflow-hardware-evidence-gate eventflow-evidence-explain eventflow-release-gate production-release-gate quality-gate release-gate docgen docs clean
 .SECONDARY: $(COMMON_OBJS) $(BENCH_COMMON_OBJS)
 
 all: host-test
@@ -474,6 +474,14 @@ hil-import-atnel-i2c-evidence:
 hil-import-wemos-smoke-evidence:
 	$(PYTHON) tools/hil/import_hil_serial_evidence.py --self-test
 	@if [ -n "$${EV_HIL_WEMOS_SMOKE_SERIAL_LOG:-}" ]; then $(PYTHON) tools/hil/parse_wemos_smoke_log.py --log "$${EV_HIL_WEMOS_SMOKE_SERIAL_LOG}"; else echo "hil-import-wemos-smoke-evidence ENVIRONMENT_BLOCKED: EV_HIL_WEMOS_SMOKE_SERIAL_LOG not set"; exit 77; fi
+
+hil-wemos-smoke-late-attach-self-test:
+	$(PYTHON) tools/hil/parse_wemos_smoke_log.py --self-test
+	$(PYTHON) tools/hil/import_hil_serial_evidence.py --self-test
+
+hil-import-wemos-smoke-late-attach-evidence:
+	$(PYTHON) tools/hil/import_hil_serial_evidence.py --self-test
+	@if [ -n "$${EV_HIL_WEMOS_SMOKE_SERIAL_LOG:-}" ]; then $(PYTHON) tools/hil/parse_wemos_smoke_log.py --allow-runtime-alive-fallback --normalize --log "$${EV_HIL_WEMOS_SMOKE_SERIAL_LOG}"; else echo "hil-import-wemos-smoke-late-attach-evidence ENVIRONMENT_BLOCKED: EV_HIL_WEMOS_SMOKE_SERIAL_LOG not set"; exit 77; fi
 
 hil-import-wemos-deepsleep-evidence:
 	$(PYTHON) tools/hil/import_hil_serial_evidence.py --self-test

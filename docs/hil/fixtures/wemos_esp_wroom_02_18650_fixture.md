@@ -31,3 +31,9 @@ runtime-alive fallback. That fallback requires at least three increasing
 `ev_wroom02: app actor: snapshot seq=` values, with no failure, exception or
 reset-loop markers. The report records `mode=runtime_alive_fallback` when this
 fallback is used.
+
+## Serial monitor late attach
+
+When the UART monitor attaches after boot, retain the raw log and import it with
+`hil-import-wemos-smoke-late-attach-evidence` only for smoke/runtime-alive
+validation. Do not use late-attach fallback for deep-sleep/wake validation.

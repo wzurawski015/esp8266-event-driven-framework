@@ -23,3 +23,9 @@ Eventflow PASS depends on real SDK/HIL source evidence. Mixed transcripts,
 self-test markers, missing log files and placeholder paths remain blocked. A
 flash transcript is parsed by the dedicated esptool parser and is not accepted as
 SDK build evidence.
+
+## Wemos smoke fallback policy
+
+The eventflow release gate may accept Wemos smoke evidence with
+`mode=runtime_alive_fallback` only for the smoke/runtime-alive source. Wemos
+deep-sleep/wake sources must remain strict marker proof and cannot use fallback.

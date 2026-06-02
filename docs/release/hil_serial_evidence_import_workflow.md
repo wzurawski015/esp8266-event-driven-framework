@@ -20,3 +20,18 @@ Do not use placeholder paths such as `/path/atnel-i2c.log` or
 `/path/wemos-smoke.log`. Importers now report these as `ENVIRONMENT_BLOCKED`
 without traceback. HIL PASS requires parsed JSON generated from a real serial log
 with the required markers.
+
+## Wemos late-attach smoke import
+
+For Wemos smoke logs where the monitor attached after early boot markers but the
+runtime clearly produced monotonic tick/snapshot evidence, use the explicit
+fallback import path:
+
+```sh
+EV_HIL_WEMOS_SMOKE_SERIAL_LOG=/path/to/serial.log \
+make hil-import-wemos-smoke-late-attach-evidence
+```
+
+This invokes `parse_wemos_smoke_log.py --allow-runtime-alive-fallback --normalize`.
+Fallback PASS is only valid for smoke/runtime-alive evidence. It is never accepted
+for Wemos deep-sleep/wake PASS.

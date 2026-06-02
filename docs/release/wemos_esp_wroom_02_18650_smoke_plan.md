@@ -52,3 +52,12 @@ failure markers. The generated smoke report records whether PASS came from
 ## WiFi opt-in note
 
 WiFi smoke or connectivity experiments require a local `board_secrets.local.h`. The target `component.mk` enables the local include only for the Wemos SDK build when that file exists; global `CFLAGS` must not be used.
+
+## Late-attach serial monitor policy
+
+The preferred proof remains strict marker-based evidence. A secondary
+runtime-alive fallback is allowed only for Wemos smoke logs that contain at least
+three monotonic `EV_WEMOS_SMOKE_TICK` and three monotonic
+`EV_WEMOS_SMOKE_SNAPSHOT` markers and no reset/failure marker. The fallback must
+be marked as `mode=runtime_alive_fallback` in parsed evidence. It cannot be used
+for deep-sleep/wake proof.

@@ -382,8 +382,16 @@ def check_wemos_hil_evidence(errors: list[str]) -> None:
             errors.append(f"release-evidence: {path.relative_to(ROOT).as_posix()} PASS but parsed status is not PASS")
         if not parsed.get("serial_sha256"):
             errors.append(f"release-evidence: {path.relative_to(ROOT).as_posix()} PASS without serial SHA-256")
-        if "deep_sleep" in path.name and parsed.get("mode") != "deepsleep":
-            errors.append("release-evidence: Wemos deep-sleep PASS without deepsleep parsed mode")
+        if "deep_sleep" in path.name:
+            if parsed.get("mode") != "deepsleep":
+                errors.append("release-evidence: Wemos deep-sleep PASS without deepsleep parsed mode")
+            if parsed.get("runtime_alive_fallback"):
+                errors.append("release-evidence: Wemos deep-sleep PASS cannot use runtime-alive fallback")
+        elif parsed.get("runtime_alive_fallback"):
+            if parsed.get("mode") != "runtime_alive_fallback":
+                errors.append("release-evidence: Wemos smoke fallback PASS must use mode=runtime_alive_fallback")
+            if not parsed.get("serial_raw_sha256") and parsed.get("normalized"):
+                errors.append("release-evidence: Wemos fallback PASS normalized evidence lacks raw log SHA-256")
 
 
 def check_eventflow_evidence(errors: list[str]) -> None:
@@ -427,6 +435,7 @@ def check_hil_import_contracts(errors: list[str]) -> None:
     for rel in [
         "docs/release/hil_serial_evidence_import_workflow.md",
         "docs/release/hil_real_atnel_wemos_evidence_report.md",
+        "docs/release/wemos_late_attach_smoke_evidence_report.md",
     ]:
         if not (ROOT / rel).is_file():
             errors.append(f"release-evidence: HIL import documentation missing: {rel}")

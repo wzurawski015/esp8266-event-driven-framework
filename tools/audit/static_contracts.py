@@ -102,20 +102,24 @@ def check_wemos_evidence_contracts() -> None:
         errors.append("static-contracts: missing Wemos smoke parser")
     else:
         text = parser.read_text(encoding="utf-8", errors="ignore")
-        for token in ["EV_WEMOS_SMOKE_BOOT", "EV_WEMOS_SMOKE_RUNTIME_READY", "EV_POWER_SMOKE_STATE", "--self-test"]:
+        for token in ["EV_WEMOS_SMOKE_BOOT", "EV_WEMOS_SMOKE_RUNTIME_READY", "EV_POWER_SMOKE_STATE", "--self-test", "--allow-runtime-alive-fallback", "runtime_alive_fallback", "serial.raw.log", "serial.normalized.log"]:
             if token not in text:
                 errors.append(f"static-contracts: Wemos parser missing {token}")
+        if "runtime-alive fallback is not allowed for deep-sleep evidence" not in text:
+            errors.append("static-contracts: Wemos parser must reject runtime-alive fallback in deep-sleep mode")
     marker_files = [
         ROOT / "adapters" / "esp8266_rtos_sdk" / "targets" / "wemos_esp_wroom_02_18650" / "main" / "app_main.c",
         ROOT / "adapters" / "esp8266_rtos_sdk" / "components" / "ev_platform" / "ev_runtime_app.c",
         ROOT / "actors" / "framework" / "ev_power_actor.c",
     ]
     marker_text = "\n".join(path.read_text(encoding="utf-8", errors="ignore") for path in marker_files if path.is_file())
-    for token in ["EV_WEMOS_SMOKE_BOOT", "EV_WEMOS_SMOKE_RUNTIME_READY", "EV_WEMOS_SMOKE_TICK", "EV_POWER_SMOKE_STATE", "EV_POWER_SMOKE_DEEP_SLEEP_ENTER"]:
+    for token in ["EV_WEMOS_SMOKE_BOOT", "EV_WEMOS_SMOKE_RUNTIME_READY", "EV_WEMOS_SMOKE_TICK", "EV_WEMOS_SMOKE_RESULT PASS", "EV_POWER_SMOKE_STATE", "EV_POWER_SMOKE_DEEP_SLEEP_ENTER"]:
         if token not in marker_text:
             errors.append(f"static-contracts: Wemos/deep-sleep firmware marker missing {token}")
+    if "smoke_runtime_alive_result_after_samples" not in marker_text:
+        errors.append("static-contracts: Wemos firmware must guard runtime-alive smoke result with sample count")
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8", errors="ignore")
-    for target in ["hil-wemos-smoke-evidence", "hil-wemos-smoke-gate", "hil-wemos-deepsleep-wake-gate"]:
+    for target in ["hil-wemos-smoke-evidence", "hil-wemos-smoke-gate", "hil-wemos-deepsleep-wake-gate", "hil-wemos-smoke-late-attach-self-test", "hil-import-wemos-smoke-late-attach-evidence"]:
         if f"{target}:" not in makefile:
             errors.append(f"static-contracts: Makefile missing {target}")
 

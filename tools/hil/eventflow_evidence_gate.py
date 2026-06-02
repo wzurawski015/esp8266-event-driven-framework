@@ -91,9 +91,14 @@ def source_status(src: Source) -> tuple[str, str, dict[str, object] | None, str]
             return 'FAIL','Wemos smoke PASS lacks tick/snapshot sequence',data,path_sha
         if not data.get('serial_sha256'):
             return 'FAIL','Wemos smoke PASS lacks serial SHA-256',data,path_sha
+        if bool(data.get('runtime_alive_fallback', False)):
+            if data.get('mode') != 'runtime_alive_fallback':
+                return 'FAIL','Wemos smoke fallback evidence must use mode=runtime_alive_fallback',data,path_sha
     if src.kind == 'hil_wemos_deepsleep' and status == 'PASS':
         required_states=['ACTIVE','SLEEP_REQUESTED','DRAINING_RUNTIME','LOG_FLUSHING','PORTS_PREPARE_SLEEP','RTC_STATE_SAVED','ENTERING_DEEP_SLEEP']
         states = list(data.get('states', []))
+        if data.get('runtime_alive_fallback'):
+            return 'FAIL','Wemos deep-sleep PASS cannot use runtime-alive fallback',data,path_sha
         if data.get('mode') != 'deepsleep' or not ordered(states, required_states):
             return 'FAIL','Wemos deep-sleep PASS lacks required ordered state sequence',data,path_sha
         if not data.get('serial_sha256'):
@@ -127,7 +132,7 @@ def render_report(result: dict[str, object], parsed: Path, *, final: bool) -> st
     lines=[f'# {title}','', '| Field | Value |','|---|---|', f"| Status | {result['status']} |", f"| Parsed evidence | `{parsed.relative_to(ROOT).as_posix()}` |", f"| Sequence | {result.get('event_sequence','')} |", '', '| Source | Kind | Status | Required | Evidence | SHA-256 | Reason |','|---|---|---:|---:|---|---|---|']
     for row in result['sources']:
         lines.append(f"| `{row['name']}` | `{row['kind']}` | {row['status']} | {row['required']} | `{row['path']}` | `{row.get('path_sha256','')}` | {row.get('reason','')} |")
-    lines += ['', 'A PASS means all required real SDK and HIL sources are present and parsed as PASS. `ENVIRONMENT_BLOCKED` is preserved when hardware or SDK evidence is missing.', '']
+    lines += ['', 'A PASS means all required real SDK and HIL sources are present and parsed as PASS. Wemos smoke may use `mode=runtime_alive_fallback` for late-attached serial logs, but Wemos deep-sleep/wake remains strict and cannot use fallback evidence. `ENVIRONMENT_BLOCKED` is preserved when hardware or SDK evidence is missing.', '']
     return '\n'.join(lines)
 
 
@@ -142,7 +147,8 @@ SDK build -> flashable target -> boot -> runtime ready -> actor tick/snapshot ->
 ```
 
 Every source is listed in `config/eventflow_hardware_evidence.def`. PASS requires parsed JSON,
-source SHA-256 and source-specific marker validation. Missing hardware remains
+source SHA-256 and source-specific marker validation. Wemos smoke can be late-attach
+`runtime_alive_fallback`; deep-sleep/wake cannot. Missing hardware remains
 `ENVIRONMENT_BLOCKED`; it is not softened into PASS.
 """
 
@@ -153,6 +159,8 @@ def self_test() -> int:
     assert ordered(['A','B','C'], ['A','C'])
     result={'status':'PASS','sources':[{'name':'x','kind':'sdk','status':'PASS','required':True,'path':'docs/x.json','path_sha256':'abc','reason':''}]}
     assert 'PASS' in render_report(result, EVIDENCE_DIR/'parsed.json', final=True)
+    smoke = {'status':'PASS','tick_count':3,'snapshot_count':3,'serial_sha256':'abc','runtime_alive_fallback':True,'mode':'runtime_alive_fallback'}
+    assert source_status(Source('w','hil_wemos_smoke','docs/missing.json',True))[0] in {'ENVIRONMENT_BLOCKED','NOT_RUN'}
     print('EVENTFLOW_EVIDENCE_GATE_SELF_TEST PASS')
     return 0
 

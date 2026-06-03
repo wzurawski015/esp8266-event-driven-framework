@@ -498,6 +498,40 @@ def check_operator_transcript_evidence(errors: list[str]) -> None:
         if re.search(r"WIFI_PASSWORD|COMMAND_TOKEN", manifest_text) and "<REDACTED>" not in manifest_text:
             errors.append(f"release-evidence: operator transcript manifest may contain secret token: {manifest_path.relative_to(ROOT).as_posix()}")
 
+
+
+def check_wemos_one_shot_evidence(errors: list[str]) -> None:
+    root = ROOT / "docs" / "release" / "wemos_one_shot_evidence"
+    if not root.exists():
+        return
+    for manifest_path in root.glob("**/manifest.json"):
+        try:
+            data = json.loads(manifest_path.read_text(encoding="utf-8", errors="ignore"))
+        except Exception:
+            errors.append(f"release-evidence: invalid Wemos one-shot manifest: {manifest_path.relative_to(ROOT).as_posix()}")
+            continue
+        if data.get("evidence_kind") != "wemos_one_shot_bundle":
+            errors.append(f"release-evidence: Wemos one-shot manifest has wrong evidence_kind: {manifest_path.relative_to(ROOT).as_posix()}")
+        if not data.get("operator_intent"):
+            errors.append(f"release-evidence: Wemos one-shot manifest lacks operator_intent: {manifest_path.relative_to(ROOT).as_posix()}")
+        stages = data.get("stages", []) if isinstance(data.get("stages", []), list) else []
+        if not stages:
+            errors.append(f"release-evidence: Wemos one-shot manifest lacks stages: {manifest_path.relative_to(ROOT).as_posix()}")
+        if str(data.get("status", "")).startswith("PASS_FULL"):
+            flash = data.get("flash", {}) if isinstance(data.get("flash", {}), dict) else {}
+            smoke = data.get("wemos_smoke", {}) if isinstance(data.get("wemos_smoke", {}), dict) else {}
+            sdk = data.get("sdk", {}) if isinstance(data.get("sdk", {}), dict) else {}
+            if sdk.get("status") != "PASS":
+                errors.append("release-evidence: Wemos one-shot full PASS lacks SDK PASS")
+            if flash.get("status") != "PASS" or not flash.get("hash_verified"):
+                errors.append("release-evidence: Wemos one-shot full PASS lacks flash hash proof")
+            if smoke.get("status") != "PASS":
+                errors.append("release-evidence: Wemos one-shot full PASS lacks Wemos smoke parser PASS")
+        manifest_text = manifest_path.read_text(encoding="utf-8", errors="ignore")
+        if re.search(r"WIFI_PASSWORD|COMMAND_TOKEN", manifest_text) and "<REDACTED>" not in manifest_text:
+            errors.append(f"release-evidence: Wemos one-shot manifest may contain secret token: {manifest_path.relative_to(ROOT).as_posix()}")
+
+
 def self_test() -> None:
     assert status_cells(["foo", "PASS", "bar"]) == ["PASS"]
     assert status_cells(["foo", "NOT_RUN"]) == ["NOT_RUN"]
@@ -517,6 +551,7 @@ def main() -> int:
     check_sdk_import_evidence_contracts(errors)
     check_hil_import_contracts(errors)
     check_operator_transcript_evidence(errors)
+    check_wemos_one_shot_evidence(errors)
     if errors:
         for error in errors:
             print(error, file=sys.stderr)

@@ -1038,6 +1038,29 @@ for rel in [
         errors.append(f"evidence hardening documentation missing: {rel}")
 
 
+
+# Wemos one-shot evidence workflow contracts.
+wemos_one_shot = ROOT / "tools" / "release" / "wemos_one_shot_evidence.py"
+if not wemos_one_shot.exists():
+    errors.append("wemos one-shot evidence: missing tools/release/wemos_one_shot_evidence.py")
+else:
+    text = wemos_one_shot.read_text(encoding="utf-8", errors="ignore")
+    for token in ["operator_intent.json", "EV_WEMOS_ONE_SHOT_FLASH", "EV_HIL_ALLOW_FLASH", "EV_WEMOS_ONE_SHOT_MONITOR", "EV_HIL_ALLOW_MONITOR", "PASS_FULL_BUILD_FLASH_SMOKE", "PASS_SMOKE_ONLY", "PARTIAL_EVIDENCE", "CONTROLLED_MONITOR_STOP", "build.log", "flash.log", "serial.raw.log", "manifest.json", "sha256sums.txt", "--self-test"]:
+        if token not in text:
+            errors.append(f"wemos one-shot evidence: tool missing contract token {token}")
+    if "code 130" in text and "not proof" not in text and "not firmware" not in text:
+        errors.append("wemos one-shot evidence: code 130 must not be treated as PASS proof")
+for target in ["wemos-one-shot-evidence-preflight", "wemos-one-shot-evidence-capture", "wemos-one-shot-evidence-gate", "wemos-one-shot-evidence-explain", "wemos-one-shot-evidence-self-test"]:
+    if f"{target}:" not in makefile_text:
+        errors.append(f"wemos one-shot evidence target missing from Makefile: {target}")
+for rel in [
+    "docs/release/wemos_one_shot_evidence_workflow.md",
+    "docs/release/wemos_one_shot_evidence_report.md",
+    "docs/architecture/wemos_one_shot_evidence_contract.md",
+]:
+    if not (ROOT / rel).is_file():
+        errors.append(f"wemos one-shot evidence documentation missing: {rel}")
+
 # Operator transcript splitter contracts.
 splitter = ROOT / "tools" / "release" / "split_operator_transcript.py"
 if not splitter.exists():

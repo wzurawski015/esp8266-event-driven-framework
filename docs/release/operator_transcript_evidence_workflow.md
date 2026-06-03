@@ -55,3 +55,7 @@ If an operator stops a raw serial monitor with Ctrl+C, a terminal wrapper may ap
 ```
 
 This is `SIGINT` from the operator, not a firmware panic. The splitter records it as `CONTROLLED_MONITOR_STOP` in `manifest.json` and writes the terminal wrapper lines to `operator_footer.log`. The footer is not direct PASS evidence. Smoke PASS still comes only from Wemos markers or the explicit runtime-alive fallback parser.
+
+## Prefer one-shot capture when possible
+
+The operator transcript splitter is for recovery from mixed transcripts. For release evidence, prefer the deterministic Wemos one-shot workflow because it captures clean logs from the start.

@@ -58,3 +58,7 @@ fake PASS.
 ## Canonical SDK capture markers
 
 `./tools/fw sdk-build-one <target>` must emit `EV_SDK_BUILD_TARGET=<target>`, `EV_SDK_BUILD_PROJECT=<path>`, `EV_SDK_BUILD_BEGIN`, `EV_SDK_BUILD_STATUS=PASS`, `EV_SDK_BUILD_RC=0` and `EV_SDK_BUILD_END`. Memory-report PASS may validate the memory-report tool, but it does not replace target-specific SDK build proof.
+
+## Wemos one-shot evidence
+
+Prefer `make wemos-one-shot-evidence-capture` for Wemos build/flash/smoke evidence. It writes separate `build.log`, `flash.log` and `serial.raw.log` files plus `manifest.json` and SHA-256 sums. Private repo secrets remain in the allowlisted source file but must not appear in generated evidence.

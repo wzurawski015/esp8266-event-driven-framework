@@ -33,3 +33,7 @@ deep-sleep/wake sources must remain strict marker proof and cannot use fallback.
 ## Wemos one-shot deep-sleep source
 
 Eventflow may consume strict Wemos one-shot deep-sleep evidence only when the bundle reports a deep-sleep PASS with ordered power state markers and wake boot evidence. Runtime-alive fallback is smoke-only and cannot promote deep-sleep PASS.
+
+## Wemos one-shot bundle source
+
+`eventflow-one-shot-evidence-gate` reads a Wemos one-shot `manifest.json` as a formal source. Smoke may use `runtime_alive_fallback`; deep-sleep cannot. Missing one-shot manifests remain `ENVIRONMENT_BLOCKED`, not PASS.

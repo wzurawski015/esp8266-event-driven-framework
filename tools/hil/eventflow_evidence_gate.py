@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import tempfile
 import re
 import sys
 from dataclasses import dataclass
@@ -106,15 +107,49 @@ def source_status(src: Source) -> tuple[str, str, dict[str, object] | None, str]
     return status, str(data.get('reason','')), data, path_sha
 
 
-def evaluate() -> dict[str, object]:
+def one_shot_source_status(one_shot_dir: Path, *, required: bool) -> tuple[str, str, dict[str, object] | None, str]:
+    manifest = one_shot_dir / 'manifest.json'
+    if not manifest.is_file():
+        return ('ENVIRONMENT_BLOCKED' if required else 'NOT_RUN', 'missing Wemos one-shot manifest', None, '')
+    try:
+        data = json.loads(manifest.read_text(encoding='utf-8', errors='ignore'))
+    except Exception:
+        return 'FAIL', 'invalid Wemos one-shot manifest JSON', None, sha256(manifest)
+    smoke = data.get('wemos_smoke', {}) if isinstance(data.get('wemos_smoke', {}), dict) else {}
+    deep = data.get('deep_sleep', {}) if isinstance(data.get('deep_sleep', {}), dict) else {}
+    status = str(data.get('status', 'NOT_RUN'))
+    if smoke.get('status') == 'PASS':
+        mode = str(smoke.get('mode', ''))
+        if mode not in {'smoke', 'runtime_alive_fallback', 'firmware_runtime_alive'} and not smoke.get('marker_based'):
+            return 'FAIL', 'Wemos one-shot smoke PASS has unsupported mode', data, sha256(manifest)
+    if deep.get('status') == 'PASS':
+        states = list(deep.get('states', []))
+        required_states=['ACTIVE','SLEEP_REQUESTED','DRAINING_RUNTIME','LOG_FLUSHING','PORTS_PREPARE_SLEEP','RTC_STATE_SAVED','ENTERING_DEEP_SLEEP']
+        if deep.get('runtime_alive_fallback'):
+            return 'FAIL', 'Wemos one-shot deep-sleep cannot use runtime-alive fallback', data, sha256(manifest)
+        if deep.get('mode') != 'deepsleep' or not ordered(states, required_states):
+            return 'FAIL', 'Wemos one-shot deep-sleep lacks strict marker proof', data, sha256(manifest)
+    if status.startswith('PASS') or smoke.get('status') == 'PASS' or deep.get('status') == 'PASS':
+        return 'PASS', 'Wemos one-shot evidence accepted for release readiness', data, sha256(manifest)
+    if status in {'ENVIRONMENT_BLOCKED', 'PARTIAL_EVIDENCE', 'NOT_RUN'}:
+        return ('ENVIRONMENT_BLOCKED' if required else status), str(data.get('reason', status)), data, sha256(manifest)
+    return status, str(data.get('reason', status)), data, sha256(manifest)
+
+
+def evaluate(one_shot_dir: Path | None = None, one_shot_required: bool = False) -> dict[str, object]:
     rows=[]; has_fail=False; has_blocked=False
     for src in parse_manifest():
         status, reason, data, path_sha = source_status(src)
         if status == 'FAIL': has_fail=True
         if status in {'ENVIRONMENT_BLOCKED','NOT_RUN'} and src.required: has_blocked=True
         rows.append({'name':src.name,'kind':src.kind,'path':src.path,'required':src.required,'status':status,'reason':reason,'path_sha256':path_sha})
+    if one_shot_dir is not None:
+        status, reason, data, path_sha = one_shot_source_status(one_shot_dir, required=one_shot_required)
+        if status == 'FAIL': has_fail=True
+        if status in {'ENVIRONMENT_BLOCKED','NOT_RUN'} and one_shot_required: has_blocked=True
+        rows.append({'name':'wemos_one_shot_bundle','kind':'wemos_one_shot','path':str(one_shot_dir / 'manifest.json'),'required':one_shot_required,'status':status,'reason':reason,'path_sha256':path_sha})
     overall = 'FAIL' if has_fail else ('ENVIRONMENT_BLOCKED' if has_blocked else 'PASS')
-    return {'status':overall,'sources':rows,'event_sequence':'SDK build -> ATNEL I2C containment -> Wemos boot/runtime/tick -> sleep request -> deep-sleep enter -> wake boot'}
+    return {'status':overall,'sources':rows,'event_sequence':'SDK build -> ATNEL I2C containment -> Wemos one-shot smoke/deep-sleep -> wake boot'}
 
 
 def write_outputs(result: dict[str, object]) -> None:
@@ -161,15 +196,21 @@ def self_test() -> int:
     assert 'PASS' in render_report(result, EVIDENCE_DIR/'parsed.json', final=True)
     smoke = {'status':'PASS','tick_count':3,'snapshot_count':3,'serial_sha256':'abc','runtime_alive_fallback':True,'mode':'runtime_alive_fallback'}
     assert source_status(Source('w','hil_wemos_smoke','docs/missing.json',True))[0] in {'ENVIRONMENT_BLOCKED','NOT_RUN'}
+    with tempfile.TemporaryDirectory(dir=str(ROOT / 'build' if (ROOT / 'build').is_dir() else ROOT)) as td:
+        d = Path(td)
+        (d / 'manifest.json').write_text(json.dumps({'status':'PASS_SMOKE_ONLY','wemos_smoke':smoke,'deep_sleep':{'status':'NOT_RUN'}}), encoding='utf-8')
+        assert one_shot_source_status(d, required=True)[0] == 'PASS'
+        (d / 'manifest.json').write_text(json.dumps({'status':'PASS_FULL_BUILD_FLASH_SMOKE','wemos_smoke':smoke,'deep_sleep':{'status':'PASS','mode':'runtime_alive_fallback','runtime_alive_fallback':True}}), encoding='utf-8')
+        assert one_shot_source_status(d, required=True)[0] == 'FAIL'
     print('EVENTFLOW_EVIDENCE_GATE_SELF_TEST PASS')
     return 0
 
 
 def main() -> int:
-    ap=argparse.ArgumentParser(); ap.add_argument('--self-test', action='store_true'); ap.add_argument('--report', action='store_true'); ap.add_argument('--gate', action='store_true'); ap.add_argument('--explain', action='store_true')
+    ap=argparse.ArgumentParser(); ap.add_argument('--self-test', action='store_true'); ap.add_argument('--report', action='store_true'); ap.add_argument('--gate', action='store_true'); ap.add_argument('--explain', action='store_true'); ap.add_argument('--one-shot-dir', type=Path); ap.add_argument('--one-shot-required', action='store_true')
     args=ap.parse_args()
     if args.self_test: return self_test()
-    result=evaluate(); write_outputs(result)
+    result=evaluate(args.one_shot_dir, args.one_shot_required); write_outputs(result)
     if args.explain:
         print(json.dumps(result, indent=2, sort_keys=True))
     if result['status']=='PASS':

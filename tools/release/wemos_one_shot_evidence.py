@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Deterministic Wemos one-shot evidence capture workflow.
 
-This tool intentionally separates build, flash and serial evidence. SDK import from a bundle uses import_sdk_evidence.py --from-one-shot-dir. Terminal code 130 is CONTROLLED_MONITOR_STOP, not firmware failure and not proof of PASS by itself.  A mixed
+This tool intentionally separates build, flash and serial evidence. SDK import from a bundle uses import_sdk_evidence.py --from-one-shot-dir. Eventflow release integration uses eventflow_evidence_gate.py --one-shot-dir --one-shot-required. Terminal code 130 is CONTROLLED_MONITOR_STOP, not firmware failure and not proof of PASS by itself.  A mixed
 operator transcript is never considered direct release evidence.  Hardware
 operations require explicit operator intent variables so that CI/self-tests
 cannot flash or monitor a board accidentally.

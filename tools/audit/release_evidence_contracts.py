@@ -532,6 +532,20 @@ def check_wemos_one_shot_evidence(errors: list[str]) -> None:
             errors.append(f"release-evidence: Wemos one-shot manifest may contain secret token: {manifest_path.relative_to(ROOT).as_posix()}")
 
 
+
+
+def check_eventflow_one_shot_contract(errors: list[str]) -> None:
+    report = ROOT / "docs" / "release" / "eventflow_one_shot_wemos_integration_report.md"
+    if not report.is_file():
+        errors.append("release-evidence: missing eventflow one-shot Wemos integration report")
+    tool = ROOT / "tools" / "hil" / "eventflow_evidence_gate.py"
+    if tool.is_file():
+        text = tool.read_text(encoding="utf-8", errors="ignore")
+        for token in ["--one-shot-dir", "--one-shot-required", "wemos_one_shot", "runtime_alive_fallback", "deep-sleep cannot use runtime-alive fallback"]:
+            if token not in text:
+                errors.append(f"release-evidence: eventflow one-shot gate missing token {token}")
+
+
 def self_test() -> None:
     assert status_cells(["foo", "PASS", "bar"]) == ["PASS"]
     assert status_cells(["foo", "NOT_RUN"]) == ["NOT_RUN"]
@@ -552,6 +566,7 @@ def main() -> int:
     check_hil_import_contracts(errors)
     check_operator_transcript_evidence(errors)
     check_wemos_one_shot_evidence(errors)
+    check_eventflow_one_shot_contract(errors)
     if errors:
         for error in errors:
             print(error, file=sys.stderr)

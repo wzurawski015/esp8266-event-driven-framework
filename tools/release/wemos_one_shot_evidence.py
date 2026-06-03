@@ -294,6 +294,7 @@ def capture(args: argparse.Namespace, *, deepsleep: bool = False) -> int:
         "flash": {"status": "NOT_RUN"},
         "wemos_smoke": {"status": "NOT_RUN"},
         "deep_sleep": {"status": "NOT_RUN"},
+        "target_timing": {"status": "NOT_RUN"},
     }
 
     def add_stage(stage: Stage) -> None:
@@ -356,6 +357,21 @@ def capture(args: argparse.Namespace, *, deepsleep: bool = False) -> int:
         else:
             manifest["wemos_smoke"] = parsed
         add_stage(Stage(name="PARSE_SMOKE" if not deepsleep else "PARSE_DEEPSLEEP", status=status, started_utc=utc_now(), ended_utc=utc_now(), reason="parse_wemos_smoke_log.py", log="parsed.json", sha256=sha256_file(run_dir / "parsed.json") if (run_dir / "parsed.json").is_file() else ""))
+
+        timing_cmd = [sys.executable, "tools/perf/parse_esp8266_target_timing.py", "--from-one-shot-dir", str(run_dir), "--target", target]
+        timing_status, timing_info = run_parser(timing_cmd)
+        timing_json = parse_json(run_dir / "target_timing.json") or {"status": timing_status, "parser": timing_info}
+        metrics = timing_json.get("metrics", {}) if isinstance(timing_json.get("metrics"), dict) else {}
+        tick = metrics.get("smoke_tick_interval", {}) if isinstance(metrics.get("smoke_tick_interval"), dict) else {}
+        manifest["target_timing"] = {
+            "status": timing_json.get("status", timing_status),
+            "path": "target_timing.json" if (run_dir / "target_timing.json").is_file() else "",
+            "sha256": sha256_file(run_dir / "target_timing.json") if (run_dir / "target_timing.json").is_file() else "",
+            "samples": timing_json.get("sample_count", 0),
+            "p99_ms": timing_json.get("p99_ms") if timing_json.get("p99_ms") is not None else tick.get("p99_ms"),
+            "p999_ms": timing_json.get("p999_ms") if timing_json.get("p999_ms") is not None else tick.get("p999_ms"),
+        }
+        add_stage(Stage(name="PARSE_TARGET_TIMING", status=timing_status, started_utc=utc_now(), ended_utc=utc_now(), reason="parse_esp8266_target_timing.py", log="target_timing.json", sha256=sha256_file(run_dir / "target_timing.json") if (run_dir / "target_timing.json").is_file() else ""))
 
     # SDK strict import from bundle is a later patch; patch 0001 records bundle status only.
     write_manifest(run_dir, manifest, update_release_report=bool(getattr(args, "update_report", False)))
@@ -448,7 +464,7 @@ def self_test() -> int:
         assert status == "PASS"
         flash_json = parse_json(run / "flash_evidence.json") or {}
         smoke_json = parse_json(run / "parsed.json") or {}
-        manifest = {"target": TARGET_DEFAULT, "run_id": "test-run", "operator_intent": intent, "stages": [], "sdk": {"status": "PASS"}, "flash": flash_json, "wemos_smoke": smoke_json, "deep_sleep": {"status": "NOT_RUN"}}
+        manifest = {"target": TARGET_DEFAULT, "run_id": "test-run", "operator_intent": intent, "stages": [], "sdk": {"status": "PASS"}, "flash": flash_json, "wemos_smoke": smoke_json, "deep_sleep": {"status": "NOT_RUN"}, "target_timing": {"status": "PASS", "path": "target_timing.json", "samples": 10}}
         write_manifest(run, manifest)
         assert (run / "manifest.json").is_file()
         assert "PASS" in (run / "manifest.json").read_text(encoding="utf-8")

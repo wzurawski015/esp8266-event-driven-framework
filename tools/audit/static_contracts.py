@@ -1129,6 +1129,35 @@ if (ROOT / "docs" / "release" / "operator_transcript_evidence_workflow.md").is_f
         if token not in doc:
             errors.append(f"operator transcript workflow missing required phrase: {token}")
 
+
+# ESP8266 target-side timing evidence contracts.
+target_timing_tool = ROOT / "tools" / "perf" / "parse_esp8266_target_timing.py"
+if not target_timing_tool.exists():
+    errors.append("target timing evidence: missing tools/perf/parse_esp8266_target_timing.py")
+else:
+    ttext = target_timing_tool.read_text(encoding="utf-8", errors="ignore")
+    for token in ["--self-test", "--serial-log", "--from-one-shot-dir", "target_timing.json", "source_serial_log_sha256", "p99_ms", "p999_ms", "INSUFFICIENT_SAMPLES", "ENVIRONMENT_BLOCKED", "reset/failure marker", "EV_WEMOS_SMOKE_TICK", "EV_WEMOS_SMOKE_SNAPSHOT"]:
+        if token not in ttext:
+            errors.append(f"target timing evidence: parser missing contract token {token}")
+for target in ["esp8266-target-timing-self-test", "esp8266-target-timing-report", "esp8266-target-timing-gate", "wemos-one-shot-target-timing-gate"]:
+    if f"{target}:" not in makefile_text:
+        errors.append(f"target timing evidence target missing from Makefile: {target}")
+wemos_one_shot_tool = ROOT / "tools" / "release" / "wemos_one_shot_evidence.py"
+if wemos_one_shot_tool.exists() and "parse_esp8266_target_timing.py" not in wemos_one_shot_tool.read_text(encoding="utf-8", errors="ignore"):
+    errors.append("target timing evidence: Wemos one-shot workflow must optionally run target timing parser")
+for rel in [
+    "config/target_timing_budgets.json",
+    "docs/perf/esp8266_target_timing_evidence_policy.md",
+    "docs/release/esp8266_target_p99_p999_timing_report.md",
+]:
+    if not (ROOT / rel).is_file():
+        errors.append(f"target timing evidence file missing: {rel}")
+if (ROOT / "docs" / "perf" / "esp8266_target_timing_evidence_policy.md").is_file():
+    doc = (ROOT / "docs" / "perf" / "esp8266_target_timing_evidence_policy.md").read_text(encoding="utf-8", errors="ignore")
+    for token in ["P50", "P95", "P99", "P999", "ESP8266", "serial", "one-shot", "report-only"]:
+        if token not in doc:
+            errors.append(f"target timing evidence policy missing required phrase: {token}")
+
 if errors:
     for error in errors:
         print(error)

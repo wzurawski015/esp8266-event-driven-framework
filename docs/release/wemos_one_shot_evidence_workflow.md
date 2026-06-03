@@ -48,3 +48,20 @@ Flash evidence can be parsed from the same bundle with `make wemos-one-shot-flas
 `wemos-one-shot-evidence-report` is the explicit report update mode. It may write the release report, but only from an existing evidence directory. If the manifest is missing, the report must say `ENVIRONMENT_BLOCKED`, not PASS.
 
 Self-tests write only to temporary or build self-test directories and are never release evidence.
+
+## Target P99/P999 timing evidence
+
+When a Wemos one-shot run contains `serial.raw.log` or `serial.normalized.log` with ESP8266 timestamp prefixes, the workflow may attach target timing metadata to `manifest.json`:
+
+```json
+"target_timing": {
+  "status": "PASS|INSUFFICIENT_SAMPLES|ENVIRONMENT_BLOCKED|FAIL",
+  "path": "target_timing.json",
+  "sha256": "...",
+  "samples": 0,
+  "p99_ms": null,
+  "p999_ms": null
+}
+```
+
+Timing evidence is separate from smoke/deep-sleep evidence. It complements host `perf-gate` and eventflow evidence but never substitutes for Wemos smoke PASS, flash PASS, SDK PASS or strict deep-sleep/wake proof.

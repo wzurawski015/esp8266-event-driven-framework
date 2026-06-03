@@ -1,0 +1,8 @@
+{
+  "min_samples": 8,
+  "max_gap_ms_warning": 2500,
+  "max_gap_ms_hard": 10000,
+  "p99_report_only": true,
+  "p999_report_only": true,
+  "policy": "Initial ESP8266 target timing evidence capture. P99/P999 are report-only until a real hardware baseline is committed."
+}

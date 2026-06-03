@@ -546,6 +546,49 @@ def check_eventflow_one_shot_contract(errors: list[str]) -> None:
                 errors.append(f"release-evidence: eventflow one-shot gate missing token {token}")
 
 
+
+def check_target_timing_evidence(errors: list[str]) -> None:
+    tool = ROOT / "tools" / "perf" / "parse_esp8266_target_timing.py"
+    if not tool.is_file():
+        errors.append("release-evidence: missing ESP8266 target timing parser")
+    if not (ROOT / "docs" / "perf" / "esp8266_target_timing_evidence_policy.md").is_file():
+        errors.append("release-evidence: missing ESP8266 target timing policy")
+    if not (ROOT / "docs" / "release" / "esp8266_target_p99_p999_timing_report.md").is_file():
+        errors.append("release-evidence: missing ESP8266 target P99/P999 release report")
+    root = ROOT / "docs" / "release" / "target_timing"
+    if root.exists():
+        for parsed in root.glob("**/target_timing.json"):
+            try:
+                data = json.loads(parsed.read_text(encoding="utf-8", errors="ignore"))
+            except Exception:
+                errors.append(f"release-evidence: invalid target timing JSON: {parsed.relative_to(ROOT).as_posix()}")
+                continue
+            if data.get("evidence_kind") != "esp8266_target_timing":
+                errors.append(f"release-evidence: target timing JSON has wrong evidence_kind: {parsed.relative_to(ROOT).as_posix()}")
+            if data.get("status") == "PASS":
+                if not data.get("source_serial_log_sha256"):
+                    errors.append(f"release-evidence: target timing PASS lacks source serial SHA-256: {parsed.relative_to(ROOT).as_posix()}")
+                if int(data.get("sample_count", 0) or 0) <= 0:
+                    errors.append(f"release-evidence: target timing PASS lacks sample count: {parsed.relative_to(ROOT).as_posix()}")
+                if data.get("p99_ms") is None or data.get("p999_ms") is None:
+                    errors.append(f"release-evidence: target timing PASS lacks P99/P999: {parsed.relative_to(ROOT).as_posix()}")
+                if data.get("reset_failure_seen"):
+                    errors.append(f"release-evidence: target timing PASS hides reset/failure marker: {parsed.relative_to(ROOT).as_posix()}")
+    one_shot_root = ROOT / "docs" / "release" / "wemos_one_shot_evidence"
+    if one_shot_root.exists():
+        for manifest_path in one_shot_root.glob("**/manifest.json"):
+            try:
+                data = json.loads(manifest_path.read_text(encoding="utf-8", errors="ignore"))
+            except Exception:
+                continue
+            tt = data.get("target_timing")
+            if isinstance(tt, dict) and str(tt.get("status", "")).startswith("PASS"):
+                timing_json = manifest_path.parent / str(tt.get("path", "target_timing.json"))
+                if not timing_json.is_file():
+                    errors.append(f"release-evidence: one-shot target timing PASS lacks target_timing.json: {manifest_path.relative_to(ROOT).as_posix()}")
+                if not tt.get("sha256"):
+                    errors.append(f"release-evidence: one-shot target timing PASS lacks SHA-256: {manifest_path.relative_to(ROOT).as_posix()}")
+
 def check_release_report_consistency(errors: list[str]) -> None:
     try:
         import release_report_consistency  # type: ignore
@@ -577,6 +620,7 @@ def main() -> int:
     check_operator_transcript_evidence(errors)
     check_wemos_one_shot_evidence(errors)
     check_eventflow_one_shot_contract(errors)
+    check_target_timing_evidence(errors)
     check_release_report_consistency(errors)
     if errors:
         for error in errors:

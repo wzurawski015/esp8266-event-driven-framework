@@ -189,7 +189,7 @@ BENCH_BINS := $(addprefix $(BENCH_BUILD_DIR)/,$(BENCH_TESTS))
 BENCH_RESULTS := $(BENCH_BUILD_DIR)/results.txt
 PERF_BUDGETS ?= config/perf_budgets.json
 
-.PHONY: all host-test property-test host-strict-test host-sanitize-cc-check host-sanitize-test host-tsan-cc-check host-tsan-test clang-tidy-gate host-gcc-analyzer-gate host-static-analysis-gate static-analysis-gate host-coverage-test coverage-report coverage-gate fuzz-smoke-gate fuzz-sanitize-gate ub-hardening-gate safety-gate hotpath-zero-alloc-gate bench perf-report perf-budget-gate perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts release-report-consistency-gate qos-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate sdk-build-evidence sdk-map-stack-evidence sdk-evidence-gate sdk-import-evidence sdk-import-evidence-gate sdk-import-flash-evidence sdk-flash-evidence-gate sdk-canonical-evidence-gate sdk-full-evidence-gate evidence-importer-hardening-gate hil-atnel-i2c-flash hil-atnel-i2c-monitor hil-atnel-i2c-evidence hil-atnel-i2c-gate hil-import-atnel-i2c-evidence hil-import-wemos-smoke-evidence hil-import-wemos-smoke-late-attach-evidence hil-import-wemos-deepsleep-evidence hil-import-all-evidence hil-wemos-smoke-late-attach-self-test hil-real-evidence-gate hil-wemos-smoke-flash hil-wemos-smoke-monitor hil-wemos-smoke-evidence hil-wemos-smoke-gate hil-wemos-deepsleep-wake-gate eventflow-hardware-evidence-report eventflow-hardware-evidence-gate eventflow-evidence-explain eventflow-release-gate operator-transcript-split-self-test operator-transcript-stage-evidence operator-transcript-evidence-gate operator-monitor-exit-classification-self-test wemos-one-shot-evidence-preflight wemos-one-shot-evidence-capture wemos-one-shot-evidence-gate wemos-one-shot-evidence-explain wemos-one-shot-evidence-report wemos-one-shot-evidence-self-test wemos-one-shot-sdk-import wemos-one-shot-sdk-import-gate wemos-one-shot-flash-import-gate wemos-one-shot-deepsleep-evidence-capture wemos-one-shot-deepsleep-evidence-gate wemos-one-shot-deepsleep-evidence-explain eventflow-one-shot-evidence-gate production-release-gate quality-gate release-gate docgen docs clean
+.PHONY: all host-test property-test host-strict-test host-sanitize-cc-check host-sanitize-test host-tsan-cc-check host-tsan-test clang-tidy-gate host-gcc-analyzer-gate host-static-analysis-gate static-analysis-gate host-coverage-test coverage-report coverage-gate fuzz-smoke-gate fuzz-sanitize-gate ub-hardening-gate safety-gate hotpath-zero-alloc-gate bench perf-report perf-budget-gate perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts release-report-consistency-gate qos-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate sdk-build-evidence sdk-map-stack-evidence sdk-evidence-gate sdk-import-evidence sdk-import-evidence-gate sdk-import-flash-evidence sdk-flash-evidence-gate sdk-canonical-evidence-gate sdk-full-evidence-gate evidence-importer-hardening-gate hil-atnel-i2c-flash hil-atnel-i2c-monitor hil-atnel-i2c-evidence hil-atnel-i2c-gate hil-import-atnel-i2c-evidence hil-import-wemos-smoke-evidence hil-import-wemos-smoke-late-attach-evidence hil-import-wemos-deepsleep-evidence hil-import-all-evidence hil-wemos-smoke-late-attach-self-test hil-real-evidence-gate hil-wemos-smoke-flash hil-wemos-smoke-monitor hil-wemos-smoke-evidence hil-wemos-smoke-gate hil-wemos-deepsleep-wake-gate eventflow-hardware-evidence-report eventflow-hardware-evidence-gate eventflow-evidence-explain eventflow-release-gate operator-transcript-split-self-test operator-transcript-stage-evidence operator-transcript-evidence-gate operator-monitor-exit-classification-self-test wemos-one-shot-evidence-preflight wemos-one-shot-evidence-capture wemos-one-shot-evidence-gate wemos-one-shot-evidence-explain wemos-one-shot-evidence-report wemos-one-shot-evidence-self-test wemos-one-shot-sdk-import wemos-one-shot-sdk-import-gate wemos-one-shot-flash-import-gate wemos-one-shot-deepsleep-evidence-capture wemos-one-shot-deepsleep-evidence-gate wemos-one-shot-deepsleep-evidence-explain eventflow-one-shot-evidence-gate esp8266-target-timing-self-test esp8266-target-timing-report esp8266-target-timing-gate wemos-one-shot-target-timing-gate production-release-gate quality-gate release-gate docgen docs clean
 .SECONDARY: $(COMMON_OBJS) $(BENCH_COMMON_OBJS)
 
 all: host-test
@@ -571,6 +571,27 @@ wemos-one-shot-deepsleep-evidence-explain:
 
 eventflow-one-shot-evidence-gate:
 	$(PYTHON) tools/hil/eventflow_evidence_gate.py --gate --one-shot-required --one-shot-dir "$${EV_WEMOS_ONE_SHOT_EVIDENCE_DIR:-docs/release/wemos_one_shot_evidence/$${EV_WEMOS_ONE_SHOT_TARGET:-wemos_esp_wroom_02_18650}/current}"
+
+
+esp8266-target-timing-self-test:
+	$(PYTHON) tools/perf/parse_esp8266_target_timing.py --self-test
+
+esp8266-target-timing-report:
+	@if [ -n "$${EV_ESP8266_TARGET_TIMING_SERIAL_LOG:-}" ]; then \
+		$(PYTHON) tools/perf/parse_esp8266_target_timing.py --serial-log "$${EV_ESP8266_TARGET_TIMING_SERIAL_LOG}" --target "$${EV_ESP8266_TARGET_TIMING_TARGET:-wemos_esp_wroom_02_18650}" --output-dir "$${EV_ESP8266_TARGET_TIMING_OUTPUT_DIR:-docs/release/target_timing/$${EV_ESP8266_TARGET_TIMING_TARGET:-wemos_esp_wroom_02_18650}/current}"; \
+	else \
+		echo "esp8266-target-timing-report ENVIRONMENT_BLOCKED: EV_ESP8266_TARGET_TIMING_SERIAL_LOG not set"; exit 77; \
+	fi
+
+esp8266-target-timing-gate:
+	@if [ -n "$${EV_ESP8266_TARGET_TIMING_SERIAL_LOG:-}" ]; then \
+		$(PYTHON) tools/perf/parse_esp8266_target_timing.py --serial-log "$${EV_ESP8266_TARGET_TIMING_SERIAL_LOG}" --target "$${EV_ESP8266_TARGET_TIMING_TARGET:-wemos_esp_wroom_02_18650}" --output-dir "$${EV_ESP8266_TARGET_TIMING_OUTPUT_DIR:-docs/release/target_timing/$${EV_ESP8266_TARGET_TIMING_TARGET:-wemos_esp_wroom_02_18650}/current}"; \
+	else \
+		echo "esp8266-target-timing-gate ENVIRONMENT_BLOCKED: EV_ESP8266_TARGET_TIMING_SERIAL_LOG not set"; exit 77; \
+	fi
+
+wemos-one-shot-target-timing-gate:
+	$(PYTHON) tools/perf/parse_esp8266_target_timing.py --from-one-shot-dir "$${EV_WEMOS_ONE_SHOT_EVIDENCE_DIR:-docs/release/wemos_one_shot_evidence/$${EV_WEMOS_ONE_SHOT_TARGET:-wemos_esp_wroom_02_18650}/current}" --target "$${EV_WEMOS_ONE_SHOT_TARGET:-wemos_esp_wroom_02_18650}"
 	$(PYTHON) tools/hil/eventflow_evidence_gate.py --self-test
 
 

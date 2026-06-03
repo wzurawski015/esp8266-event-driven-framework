@@ -226,7 +226,7 @@ def evaluate_manifest(manifest: dict[str, Any]) -> tuple[str, str]:
     return "PARTIAL_EVIDENCE", "bundle does not satisfy full PASS requirements"
 
 
-def write_manifest(run_dir: Path, manifest: dict[str, Any]) -> None:
+def write_manifest(run_dir: Path, manifest: dict[str, Any], *, update_release_report: bool = False) -> None:
     status, reason = evaluate_manifest(manifest)
     manifest["status"] = status
     manifest["reason"] = reason
@@ -234,10 +234,10 @@ def write_manifest(run_dir: Path, manifest: dict[str, Any]) -> None:
     manifest_path = run_dir / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     write_sha_index(run_dir)
-    render_report(run_dir, manifest)
+    render_report(run_dir, manifest, update_release_report=update_release_report)
 
 
-def render_report(run_dir: Path, manifest: dict[str, Any]) -> None:
+def render_report(run_dir: Path, manifest: dict[str, Any], *, update_release_report: bool = False) -> None:
     lines = [
         "# Wemos one-shot evidence run",
         "",
@@ -264,7 +264,7 @@ def render_report(run_dir: Path, manifest: dict[str, Any]) -> None:
         run_rel = run_dir.relative_to(ROOT).as_posix()
     except ValueError:
         run_rel = ""
-    if run_rel.startswith("docs/release/"):
+    if update_release_report:
         REPORT.parent.mkdir(parents=True, exist_ok=True)
         REPORT.write_text("\n".join(lines), encoding="utf-8")
 
@@ -298,7 +298,7 @@ def capture(args: argparse.Namespace, *, deepsleep: bool = False) -> int:
 
     def add_stage(stage: Stage) -> None:
         manifest["stages"].append(stage_dict(stage))
-        write_manifest(run_dir, manifest)
+        write_manifest(run_dir, manifest, update_release_report=bool(getattr(args, "update_report", False)))
 
     # Preflight never requires hardware and should write an explicit log.
     preflight_text = f"EV_WEMOS_ONE_SHOT_PREFLIGHT target={target}\noperator_intent={json.dumps(intent, sort_keys=True)}\n"
@@ -358,7 +358,7 @@ def capture(args: argparse.Namespace, *, deepsleep: bool = False) -> int:
         add_stage(Stage(name="PARSE_SMOKE" if not deepsleep else "PARSE_DEEPSLEEP", status=status, started_utc=utc_now(), ended_utc=utc_now(), reason="parse_wemos_smoke_log.py", log="parsed.json", sha256=sha256_file(run_dir / "parsed.json") if (run_dir / "parsed.json").is_file() else ""))
 
     # SDK strict import from bundle is a later patch; patch 0001 records bundle status only.
-    write_manifest(run_dir, manifest)
+    write_manifest(run_dir, manifest, update_release_report=bool(getattr(args, "update_report", False)))
     print(f"EV_WEMOS_ONE_SHOT_EVIDENCE {manifest['status']} dir={rel(run_dir)} reason={manifest['reason']}")
     if manifest["status"] == "FAIL":
         return 1
@@ -401,6 +401,33 @@ def preflight(args: argparse.Namespace) -> int:
     target = args.target
     intent = operator_intent(target, deepsleep=False)
     print(json.dumps({"status": "PASS", "target": target, "operator_intent": intent, "private_repo_secrets_accepted": True}, indent=2, sort_keys=True))
+    return 0
+
+
+def update_report(args: argparse.Namespace) -> int:
+    d = args.evidence_dir or DEFAULT_BASE / "current"
+    d = d if d.is_absolute() else ROOT / d
+    manifest_path = d / "manifest.json"
+    if not manifest_path.is_file():
+        REPORT.write_text(
+            "# Wemos one-shot evidence run\n\n"
+            "| Field | Value |\n|---|---|\n"
+            "| Status | ENVIRONMENT_BLOCKED |\n"
+            f"| Reason | no committed Wemos one-shot manifest at `{rel(manifest_path)}` |\n"
+            f"| Evidence dir | `{rel(d)}` |\n\n"
+            "Tooling is available, but real PASS requires a committed manifest-backed evidence bundle. "
+            "Self-tests and temporary `test-run` directories are not release evidence. Private repo secrets remain in the allowlisted source file and must not appear in evidence artifacts.\n",
+            encoding="utf-8",
+        )
+        print(f"EV_WEMOS_ONE_SHOT_EVIDENCE_REPORT ENVIRONMENT_BLOCKED: manifest not found: {manifest_path}")
+        return 77
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8", errors="ignore"))
+    except Exception as exc:
+        print(f"EV_WEMOS_ONE_SHOT_EVIDENCE_REPORT FAIL: invalid manifest: {exc}", file=sys.stderr)
+        return 1
+    render_report(d, manifest, update_release_report=True)
+    print(f"EV_WEMOS_ONE_SHOT_EVIDENCE_REPORT UPDATED status={manifest.get('status','UNKNOWN')}")
     return 0
 
 
@@ -456,6 +483,8 @@ def main() -> int:
     ap.add_argument("--capture-deepsleep", action="store_true")
     ap.add_argument("--gate", action="store_true")
     ap.add_argument("--explain", action="store_true")
+    ap.add_argument("--report", action="store_true")
+    ap.add_argument("--update-report", action="store_true")
     ap.add_argument("--target", default=TARGET_DEFAULT)
     ap.add_argument("--output-dir", type=Path)
     ap.add_argument("--evidence-dir", type=Path)
@@ -473,6 +502,8 @@ def main() -> int:
             return gate(args)
         if args.explain:
             return explain(args)
+        if args.report:
+            return update_report(args)
         ap.print_help()
         return 2
     except RuntimeError as exc:

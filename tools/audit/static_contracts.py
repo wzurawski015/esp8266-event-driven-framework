@@ -1061,6 +1061,43 @@ for rel in [
     if not (ROOT / rel).is_file():
         errors.append(f"wemos one-shot evidence documentation missing: {rel}")
 
+# Wemos one-shot release reports must be manifest-backed; gates and self-tests are read-only.
+report_consistency = ROOT / "tools" / "audit" / "release_report_consistency.py"
+if not report_consistency.exists():
+    errors.append("release report consistency: missing tools/audit/release_report_consistency.py")
+else:
+    rc_text = report_consistency.read_text(encoding="utf-8", errors="ignore")
+    for token in ["--self-test", "PASS report", "manifest.json", "test-run", "TemporaryDirectory", "build/selftest", "ENVIRONMENT_BLOCKED"]:
+        if token not in rc_text:
+            errors.append(f"release report consistency: tool missing token {token}")
+if "release-report-consistency-gate:" not in makefile_text:
+    errors.append("release report consistency: Makefile missing release-report-consistency-gate")
+if "wemos-one-shot-evidence-report:" not in makefile_text:
+    errors.append("wemos one-shot evidence: Makefile missing explicit report update target")
+if wemos_one_shot.exists():
+    text = wemos_one_shot.read_text(encoding="utf-8", errors="ignore")
+    for token in ["update_release_report", "--report", "--update-report", "Self-tests and temporary `test-run` directories are not release evidence"]:
+        if token not in text:
+            errors.append(f"wemos one-shot evidence: read-only/report contract token missing {token}")
+    if "REPORT.write_text" in text and "if update_release_report" not in text:
+        errors.append("wemos one-shot evidence: release report writes must be guarded by explicit update_release_report")
+    if "write_manifest(run, manifest, update_release_report=True)" in text:
+        errors.append("wemos one-shot evidence: self-test must not update release report")
+current_wemos_report = ROOT / "docs" / "release" / "wemos_one_shot_evidence_report.md"
+if current_wemos_report.is_file():
+    current_text = current_wemos_report.read_text(encoding="utf-8", errors="ignore")
+    if "PASS_FULL_BUILD_FLASH_SMOKE" in current_text and "test-run" in current_text:
+        errors.append("wemos one-shot evidence: stale PASS test-run report present in docs/release")
+    if "PASS_FULL_BUILD_FLASH_SMOKE" in current_text and "manifest not found" in current_text:
+        errors.append("wemos one-shot evidence: report cannot mix PASS and manifest-missing reason")
+eventflow_tool = ROOT / "tools" / "hil" / "eventflow_evidence_gate.py"
+if eventflow_tool.is_file():
+    etext = eventflow_tool.read_text(encoding="utf-8", errors="ignore")
+    if "if args.report" not in etext or "write_outputs(result)" not in etext:
+        errors.append("eventflow evidence gate: explicit --report write mode missing")
+    if "Gate and explain modes are intentionally read-only" not in etext:
+        errors.append("eventflow evidence gate: read-only gate/explain contract missing")
+
 # Operator transcript splitter contracts.
 splitter = ROOT / "tools" / "release" / "split_operator_transcript.py"
 if not splitter.exists():

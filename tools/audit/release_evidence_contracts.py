@@ -546,6 +546,16 @@ def check_eventflow_one_shot_contract(errors: list[str]) -> None:
                 errors.append(f"release-evidence: eventflow one-shot gate missing token {token}")
 
 
+def check_release_report_consistency(errors: list[str]) -> None:
+    try:
+        import release_report_consistency  # type: ignore
+        for err in release_report_consistency.collect_errors(ROOT):
+            errors.append(err)
+    except Exception as exc:
+        errors.append(f"release-evidence: release_report_consistency integration failed: {exc}")
+
+
+
 def self_test() -> None:
     assert status_cells(["foo", "PASS", "bar"]) == ["PASS"]
     assert status_cells(["foo", "NOT_RUN"]) == ["NOT_RUN"]
@@ -567,6 +577,7 @@ def main() -> int:
     check_operator_transcript_evidence(errors)
     check_wemos_one_shot_evidence(errors)
     check_eventflow_one_shot_contract(errors)
+    check_release_report_consistency(errors)
     if errors:
         for error in errors:
             print(error, file=sys.stderr)

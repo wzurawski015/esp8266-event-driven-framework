@@ -2,17 +2,13 @@
 
 | Field | Value |
 |---|---|
-| Status | PASS_FULL_BUILD_FLASH_SMOKE |
-| Reason | SDK build, flash and smoke evidence are PASS |
+| Status | ENVIRONMENT_BLOCKED |
+| Reason | no committed Wemos one-shot manifest at `docs/release/wemos_one_shot_evidence/wemos_esp_wroom_02_18650/current/manifest.json` |
 | Target | wemos_esp_wroom_02_18650 |
-| Run ID | test-run |
-| Evidence dir | `tmpqs_j4cg6/runs/test-run` |
+| Evidence dir | `docs/release/wemos_one_shot_evidence/wemos_esp_wroom_02_18650/current` |
 
-| Stage | Status | Log | SHA-256 | Reason |
-|---|---:|---|---|---|
+The Wemos one-shot tooling is present, but this release report is intentionally blocked until a real manifest-backed evidence bundle is committed under the documented evidence directory.
 
-This bundle keeps clean logs from the start: build, flash and serial evidence are separate files. Private repo secrets remain in the allowlisted source file and must not appear in evidence artifacts.
+Self-test runs, `test-run` directories, temp paths and `build/selftest` artifacts are not release evidence. A PASS report requires a committed `manifest.json`, matching status, `sha256sums.txt`, and the logs required by the declared status.
 
-## Eventflow consumption
-
-The bundle can be consumed by `eventflow-one-shot-evidence-gate`. The gate reads `manifest.json`, accepts Wemos smoke PASS according to its declared mode, and accepts deep-sleep PASS only with strict marker proof.
+Private repo secrets remain intentionally in the allowlisted source file. Real secret values must not appear in evidence artifacts.

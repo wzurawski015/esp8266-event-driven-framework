@@ -40,3 +40,11 @@ The workflow writes separate evidence files: `build.log`, `size.log`, `map_summa
 Use `make wemos-one-shot-sdk-import` with `EV_WEMOS_ONE_SHOT_EVIDENCE_DIR=<run-dir>` to import build/map/stack evidence from a Wemos one-shot bundle. This does not loosen SDK evidence policy: missing canonical markers, APP_BIN=0, self-test markers or mixed transcripts are rejected.
 
 Flash evidence can be parsed from the same bundle with `make wemos-one-shot-flash-import-gate`.
+
+## Manifest-backed reports and read-only gates
+
+`wemos-one-shot-evidence-gate` is read-only. It validates an existing evidence bundle and does not update `docs/release/wemos_one_shot_evidence_report.md`.
+
+`wemos-one-shot-evidence-report` is the explicit report update mode. It may write the release report, but only from an existing evidence directory. If the manifest is missing, the report must say `ENVIRONMENT_BLOCKED`, not PASS.
+
+Self-tests write only to temporary or build self-test directories and are never release evidence.

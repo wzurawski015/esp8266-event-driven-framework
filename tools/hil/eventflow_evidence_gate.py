@@ -210,7 +210,11 @@ def main() -> int:
     ap=argparse.ArgumentParser(); ap.add_argument('--self-test', action='store_true'); ap.add_argument('--report', action='store_true'); ap.add_argument('--gate', action='store_true'); ap.add_argument('--explain', action='store_true'); ap.add_argument('--one-shot-dir', type=Path); ap.add_argument('--one-shot-required', action='store_true')
     args=ap.parse_args()
     if args.self_test: return self_test()
-    result=evaluate(args.one_shot_dir, args.one_shot_required); write_outputs(result)
+    result=evaluate(args.one_shot_dir, args.one_shot_required)
+    # Gate and explain modes are intentionally read-only.  Only --report writes
+    # docs/release outputs and parsed eventflow evidence.
+    if args.report:
+        write_outputs(result)
     if args.explain:
         print(json.dumps(result, indent=2, sort_keys=True))
     if result['status']=='PASS':

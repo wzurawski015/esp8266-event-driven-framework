@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Deterministic Wemos one-shot evidence capture workflow.
 
-This tool intentionally separates build, flash and serial evidence. Terminal code 130 is CONTROLLED_MONITOR_STOP, not firmware failure and not proof of PASS by itself.  A mixed
+This tool intentionally separates build, flash and serial evidence. SDK import from a bundle uses import_sdk_evidence.py --from-one-shot-dir. Terminal code 130 is CONTROLLED_MONITOR_STOP, not firmware failure and not proof of PASS by itself.  A mixed
 operator transcript is never considered direct release evidence.  Hardware
 operations require explicit operator intent variables so that CI/self-tests
 cannot flash or monitor a board accidentally.
@@ -260,8 +260,13 @@ def render_report(run_dir: Path, manifest: dict[str, Any]) -> None:
         "",
     ]
     (run_dir / "excerpt.md").write_text("\n".join(lines), encoding="utf-8")
-    REPORT.parent.mkdir(parents=True, exist_ok=True)
-    REPORT.write_text("\n".join(lines), encoding="utf-8")
+    try:
+        run_rel = run_dir.relative_to(ROOT).as_posix()
+    except ValueError:
+        run_rel = ""
+    if run_rel.startswith("docs/release/"):
+        REPORT.parent.mkdir(parents=True, exist_ok=True)
+        REPORT.write_text("\n".join(lines), encoding="utf-8")
 
 
 def run_parser(argv: list[str]) -> tuple[str, dict[str, Any]]:

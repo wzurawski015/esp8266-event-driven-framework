@@ -345,6 +345,25 @@ def render_import(rows: list[dict[str, object]]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def import_from_one_shot(target: str, one_shot_dir: Path) -> dict[str, object]:
+    if is_placeholder_path(one_shot_dir):
+        raise EvidenceError("ENVIRONMENT_BLOCKED", f"placeholder one-shot evidence directory was supplied: {one_shot_dir}")
+    if not one_shot_dir.exists():
+        raise EvidenceError("ENVIRONMENT_BLOCKED", f"one-shot evidence directory not found: {one_shot_dir}")
+    if not one_shot_dir.is_dir():
+        raise EvidenceError("FAIL", f"one-shot evidence path is not a directory: {one_shot_dir}")
+    manifest = one_shot_dir / "manifest.json"
+    if not manifest.is_file():
+        raise EvidenceError("ENVIRONMENT_BLOCKED", f"one-shot evidence manifest not found: {manifest}")
+    return import_target(
+        target,
+        one_shot_dir / "build.log",
+        one_shot_dir / "map_summary.txt",
+        one_shot_dir / "size.log",
+        one_shot_dir / "stack_usage.txt",
+    )
+
+
 def gate() -> int:
     rows = load_rows()
     errors: list[str] = []
@@ -481,6 +500,25 @@ def self_test() -> int:
         bad = root / "bad.elf"; bad.write_text("binary-ish", encoding="utf-8")
         _expect_fail(lambda: import_target("esp8266_generic_dev", valid, bad), "binary")
         _expect_fail(lambda: import_target("esp8266_generic_dev", Path("/path/to/build.log")), "placeholder")
+
+        one = root / "one-shot"
+        one.mkdir()
+        (one / "manifest.json").write_text("{}\n", encoding="utf-8")
+        (one / "build.log").write_text(valid.read_text(encoding="utf-8"), encoding="utf-8")
+        (one / "size.log").write_text("EV_MEM_IRAM=100\nEV_MEM_DRAM=200\nEV_MEM_APP_BIN=12345\n", encoding="utf-8")
+        (one / "map_summary.txt").write_text("EV_MEM_IROM=300\n", encoding="utf-8")
+        (one / "stack_usage.txt").write_text("EV_MEM_STACK_USAGE status=ok max_frame=88\n", encoding="utf-8")
+        ev = import_from_one_shot("esp8266_generic_dev", one)
+        assert ev["status"] == "PASS"
+        badone = root / "bad-one"
+        badone.mkdir()
+        (badone / "manifest.json").write_text("{}\n", encoding="utf-8")
+        (badone / "build.log").write_text("EV_MEM_REPORT_RESULT PASS target=self-test\nEV_MEM_IRAM=1\nEV_MEM_APP_BIN=1\n", encoding="utf-8")
+        (badone / "size.log").write_text("", encoding="utf-8")
+        (badone / "map_summary.txt").write_text("", encoding="utf-8")
+        (badone / "stack_usage.txt").write_text("", encoding="utf-8")
+        ev = import_from_one_shot("esp8266_generic_dev", badone)
+        assert ev["status"] == "FAIL" and ev["self_test_marker_seen"]
     EVIDENCE_ROOT, BUILD_REPORT, MEM_REPORT, STACK_REPORT, IMPORT_REPORT = old
     print("EV_SDK_IMPORT_EVIDENCE_SELF_TEST PASS")
     return 0
@@ -498,6 +536,7 @@ def main() -> int:
     ap.add_argument("--size-log", type=Path)
     ap.add_argument("--stack", type=Path)
     ap.add_argument("--sdkconfig", type=Path)
+    ap.add_argument("--from-one-shot-dir", type=Path)
     args = ap.parse_args()
     try:
         if args.self_test:
@@ -507,9 +546,12 @@ def main() -> int:
         if args.summarize:
             render_reports(); print("EV_SDK_IMPORT_EVIDENCE_SUMMARY_DONE"); return 0
         if args.import_target:
-            if not args.build_log:
-                raise EvidenceError("FAIL", "--build-log required for --import-target")
-            ev = import_target(args.import_target, args.build_log, args.map, args.size_log, args.stack, args.sdkconfig)
+            if args.from_one_shot_dir:
+                ev = import_from_one_shot(args.import_target, args.from_one_shot_dir)
+            else:
+                if not args.build_log:
+                    raise EvidenceError("FAIL", "--build-log required for --import-target unless --from-one-shot-dir is used")
+                ev = import_target(args.import_target, args.build_log, args.map, args.size_log, args.stack, args.sdkconfig)
             print(f"EV_SDK_IMPORT_EVIDENCE {ev['status']} target={args.import_target} reason={ev.get('reason','')}")
             return 0 if ev["status"] == "PASS" else 1
         root = args.import_root or (Path(os.environ["EV_SDK_EVIDENCE_IMPORT_ROOT"]) if os.environ.get("EV_SDK_EVIDENCE_IMPORT_ROOT") else None)

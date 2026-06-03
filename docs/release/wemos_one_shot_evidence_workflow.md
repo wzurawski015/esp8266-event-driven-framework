@@ -34,3 +34,9 @@ The workflow writes separate evidence files: `build.log`, `size.log`, `map_summa
 `PASS_FULL_BUILD_FLASH_SMOKE` means SDK build, flash and Wemos smoke evidence are all real PASS. `PASS_SMOKE_ONLY` is a limited operator-requested smoke-only result. `PARTIAL_EVIDENCE`, `ENVIRONMENT_BLOCKED`, `FAIL` and `NOT_RUN` are preserved and never softened into PASS.
 
 `CONTROLLED_MONITOR_STOP` / terminal `code 130` is an operator Ctrl+C. It is not firmware panic and not proof of PASS by itself.
+
+## SDK import from bundle
+
+Use `make wemos-one-shot-sdk-import` with `EV_WEMOS_ONE_SHOT_EVIDENCE_DIR=<run-dir>` to import build/map/stack evidence from a Wemos one-shot bundle. This does not loosen SDK evidence policy: missing canonical markers, APP_BIN=0, self-test markers or mixed transcripts are rejected.
+
+Flash evidence can be parsed from the same bundle with `make wemos-one-shot-flash-import-gate`.

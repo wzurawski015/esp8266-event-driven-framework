@@ -208,6 +208,11 @@ Hard resetting via RTS pin...
         src.write_text(valid + "\nCOMMAND_TOKEN=secret\n", encoding="utf-8")
         assert write_evidence(src.read_text(), target="wemos_esp_wroom_02_18650", evidence_dir=d / "out") == 0
         assert "<REDACTED>" in (d / "out" / "flash.log").read_text(encoding="utf-8")
+        one = d / "one-shot"
+        one.mkdir()
+        (one / "flash.log").write_text(valid, encoding="utf-8")
+        status, reason, text = safe_read_log(one / "flash.log")
+        assert status == "PASS" and "ESP8266EX" in text
     print("ESPTOOL_FLASH_LOG_PARSER_SELF_TEST PASS")
     return 0
 
@@ -219,6 +224,7 @@ def main() -> int:
     ap.add_argument("--target")
     ap.add_argument("--evidence-dir", type=Path)
     ap.add_argument("--import-root", type=Path)
+    ap.add_argument("--from-one-shot-dir", type=Path)
     ap.add_argument("--gate", action="store_true")
     args = ap.parse_args()
     if args.self_test:
@@ -227,6 +233,10 @@ def main() -> int:
         return gate()
     if args.import_root:
         return import_root(args.import_root)
+    if args.from_one_shot_dir:
+        args.log = args.from_one_shot_dir / "flash.log"
+        if args.evidence_dir is None:
+            args.evidence_dir = args.from_one_shot_dir
     if not args.log or not args.target:
         print("EV_SDK_FLASH_EVIDENCE ENVIRONMENT_BLOCKED: --log and --target are required")
         return 77

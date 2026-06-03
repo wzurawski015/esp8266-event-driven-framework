@@ -1045,12 +1045,12 @@ if not wemos_one_shot.exists():
     errors.append("wemos one-shot evidence: missing tools/release/wemos_one_shot_evidence.py")
 else:
     text = wemos_one_shot.read_text(encoding="utf-8", errors="ignore")
-    for token in ["--from-one-shot-dir", "operator_intent.json", "EV_WEMOS_ONE_SHOT_FLASH", "EV_HIL_ALLOW_FLASH", "EV_WEMOS_ONE_SHOT_MONITOR", "EV_HIL_ALLOW_MONITOR", "PASS_FULL_BUILD_FLASH_SMOKE", "PASS_SMOKE_ONLY", "PARTIAL_EVIDENCE", "CONTROLLED_MONITOR_STOP", "build.log", "flash.log", "serial.raw.log", "manifest.json", "sha256sums.txt", "--self-test"]:
+    for token in ["--capture-deepsleep", "--from-one-shot-dir", "operator_intent.json", "EV_WEMOS_ONE_SHOT_FLASH", "EV_HIL_ALLOW_FLASH", "EV_WEMOS_ONE_SHOT_MONITOR", "EV_HIL_ALLOW_MONITOR", "PASS_FULL_BUILD_FLASH_SMOKE", "PASS_SMOKE_ONLY", "PARTIAL_EVIDENCE", "CONTROLLED_MONITOR_STOP", "build.log", "flash.log", "serial.raw.log", "manifest.json", "sha256sums.txt", "--self-test"]:
         if token not in text:
             errors.append(f"wemos one-shot evidence: tool missing contract token {token}")
     if "code 130" in text and "not proof" not in text and "not firmware" not in text:
         errors.append("wemos one-shot evidence: code 130 must not be treated as PASS proof")
-for target in ["wemos-one-shot-evidence-preflight", "wemos-one-shot-evidence-capture", "wemos-one-shot-evidence-gate", "wemos-one-shot-evidence-explain", "wemos-one-shot-evidence-self-test", "wemos-one-shot-sdk-import", "wemos-one-shot-sdk-import-gate", "wemos-one-shot-flash-import-gate"]:
+for target in ["wemos-one-shot-evidence-preflight", "wemos-one-shot-evidence-capture", "wemos-one-shot-evidence-gate", "wemos-one-shot-evidence-explain", "wemos-one-shot-evidence-self-test", "wemos-one-shot-sdk-import", "wemos-one-shot-sdk-import-gate", "wemos-one-shot-flash-import-gate", "wemos-one-shot-deepsleep-evidence-capture", "wemos-one-shot-deepsleep-evidence-gate", "wemos-one-shot-deepsleep-evidence-explain"]:
     if f"{target}:" not in makefile_text:
         errors.append(f"wemos one-shot evidence target missing from Makefile: {target}")
 for rel in [

@@ -429,6 +429,15 @@ def self_test() -> int:
         blocked = operator_intent(TARGET_DEFAULT, deepsleep=False)
         assert intent_block_reason(blocked, need_flash=True, need_monitor=False, need_deepsleep=False)
         assert intent_block_reason(blocked, need_flash=False, need_monitor=True, need_deepsleep=False)
+        assert intent_block_reason(blocked, need_flash=False, need_monitor=True, need_deepsleep=True)
+        ds = root / "deepsleep"
+        ds.mkdir()
+        deep_log = """EV_WEMOS_SMOKE_BOOT target=wemos_esp_wroom_02_18650\nEV_WEMOS_SMOKE_RUNTIME_READY source=runtime_app\nEV_WEMOS_SMOKE_TICK seq=1\nEV_WEMOS_SMOKE_SNAPSHOT seq=1\nEV_WEMOS_SMOKE_TICK seq=2\nEV_WEMOS_SMOKE_SNAPSHOT seq=2\nEV_WEMOS_SMOKE_TICK seq=3\nEV_WEMOS_SMOKE_SNAPSHOT seq=3\nEV_WEMOS_SMOKE_RESULT PASS failures=0 skipped=0 mode=firmware_runtime_alive\nEV_POWER_SMOKE_SLEEP_REQUEST duration_us=5000000\nEV_POWER_SMOKE_STATE ACTIVE\nEV_POWER_SMOKE_STATE SLEEP_REQUESTED\nEV_POWER_SMOKE_STATE DRAINING_RUNTIME\nEV_POWER_SMOKE_STATE LOG_FLUSHING\nEV_POWER_SMOKE_STATE PORTS_PREPARE_SLEEP\nEV_POWER_SMOKE_STATE RTC_STATE_SAVED\nEV_POWER_SMOKE_STATE ENTERING_DEEP_SLEEP\nEV_POWER_SMOKE_DEEP_SLEEP_ENTER\nEV_POWER_SMOKE_WAKE_BOOT\nEV_POWER_SMOKE_WAKE_REASON reason=timer\nEV_POWER_SMOKE_RESULT PASS\n"""
+        (ds / "serial.raw.log").write_text(deep_log, encoding="utf-8")
+        status, _ = run_parser([sys.executable, "tools/hil/parse_wemos_smoke_log.py", "--deepsleep", "--log", str(ds / "serial.raw.log"), "--evidence-dir", str(ds)])
+        assert status == "PASS"
+        parsed_ds = parse_json(ds / "parsed.json") or {}
+        assert parsed_ds.get("mode") == "deepsleep" and not parsed_ds.get("runtime_alive_fallback")
         # Existing run should fail without overwrite.
         try:
             ensure_new_run_dir(run)

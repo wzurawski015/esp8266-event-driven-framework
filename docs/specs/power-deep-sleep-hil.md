@@ -49,3 +49,7 @@ board in a partially disabled state.
 - UART log visibility is required before final I/O parking; do not interpret a
   missing post-park UART line as a firmware failure unless the pre-park log was
   also missing.
+
+## Wemos one-shot strict capture
+
+Wemos one-shot deep-sleep capture keeps smoke fallback and deep-sleep proof separate. Deep-sleep PASS requires the full ordered state sequence, deep-sleep enter, wake boot, wake reason and `EV_POWER_SMOKE_RESULT PASS`.

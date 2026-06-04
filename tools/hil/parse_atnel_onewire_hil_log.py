@@ -186,17 +186,28 @@ def main() -> int:
     ap.add_argument("--log", type=Path)
     ap.add_argument("--evidence-dir", type=Path, default=DEFAULT_EVIDENCE)
     ap.add_argument("--environment-blocked", action="store_true")
+    ap.add_argument("--check-only", action="store_true", help="parse or classify without writing release evidence")
     args = ap.parse_args()
     if args.self_test:
         return self_test()
+    if args.check_only and (args.environment_blocked or args.log is None):
+        print("EV_HIL_ATNEL_ONEWIRE ENVIRONMENT_BLOCKED reason=ATNEL OneWire DS18B20 HIL fixture or serial log is not available")
+        return 77
     if args.environment_blocked or args.log is None:
         return environment_blocked("ATNEL OneWire DS18B20 HIL fixture or serial log is not available", args.evidence_dir)
     status, reason, text = safe_read_log(args.log)
     if status == "ENVIRONMENT_BLOCKED":
+        if args.check_only:
+            print(f"EV_HIL_ATNEL_ONEWIRE ENVIRONMENT_BLOCKED reason={reason}")
+            return 77
         return environment_blocked(reason, args.evidence_dir)
     if status == "FAIL":
         print(f"EV_HIL_ATNEL_ONEWIRE FAIL reason={reason}", file=sys.stderr)
         return 1
+    if args.check_only:
+        parsed = parse_text(text)
+        print(f"EV_HIL_ATNEL_ONEWIRE CHECK_ONLY status={parsed['status']}")
+        return 0 if parsed["status"] == "PASS" else 1
     return write_evidence(text, args.evidence_dir, args.log)
 
 

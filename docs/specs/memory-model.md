@@ -9,16 +9,16 @@
 
 ## Planned memory classes
 
-1. **Inline payloads**  
+1. **Inline payloads**
    Small messages that fit directly in an event envelope.
 
-2. **Fixed-copy payloads**  
+2. **Fixed-copy payloads**
    Bounded payloads copied into preallocated storage.
 
-3. **Lease-backed payloads**  
+3. **Lease-backed payloads**
    Shared buffers with strict ownership and release semantics.
 
-4. **Stream views**  
+4. **Stream views**
    Non-owning descriptors over ring-buffered or DMA-oriented data.
 
 ## Enforcement direction

@@ -74,7 +74,7 @@ def iter_c_files(root: Path) -> Iterable[Path]:
 
 def _include_is_forbidden(layer: str, include: str) -> str | None:
     normalized = include.replace("\\", "/")
-    for token in FORBIDDEN_INCLUDE_TOKENS.get(layer, ()): 
+    for token in FORBIDDEN_INCLUDE_TOKENS.get(layer, ()):
         if token in normalized:
             return f"{layer} includes forbidden dependency token {token!r} via {include!r}"
     return None

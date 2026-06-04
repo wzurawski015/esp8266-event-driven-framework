@@ -73,3 +73,23 @@ JSON/JSONL and Markdown remain sanitized-only even in a private repo.
 refreshes Wemos one-shot SHA sidecars while leaving explicit raw/private evidence
 untouched.  This is intentionally different from a global `docs/release/**`
 allowlist: raw evidence can remain private; redacted evidence must be true.
+
+## Phase 3 gate discipline
+
+Quality and release gates are check-only. `make evidence-redaction-scrub` and
+`make repair-evidence-redaction` are operator repair commands; they must be run
+and committed before release gates, not hidden inside `quality-gate`.
+
+CI verifies this by running a clean-tree check after `./tools/fw release-gate`.
+If a generator, scrubber or doc target changes tracked files during a gate, the
+build must fail so the sanitized artifacts can be reviewed and committed in a
+separate private-repo change.
+
+SDK warning policy is split deliberately:
+
+- `sdk-project-warning-self-test` validates parser behavior in host-only jobs.
+- `sdk-project-warning-gate` requires `EV_SDK_BUILD_LOG` and is used by SDK jobs
+  with a fresh build log captured from the current build session.
+
+This keeps private-lab secrets allowed in explicit private classes while keeping
+`redacted`, `normalized`, reports, manifests and public artifacts truthful.

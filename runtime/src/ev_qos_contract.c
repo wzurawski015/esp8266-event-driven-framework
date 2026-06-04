@@ -61,9 +61,9 @@ ev_result_t ev_qos_contract_for(ev_route_qos_t qos, ev_qos_contract_t *out_contr
     case EV_ROUTE_QOS_TELEMETRY:
         c.failure_behavior = EV_QOS_FAILURE_DROP_ALLOWED; c.allows_drop = 1U; c.telemetry_relevant = 1U; break;
     case EV_ROUTE_QOS_COALESCED:
-        c.failure_behavior = EV_QOS_FAILURE_DROP_ALLOWED; c.allows_drop = 1U; break;
+        c.failure_behavior = EV_QOS_FAILURE_COALESCE; c.allows_drop = 1U; c.allows_coalesce = 1U; break;
     case EV_ROUTE_QOS_LATEST_ONLY:
-        c.failure_behavior = EV_QOS_FAILURE_DROP_ALLOWED; c.allows_drop = 1U; break;
+        c.failure_behavior = EV_QOS_FAILURE_REPLACE_LATEST; c.allows_drop = 1U; c.allows_latest_replace = 1U; break;
     default:
         return EV_ERR_OUT_OF_RANGE;
     }

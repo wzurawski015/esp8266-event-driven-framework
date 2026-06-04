@@ -151,7 +151,12 @@ ev_result_t ev_actor_registry_bind(ev_actor_registry_t *registry, ev_actor_runti
     return EV_OK;
 }
 
-ev_result_t ev_actor_registry_delivery(ev_actor_id_t target_actor, const ev_msg_t *msg, void *context)
+static ev_result_t ev_actor_registry_delivery_impl(
+    ev_actor_id_t target_actor,
+    const ev_msg_t *msg,
+    ev_route_qos_t qos,
+    ev_mailbox_delivery_report_t *mailbox_report,
+    void *context)
 {
     ev_actor_registry_t *registry = (ev_actor_registry_t *)context;
     ev_actor_runtime_t *runtime;
@@ -169,12 +174,24 @@ ev_result_t ev_actor_registry_delivery(ev_actor_id_t target_actor, const ev_msg_
         ++registry->stats.delivery_failed;
         ++registry->stats.delivery_target_missing;
         registry->stats.last_result = EV_ERR_NOT_FOUND;
+        if (mailbox_report != NULL) {
+            ev_mailbox_delivery_report_reset(mailbox_report);
+            mailbox_report->result = EV_ERR_NOT_FOUND;
+            mailbox_report->effect = EV_MAILBOX_DELIVERY_REJECTED;
+        }
         return EV_ERR_NOT_FOUND;
     }
 
-    rc = ev_mailbox_push(runtime->mailbox, msg);
+    rc = ev_mailbox_push_qos(runtime->mailbox, msg, qos, mailbox_report);
     runtime->stats.last_result = rc;
     if (rc == EV_OK) {
+        if ((mailbox_report != NULL) && (mailbox_report->effect == EV_MAILBOX_DELIVERY_DROPPED)) {
+            ++registry->stats.delivery_failed;
+            ++runtime->stats.enqueue_failed;
+            registry->stats.last_result = EV_OK;
+            ev_actor_runtime_record_pending_high_watermark(runtime);
+            return EV_OK;
+        }
         ++registry->stats.delivery_succeeded;
         registry->stats.last_result = EV_OK;
         ++runtime->stats.enqueued;
@@ -186,6 +203,21 @@ ev_result_t ev_actor_registry_delivery(ev_actor_id_t target_actor, const ev_msg_
     registry->stats.last_result = rc;
     ++runtime->stats.enqueue_failed;
     return rc;
+}
+
+ev_result_t ev_actor_registry_delivery_qos(
+    ev_actor_id_t target_actor,
+    const ev_msg_t *msg,
+    ev_route_qos_t qos,
+    ev_mailbox_delivery_report_t *mailbox_report,
+    void *context)
+{
+    return ev_actor_registry_delivery_impl(target_actor, msg, qos, mailbox_report, context);
+}
+
+ev_result_t ev_actor_registry_delivery(ev_actor_id_t target_actor, const ev_msg_t *msg, void *context)
+{
+    return ev_actor_registry_delivery_impl(target_actor, msg, EV_ROUTE_QOS_CRITICAL, NULL, context);
 }
 
 ev_result_t ev_actor_runtime_step(ev_actor_runtime_t *runtime)

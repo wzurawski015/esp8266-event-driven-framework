@@ -5,6 +5,8 @@
 #include "ev/compiler.h"
 #include "ev/dispose.h"
 
+#define EV_MAILBOX_NO_SLOT ((size_t)-1)
+
 static bool ev_mailbox_kind_is_known(ev_mailbox_kind_t kind)
 {
     return ev_mailbox_kind_capacity(kind) > 0U;
@@ -50,7 +52,6 @@ static ev_result_t ev_mailbox_store_at(ev_mailbox_t *mailbox, size_t index, cons
     return EV_OK;
 }
 
-
 static void ev_mailbox_release_retained_queue_copy(const ev_msg_t *msg)
 {
     ev_msg_t retained_copy;
@@ -74,6 +75,89 @@ static ev_result_t ev_mailbox_retain_for_queue(const ev_msg_t *msg)
     }
 
     return ev_msg_retain(msg);
+}
+
+static void ev_mailbox_report_fill(
+    ev_mailbox_delivery_report_t *report,
+    ev_mailbox_delivery_effect_t effect,
+    ev_result_t result,
+    size_t before,
+    size_t after,
+    size_t slot_index)
+{
+    if (report == NULL) {
+        return;
+    }
+    report->effect = effect;
+    report->result = result;
+    report->queue_depth_before = before;
+    report->queue_depth_after = after;
+    report->slot_index = slot_index;
+}
+
+static size_t ev_mailbox_pending_index_at(const ev_mailbox_t *mailbox, size_t offset)
+{
+    if ((mailbox == NULL) || (offset >= mailbox->count)) {
+        return EV_MAILBOX_NO_SLOT;
+    }
+    return (mailbox->head + offset) & mailbox->storage_mask;
+}
+
+static size_t ev_mailbox_find_event_slot(const ev_mailbox_t *mailbox, ev_event_id_t event_id, bool latest)
+{
+    size_t i;
+    size_t found = EV_MAILBOX_NO_SLOT;
+
+    if ((mailbox == NULL) || (mailbox->storage == NULL)) {
+        return EV_MAILBOX_NO_SLOT;
+    }
+
+    for (i = 0U; i < mailbox->count; ++i) {
+        size_t index = ev_mailbox_pending_index_at(mailbox, i);
+        if ((index != EV_MAILBOX_NO_SLOT) && (mailbox->storage[index].event_id == event_id)) {
+            found = index;
+            if (!latest) {
+                break;
+            }
+        }
+    }
+
+    return found;
+}
+
+static ev_result_t ev_mailbox_replace_slot(ev_mailbox_t *mailbox, size_t index, const ev_msg_t *msg)
+{
+    ev_result_t rc;
+
+    rc = ev_mailbox_retain_for_queue(msg);
+    if (rc != EV_OK) {
+        return rc;
+    }
+
+    rc = ev_mailbox_dispose_slot(mailbox, index);
+    if (rc != EV_OK) {
+        ev_mailbox_release_retained_queue_copy(msg);
+        return rc;
+    }
+
+    rc = ev_mailbox_store_at(mailbox, index, msg);
+    if (rc != EV_OK) {
+        ev_mailbox_release_retained_queue_copy(msg);
+        return rc;
+    }
+
+    return EV_OK;
+}
+
+void ev_mailbox_delivery_report_reset(ev_mailbox_delivery_report_t *report)
+{
+    if (report == NULL) {
+        return;
+    }
+    (void)memset(report, 0, sizeof(*report));
+    report->effect = EV_MAILBOX_DELIVERY_REJECTED;
+    report->result = EV_OK;
+    report->slot_index = EV_MAILBOX_NO_SLOT;
 }
 
 size_t ev_mailbox_kind_capacity(ev_mailbox_kind_t kind)
@@ -263,6 +347,117 @@ ev_result_t ev_mailbox_push(ev_mailbox_t *mailbox, const ev_msg_t *msg)
         ++mailbox->stats.rejected;
         return EV_ERR_OUT_OF_RANGE;
     }
+}
+
+static ev_result_t ev_mailbox_push_coalesced(
+    ev_mailbox_t *mailbox,
+    const ev_msg_t *msg,
+    ev_mailbox_delivery_report_t *report)
+{
+    size_t before = mailbox->count;
+    size_t slot = ev_mailbox_find_event_slot(mailbox, msg->event_id, false);
+    ev_result_t rc;
+
+    if (slot != EV_MAILBOX_NO_SLOT) {
+        ++mailbox->stats.coalesced;
+        ev_mailbox_report_fill(report, EV_MAILBOX_DELIVERY_COALESCED, EV_OK, before, mailbox->count, slot);
+        return EV_OK;
+    }
+
+    if (mailbox->count >= mailbox->storage_count) {
+        ++mailbox->stats.dropped;
+        ev_mailbox_report_fill(report, EV_MAILBOX_DELIVERY_DROPPED, EV_OK, before, mailbox->count, EV_MAILBOX_NO_SLOT);
+        return EV_OK;
+    }
+
+    rc = ev_mailbox_push(mailbox, msg);
+    ev_mailbox_report_fill(
+        report,
+        (rc == EV_OK) ? EV_MAILBOX_DELIVERY_POSTED : EV_MAILBOX_DELIVERY_REJECTED,
+        rc,
+        before,
+        mailbox->count,
+        (rc == EV_OK) ? ((mailbox->tail + mailbox->storage_count - 1U) & mailbox->storage_mask) : EV_MAILBOX_NO_SLOT);
+    return rc;
+}
+
+static ev_result_t ev_mailbox_push_latest_only(
+    ev_mailbox_t *mailbox,
+    const ev_msg_t *msg,
+    ev_mailbox_delivery_report_t *report)
+{
+    size_t before = mailbox->count;
+    size_t slot = ev_mailbox_find_event_slot(mailbox, msg->event_id, true);
+    ev_result_t rc;
+
+    if (slot != EV_MAILBOX_NO_SLOT) {
+        rc = ev_mailbox_replace_slot(mailbox, slot, msg);
+        if (rc == EV_OK) {
+            ++mailbox->stats.replaced;
+            ev_mailbox_report_fill(report, EV_MAILBOX_DELIVERY_REPLACED, EV_OK, before, mailbox->count, slot);
+            return EV_OK;
+        }
+        ++mailbox->stats.rejected;
+        ev_mailbox_report_fill(report, EV_MAILBOX_DELIVERY_REJECTED, rc, before, mailbox->count, slot);
+        return rc;
+    }
+
+    if (mailbox->count >= mailbox->storage_count) {
+        ++mailbox->stats.dropped;
+        ev_mailbox_report_fill(report, EV_MAILBOX_DELIVERY_DROPPED, EV_OK, before, mailbox->count, EV_MAILBOX_NO_SLOT);
+        return EV_OK;
+    }
+
+    rc = ev_mailbox_push(mailbox, msg);
+    ev_mailbox_report_fill(
+        report,
+        (rc == EV_OK) ? EV_MAILBOX_DELIVERY_POSTED : EV_MAILBOX_DELIVERY_REJECTED,
+        rc,
+        before,
+        mailbox->count,
+        (rc == EV_OK) ? ((mailbox->tail + mailbox->storage_count - 1U) & mailbox->storage_mask) : EV_MAILBOX_NO_SLOT);
+    return rc;
+}
+
+ev_result_t ev_mailbox_push_qos(
+    ev_mailbox_t *mailbox,
+    const ev_msg_t *msg,
+    ev_route_qos_t qos,
+    ev_mailbox_delivery_report_t *report)
+{
+    ev_result_t rc;
+    size_t before;
+
+    if ((mailbox == NULL) || (msg == NULL) || (mailbox->storage == NULL)) {
+        ev_mailbox_report_fill(report, EV_MAILBOX_DELIVERY_REJECTED, EV_ERR_INVALID_ARG, 0U, 0U, EV_MAILBOX_NO_SLOT);
+        return EV_ERR_INVALID_ARG;
+    }
+
+    ev_mailbox_delivery_report_reset(report);
+    before = mailbox->count;
+    rc = ev_msg_validate(msg);
+    if (rc != EV_OK) {
+        ++mailbox->stats.rejected;
+        ev_mailbox_report_fill(report, EV_MAILBOX_DELIVERY_REJECTED, rc, before, mailbox->count, EV_MAILBOX_NO_SLOT);
+        return rc;
+    }
+
+    if (qos == EV_ROUTE_QOS_COALESCED) {
+        return ev_mailbox_push_coalesced(mailbox, msg, report);
+    }
+    if (qos == EV_ROUTE_QOS_LATEST_ONLY) {
+        return ev_mailbox_push_latest_only(mailbox, msg, report);
+    }
+
+    rc = ev_mailbox_push(mailbox, msg);
+    ev_mailbox_report_fill(
+        report,
+        (rc == EV_OK) ? EV_MAILBOX_DELIVERY_POSTED : EV_MAILBOX_DELIVERY_REJECTED,
+        rc,
+        before,
+        mailbox->count,
+        (rc == EV_OK) ? ((mailbox->tail + mailbox->storage_count - 1U) & mailbox->storage_mask) : EV_MAILBOX_NO_SLOT);
+    return rc;
 }
 
 ev_result_t ev_mailbox_pop(ev_mailbox_t *mailbox, ev_msg_t *out)

@@ -1,0 +1,13 @@
+{
+  "chip_detected": "ESP8266EX",
+  "evidence_kind": "esptool_flash",
+  "failures": [],
+  "fatal_error_seen": false,
+  "flash_log": "docs/release/wemos_one_shot_evidence/wemos_esp_wroom_02_18650/current/runs/real-wemos-20260604T064940Z/flash.log",
+  "flash_log_sha256": "0c7ca3e6b1f2e8f15a9e3dbab6c101aba09abc038ed809e808b8e3b05576d857",
+  "hash_verified": true,
+  "reset_or_leave_seen": true,
+  "status": "PASS",
+  "target": "wemos_esp_wroom_02_18650",
+  "write_seen": true
+}

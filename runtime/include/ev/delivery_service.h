@@ -27,6 +27,10 @@ typedef struct {
     size_t optional_disabled_network_routes;
     size_t rejected_routes;
     size_t qos_conflict_routes;
+    size_t coalesced;
+    size_t replaced;
+    size_t qos_dropped;
+    size_t mailbox_policy_rejected;
 } ev_delivery_report_t;
 
 /**

@@ -98,19 +98,60 @@ int ev_delivery_qos_failure_is_strict(ev_route_qos_t qos)
     return ev_qos_failure_is_strict(qos);
 }
 
+static void ev_delivery_record_mailbox_effect(ev_runtime_graph_t *graph, const ev_mailbox_delivery_report_t *mailbox_report, ev_delivery_report_t *local)
+{
+    if ((graph == NULL) || (mailbox_report == NULL) || (local == NULL)) {
+        return;
+    }
+
+    switch (mailbox_report->effect) {
+    case EV_MAILBOX_DELIVERY_COALESCED:
+        ++local->coalesced;
+        (void)ev_metric_increment(&EV_RUNTIME_GRAPH_IMPL(graph)->metrics, EV_METRIC_QOS_COALESCED, 1U);
+        break;
+    case EV_MAILBOX_DELIVERY_REPLACED:
+        ++local->replaced;
+        (void)ev_metric_increment(&EV_RUNTIME_GRAPH_IMPL(graph)->metrics, EV_METRIC_QOS_REPLACED, 1U);
+        break;
+    case EV_MAILBOX_DELIVERY_DROPPED:
+        ++local->qos_dropped;
+        (void)ev_metric_increment(&EV_RUNTIME_GRAPH_IMPL(graph)->metrics, EV_METRIC_QOS_DROPPED, 1U);
+        break;
+    case EV_MAILBOX_DELIVERY_REJECTED:
+        ++local->mailbox_policy_rejected;
+        break;
+    case EV_MAILBOX_DELIVERY_POSTED:
+    default:
+        break;
+    }
+}
+
 static ev_result_t ev_delivery_deliver_one(ev_runtime_graph_t *graph, const ev_route_t *route, const ev_msg_t *msg, ev_delivery_report_t *local)
 {
     ev_msg_t send_msg;
+    ev_mailbox_delivery_report_t mailbox_report;
     ev_result_t rc;
 
     send_msg = *msg;
     send_msg.target_actor = route->target_actor;
     local->attempted++;
     (void)ev_metric_increment(&EV_RUNTIME_GRAPH_IMPL(graph)->metrics, EV_METRIC_DELIVERY_ATTEMPTED, 1U);
-    rc = ev_actor_registry_delivery(route->target_actor, &send_msg, &EV_RUNTIME_GRAPH_IMPL(graph)->registry);
+    rc = ev_actor_registry_delivery_qos(
+        route->target_actor,
+        &send_msg,
+        route->qos,
+        &mailbox_report,
+        &EV_RUNTIME_GRAPH_IMPL(graph)->registry);
     ev_delivery_trace(graph, route, &send_msg, rc);
+    ev_delivery_record_mailbox_effect(graph, &mailbox_report, local);
 
     if (rc == EV_OK) {
+        if (mailbox_report.effect == EV_MAILBOX_DELIVERY_DROPPED) {
+            local->dropped++;
+            (void)ev_metric_increment(&EV_RUNTIME_GRAPH_IMPL(graph)->metrics, EV_METRIC_DELIVERY_FAILED, 1U);
+            (void)ev_metric_increment(&EV_RUNTIME_GRAPH_IMPL(graph)->metrics, EV_METRIC_POST_DROPPED, 1U);
+            return EV_OK;
+        }
         local->delivered++;
         (void)ev_metric_increment(&EV_RUNTIME_GRAPH_IMPL(graph)->metrics, EV_METRIC_DELIVERY_OK, 1U);
         return EV_OK;

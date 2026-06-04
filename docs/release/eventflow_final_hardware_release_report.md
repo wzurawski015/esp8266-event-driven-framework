@@ -16,3 +16,24 @@
 | `wemos_deep_sleep_wake` | `hil_wemos_deepsleep` | ENVIRONMENT_BLOCKED | True | `docs/release/hil_evidence/wemos_deepsleep/current/parsed.json` | `9ccf580538a18f2398e61ee1ba9054efecf48f2dcd493d0c2e0f2f84627730bd` |  |
 
 A PASS means all required real SDK and HIL sources are present and parsed as PASS. `ENVIRONMENT_BLOCKED` is preserved when hardware or SDK evidence is missing.
+
+## Import hardening note
+
+Eventflow PASS depends on real SDK/HIL source evidence. Mixed transcripts,
+self-test markers, missing log files and placeholder paths remain blocked. A
+flash transcript is parsed by the dedicated esptool parser and is not accepted as
+SDK build evidence.
+
+## Wemos smoke fallback policy
+
+The eventflow release gate may accept Wemos smoke evidence with
+`mode=runtime_alive_fallback` only for the smoke/runtime-alive source. Wemos
+deep-sleep/wake sources must remain strict marker proof and cannot use fallback.
+
+## Wemos one-shot deep-sleep source
+
+Eventflow may consume strict Wemos one-shot deep-sleep evidence only when the bundle reports a deep-sleep PASS with ordered power state markers and wake boot evidence. Runtime-alive fallback is smoke-only and cannot promote deep-sleep PASS.
+
+## Wemos one-shot bundle source
+
+`eventflow-one-shot-evidence-gate` reads a Wemos one-shot `manifest.json` as a formal source. Smoke may use `runtime_alive_fallback`; deep-sleep cannot. Missing one-shot manifests remain `ENVIRONMENT_BLOCKED`, not PASS.

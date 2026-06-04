@@ -30,6 +30,48 @@ def _load_evidence_for_target(target: str) -> dict:
         return {}
 
 
+def _sdk_pass_evidence_errors(target: str, evidence: dict, log_text: str | None = None) -> list[str]:
+    out: list[str] = []
+    values = evidence.get("values", {}) if isinstance(evidence.get("values", {}), dict) else {}
+    klass = str(evidence.get("class", ""))
+    if evidence.get("status") != "PASS":
+        out.append(f"SDK evidence status is not PASS: {target}")
+    if evidence.get("evidence_kind") != "sdk_build":
+        out.append(f"SDK PASS evidence_kind is not sdk_build: {target}")
+    if evidence.get("target") != target:
+        out.append(f"SDK PASS evidence target mismatch: {target}")
+    if not evidence.get("target_marker_seen") or not evidence.get("target_marker_match"):
+        out.append(f"SDK PASS without exact EV_SDK_BUILD_TARGET marker: {target}")
+    if not evidence.get("build_status_marker_seen"):
+        out.append(f"SDK PASS without EV_SDK_BUILD_STATUS=PASS: {target}")
+    if evidence.get("build_rc") is not None and int(evidence.get("build_rc", -1) or -1) != 0:
+        out.append(f"SDK PASS without EV_SDK_BUILD_RC=0: {target}")
+    if evidence.get("self_test_marker_seen"):
+        out.append(f"SDK PASS contains self-test marker: {target}")
+    if evidence.get("mixed_transcript_detected"):
+        out.append(f"SDK PASS comes from mixed transcript: {target}")
+    if klass in {"buildable_sdk", "physical_smoke", "hil_sdk"} and int(values.get("APP_BIN", 0) or 0) <= 0:
+        out.append(f"SDK PASS without non-zero APP_BIN: {target}")
+    if klass in {"buildable_sdk", "physical_smoke", "hil_sdk"} and not any(int(values.get(key, 0) or 0) > 0 for key in ["IRAM", "DRAM", "BSS", "DATA", "IROM"]):
+        out.append(f"SDK PASS without non-zero real memory section: {target}")
+    if log_text is not None:
+        if f"EV_SDK_BUILD_TARGET={target}" not in log_text:
+            out.append(f"SDK PASS build log lacks matching EV_SDK_BUILD_TARGET: {target}")
+        if "EV_SDK_BUILD_STATUS=PASS" not in log_text:
+            out.append(f"SDK PASS build log lacks EV_SDK_BUILD_STATUS=PASS: {target}")
+        if "EV_SDK_BUILD_RC=0" not in log_text:
+            out.append(f"SDK PASS build log lacks EV_SDK_BUILD_RC=0: {target}")
+        if "EV_MEM_REPORT_RESULT PASS" in log_text and "EV_SDK_BUILD_STATUS=PASS" not in log_text:
+            out.append(f"SDK PASS build log uses memory-report PASS without SDK build status: {target}")
+        if "EV_MEM_REPORT_RESULT PASS target=self-test" in log_text or "--self-test" in log_text or "SELF_TEST PASS" in log_text:
+            out.append(f"SDK PASS build log contains self-test transcript: {target}")
+    for rel_key in ["build_log", "size_log", "map_summary", "stack_usage", "sdkconfig_effective"]:
+        rel = str(evidence.get(rel_key, ""))
+        if rel and rel.lower().endswith((".elf", ".bin", ".o", ".a")):
+            out.append(f"forbidden binary SDK artifact in evidence: {target}:{rel}")
+    return out
+
+
 def check_sdk_evidence_files(errors: list[str]) -> None:
     rows = table_rows(SDK_BUILD_REPORT)
     header = next((cells for cells in rows if cells and cells[0] == "Target"), [])
@@ -50,46 +92,75 @@ def check_sdk_evidence_files(errors: list[str]) -> None:
         if not evidence:
             errors.append(f"release-evidence: SDK PASS row has no evidence.json: {target}")
             continue
-        log_path = evidence.get("build_log", "")
-        if not log_path or not (ROOT / str(log_path)).is_file():
+        log_path = ROOT / str(evidence.get("build_log", ""))
+        if not evidence.get("build_log") or not log_path.is_file():
             errors.append(f"release-evidence: SDK PASS row has no committed build log: {target}")
-        if evidence.get("status") != "PASS":
-            errors.append(f"release-evidence: SDK PASS row evidence status is not PASS: {target}")
-        values = evidence.get("values", {}) if isinstance(evidence.get("values", {}), dict) else {}
-        if not any(int(values.get(key, 0) or 0) > 0 for key in ["IRAM", "DRAM", "BSS", "DATA", "APP_BIN"]):
-            errors.append(f"release-evidence: SDK PASS row has no non-zero memory evidence: {target}")
+            log_text = None
+        else:
+            log_text = log_path.read_text(encoding="utf-8", errors="ignore")
+        for err in _sdk_pass_evidence_errors(target, evidence, log_text):
+            errors.append(f"release-evidence: {err}")
 
 def check_sdk_import_evidence_contracts(errors: list[str]) -> None:
     importer = ROOT / "tools" / "release" / "import_sdk_evidence.py"
+    capture = ROOT / "tools" / "release" / "capture_sdk_evidence.py"
+    flash_parser = ROOT / "tools" / "release" / "parse_esptool_flash_log.py"
     manifest = ROOT / "config" / "sdk_evidence_import.def"
     report = ROOT / "docs" / "release" / "sdk_imported_build_map_stack_evidence_report.md"
+    canonical_report = ROOT / "docs" / "release" / "sdk_canonical_build_evidence_capture_report.md"
     if not importer.is_file():
         errors.append("release-evidence: SDK import tool missing")
+    if not capture.is_file():
+        errors.append("release-evidence: SDK capture tool missing")
+    if not flash_parser.is_file():
+        errors.append("release-evidence: esptool flash parser missing")
     if not manifest.is_file():
         errors.append("release-evidence: SDK import manifest missing")
     if not report.is_file():
         errors.append("release-evidence: SDK imported evidence report missing")
+    if not canonical_report.is_file():
+        errors.append("release-evidence: SDK canonical capture report missing")
+    legacy_sdk_or_mem_regex = "EV_SDK_BUILD_STATUS=PASS" + "|" + "EV_MEM_REPORT_RESULT PASS"
+    if capture.is_file():
+        capture_text = capture.read_text(encoding="utf-8", errors="ignore")
+        if legacy_sdk_or_mem_regex in capture_text:
+            errors.append("release-evidence: SDK capture path still allows memory-report PASS as SDK build PASS")
+        for token in ["EV_SDK_BUILD_TARGET", "EV_SDK_BUILD_STATUS=PASS", "EV_SDK_BUILD_RC", "marker_summary", "mixed transcript", "APP_BIN"]:
+            if token not in capture_text:
+                errors.append(f"release-evidence: SDK capture path missing canonical evidence token: {token}")
+    fw_tool = ROOT / "tools" / "fw"
+    if fw_tool.is_file():
+        fw_text = fw_tool.read_text(encoding="utf-8", errors="ignore")
+        for token in ["EV_SDK_BUILD_TARGET=$target_name", "EV_SDK_BUILD_STATUS=PASS", "EV_SDK_BUILD_STATUS=FAIL", "EV_SDK_BUILD_RC=$rc", "EV_SDK_BUILD_END"]:
+            if token not in fw_text:
+                errors.append(f"release-evidence: tools/fw missing canonical SDK marker: {token}")
     for target_dir in SDK_EVIDENCE_ROOT.glob("*") if SDK_EVIDENCE_ROOT.exists() else []:
         ev = target_dir / "evidence.json"
         if not ev.is_file():
             continue
         data = _load_evidence_for_target(target_dir.name)
-        if data.get("status") != "PASS":
-            continue
-        log_path = ROOT / str(data.get("build_log", ""))
-        if not log_path.is_file():
-            errors.append(f"release-evidence: imported SDK PASS without committed build log: {target_dir.name}")
-            continue
-        text = log_path.read_text(encoding="utf-8", errors="ignore")
-        if not re.search(r"EV_SDK_BUILD_STATUS=PASS|EV_MEM_REPORT_RESULT PASS", text):
-            errors.append(f"release-evidence: imported SDK PASS without PASS marker: {target_dir.name}")
-        values = data.get("values", {}) if isinstance(data.get("values", {}), dict) else {}
-        if not any(int(values.get(key, 0) or 0) > 0 for key in ["IRAM", "DRAM", "BSS", "DATA", "APP_BIN"]):
-            errors.append(f"release-evidence: imported SDK PASS without non-zero EV_MEM: {target_dir.name}")
-        for rel_key in ["build_log", "size_log", "map_summary", "stack_usage", "sdkconfig_effective"]:
-            rel = data.get(rel_key, "")
-            if rel and str(rel).lower().endswith((".elf", ".bin", ".o", ".a")):
-                errors.append(f"release-evidence: forbidden binary SDK artifact in evidence: {target_dir.name}:{rel}")
+        if data.get("status") == "PASS":
+            log_path = ROOT / str(data.get("build_log", ""))
+            log_text = log_path.read_text(encoding="utf-8", errors="ignore") if log_path.is_file() else None
+            for err in _sdk_pass_evidence_errors(target_dir.name, data, log_text):
+                errors.append(f"release-evidence: imported {err}")
+        flash_ev = target_dir / "flash_evidence.json"
+        if flash_ev.is_file():
+            try:
+                import json
+                flash = json.loads(flash_ev.read_text(encoding="utf-8", errors="ignore"))
+            except Exception:
+                errors.append(f"release-evidence: invalid flash evidence JSON: {target_dir.name}")
+                continue
+            if flash.get("status") == "PASS":
+                if flash.get("evidence_kind") != "esptool_flash":
+                    errors.append(f"release-evidence: flash PASS has wrong evidence_kind: {target_dir.name}")
+                if flash.get("target") != target_dir.name:
+                    errors.append(f"release-evidence: flash PASS target mismatch: {target_dir.name}")
+                if flash.get("chip_detected") != "ESP8266EX" or not flash.get("write_seen") or not flash.get("hash_verified"):
+                    errors.append(f"release-evidence: flash PASS without ESP8266EX/write/hash proof: {target_dir.name}")
+                if not flash.get("flash_log_sha256"):
+                    errors.append(f"release-evidence: flash PASS lacks flash log SHA-256: {target_dir.name}")
 
 FINAL_SUMMARY = ROOT / "docs" / "release" / "final_release_validation_summary.md"
 HIL_REPORTS = [
@@ -311,8 +382,16 @@ def check_wemos_hil_evidence(errors: list[str]) -> None:
             errors.append(f"release-evidence: {path.relative_to(ROOT).as_posix()} PASS but parsed status is not PASS")
         if not parsed.get("serial_sha256"):
             errors.append(f"release-evidence: {path.relative_to(ROOT).as_posix()} PASS without serial SHA-256")
-        if "deep_sleep" in path.name and parsed.get("mode") != "deepsleep":
-            errors.append("release-evidence: Wemos deep-sleep PASS without deepsleep parsed mode")
+        if "deep_sleep" in path.name:
+            if parsed.get("mode") != "deepsleep":
+                errors.append("release-evidence: Wemos deep-sleep PASS without deepsleep parsed mode")
+            if parsed.get("runtime_alive_fallback"):
+                errors.append("release-evidence: Wemos deep-sleep PASS cannot use runtime-alive fallback")
+        elif parsed.get("runtime_alive_fallback"):
+            if parsed.get("mode") != "runtime_alive_fallback":
+                errors.append("release-evidence: Wemos smoke fallback PASS must use mode=runtime_alive_fallback")
+            if not parsed.get("serial_raw_sha256") and parsed.get("normalized"):
+                errors.append("release-evidence: Wemos fallback PASS normalized evidence lacks raw log SHA-256")
 
 
 def check_eventflow_evidence(errors: list[str]) -> None:
@@ -356,9 +435,169 @@ def check_hil_import_contracts(errors: list[str]) -> None:
     for rel in [
         "docs/release/hil_serial_evidence_import_workflow.md",
         "docs/release/hil_real_atnel_wemos_evidence_report.md",
+        "docs/release/wemos_late_attach_smoke_evidence_report.md",
     ]:
         if not (ROOT / rel).is_file():
             errors.append(f"release-evidence: HIL import documentation missing: {rel}")
+
+
+def check_operator_transcript_evidence(errors: list[str]) -> None:
+    tool = ROOT / "tools" / "release" / "split_operator_transcript.py"
+    if not tool.is_file():
+        errors.append("release-evidence: operator transcript splitter missing")
+    for rel in [
+        "docs/release/operator_transcript_evidence_workflow.md",
+        "docs/release/operator_transcript_splitter_report.md",
+        "docs/release/operator_transcript_splitter_release_report.md",
+    ]:
+        if not (ROOT / rel).is_file():
+            errors.append(f"release-evidence: operator transcript documentation missing: {rel}")
+
+    root = ROOT / "docs" / "release" / "operator_transcript_evidence"
+    if not root.exists():
+        return
+    try:
+        import json
+    except Exception:
+        errors.append("release-evidence: json module unavailable for operator transcript evidence")
+        return
+    for manifest_path in root.glob("**/manifest.json"):
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8", errors="ignore"))
+        except Exception:
+            errors.append(f"release-evidence: invalid operator transcript manifest: {manifest_path.relative_to(ROOT).as_posix()}")
+            continue
+        if not manifest.get("source_sha256"):
+            errors.append(f"release-evidence: operator manifest lacks source SHA-256: {manifest_path.relative_to(ROOT).as_posix()}")
+        if manifest.get("status") == "PASS" and manifest.get("evidence_kind") != "operator_transcript_staging":
+            errors.append(f"release-evidence: operator transcript PASS has wrong evidence kind: {manifest_path.relative_to(ROOT).as_posix()}")
+        if manifest.get("operator_interrupt_seen"):
+            if manifest.get("operator_exit_code") != 130 or manifest.get("operator_exit_classification") != "CONTROLLED_MONITOR_STOP":
+                errors.append(f"release-evidence: operator interrupt manifest must classify code 130 as CONTROLLED_MONITOR_STOP: {manifest_path.relative_to(ROOT).as_posix()}")
+            for required in ["operator_footer_path", "operator_footer_sha256", "operator_footer_line_start", "operator_footer_line_end"]:
+                if not manifest.get(required):
+                    errors.append(f"release-evidence: operator interrupt manifest missing {required}: {manifest_path.relative_to(ROOT).as_posix()}")
+        for seg in manifest.get("segments", []):
+            if not seg.get("sha256") or not seg.get("source_line_start") or not seg.get("source_line_end"):
+                errors.append(f"release-evidence: operator segment lacks SHA/source lines: {manifest_path.relative_to(ROOT).as_posix()}:{seg.get('kind')}")
+            if seg.get("kind") == "sdk_build" and seg.get("status") == "PASS" and not seg.get("canonical_sdk_markers_seen"):
+                errors.append("release-evidence: operator build segment cannot be SDK PASS without canonical markers")
+            if seg.get("kind") == "esptool_flash" and seg.get("status") == "PASS":
+                parser_json = seg.get("parser_json", {}) if isinstance(seg.get("parser_json"), dict) else {}
+                if parser_json.get("evidence_kind") != "esptool_flash" or not parser_json.get("hash_verified"):
+                    errors.append("release-evidence: operator flash PASS must come from parse_esptool_flash_log.py hash proof")
+            if seg.get("kind") == "wemos_serial" and seg.get("status") == "PASS":
+                parser_json = seg.get("parser_json", {}) if isinstance(seg.get("parser_json"), dict) else {}
+                if manifest.get("operator_interrupt_seen") and not (seg.get("runtime_alive_fallback") or parser_json.get("marker_based")):
+                    errors.append("release-evidence: operator code 130 cannot be Wemos smoke PASS without smoke markers or runtime-alive fallback")
+                if seg.get("runtime_alive_fallback") and parser_json.get("mode") != "runtime_alive_fallback":
+                    errors.append("release-evidence: operator Wemos fallback PASS lacks runtime_alive_fallback parser mode")
+                if seg.get("source_line_start", 0) <= 0 or not seg.get("sha256"):
+                    errors.append("release-evidence: operator Wemos serial PASS lacks source range/SHA")
+        manifest_text = manifest_path.read_text(encoding="utf-8", errors="ignore")
+        if re.search(r"WIFI_PASSWORD|COMMAND_TOKEN", manifest_text) and "<REDACTED>" not in manifest_text:
+            errors.append(f"release-evidence: operator transcript manifest may contain secret token: {manifest_path.relative_to(ROOT).as_posix()}")
+
+
+
+def check_wemos_one_shot_evidence(errors: list[str]) -> None:
+    root = ROOT / "docs" / "release" / "wemos_one_shot_evidence"
+    if not root.exists():
+        return
+    for manifest_path in root.glob("**/manifest.json"):
+        try:
+            data = json.loads(manifest_path.read_text(encoding="utf-8", errors="ignore"))
+        except Exception:
+            errors.append(f"release-evidence: invalid Wemos one-shot manifest: {manifest_path.relative_to(ROOT).as_posix()}")
+            continue
+        if data.get("evidence_kind") != "wemos_one_shot_bundle":
+            errors.append(f"release-evidence: Wemos one-shot manifest has wrong evidence_kind: {manifest_path.relative_to(ROOT).as_posix()}")
+        if not data.get("operator_intent"):
+            errors.append(f"release-evidence: Wemos one-shot manifest lacks operator_intent: {manifest_path.relative_to(ROOT).as_posix()}")
+        stages = data.get("stages", []) if isinstance(data.get("stages", []), list) else []
+        if not stages:
+            errors.append(f"release-evidence: Wemos one-shot manifest lacks stages: {manifest_path.relative_to(ROOT).as_posix()}")
+        if str(data.get("status", "")).startswith("PASS_FULL"):
+            flash = data.get("flash", {}) if isinstance(data.get("flash", {}), dict) else {}
+            smoke = data.get("wemos_smoke", {}) if isinstance(data.get("wemos_smoke", {}), dict) else {}
+            sdk = data.get("sdk", {}) if isinstance(data.get("sdk", {}), dict) else {}
+            if sdk.get("status") != "PASS":
+                errors.append("release-evidence: Wemos one-shot full PASS lacks SDK PASS")
+            if flash.get("status") != "PASS" or not flash.get("hash_verified"):
+                errors.append("release-evidence: Wemos one-shot full PASS lacks flash hash proof")
+            if smoke.get("status") != "PASS":
+                errors.append("release-evidence: Wemos one-shot full PASS lacks Wemos smoke parser PASS")
+        manifest_text = manifest_path.read_text(encoding="utf-8", errors="ignore")
+        if re.search(r"WIFI_PASSWORD|COMMAND_TOKEN", manifest_text) and "<REDACTED>" not in manifest_text:
+            errors.append(f"release-evidence: Wemos one-shot manifest may contain secret token: {manifest_path.relative_to(ROOT).as_posix()}")
+
+
+
+
+def check_eventflow_one_shot_contract(errors: list[str]) -> None:
+    report = ROOT / "docs" / "release" / "eventflow_one_shot_wemos_integration_report.md"
+    if not report.is_file():
+        errors.append("release-evidence: missing eventflow one-shot Wemos integration report")
+    tool = ROOT / "tools" / "hil" / "eventflow_evidence_gate.py"
+    if tool.is_file():
+        text = tool.read_text(encoding="utf-8", errors="ignore")
+        for token in ["--one-shot-dir", "--one-shot-required", "wemos_one_shot", "runtime_alive_fallback", "deep-sleep cannot use runtime-alive fallback"]:
+            if token not in text:
+                errors.append(f"release-evidence: eventflow one-shot gate missing token {token}")
+
+
+
+def check_target_timing_evidence(errors: list[str]) -> None:
+    tool = ROOT / "tools" / "perf" / "parse_esp8266_target_timing.py"
+    if not tool.is_file():
+        errors.append("release-evidence: missing ESP8266 target timing parser")
+    if not (ROOT / "docs" / "perf" / "esp8266_target_timing_evidence_policy.md").is_file():
+        errors.append("release-evidence: missing ESP8266 target timing policy")
+    if not (ROOT / "docs" / "release" / "esp8266_target_p99_p999_timing_report.md").is_file():
+        errors.append("release-evidence: missing ESP8266 target P99/P999 release report")
+    root = ROOT / "docs" / "release" / "target_timing"
+    if root.exists():
+        for parsed in root.glob("**/target_timing.json"):
+            try:
+                data = json.loads(parsed.read_text(encoding="utf-8", errors="ignore"))
+            except Exception:
+                errors.append(f"release-evidence: invalid target timing JSON: {parsed.relative_to(ROOT).as_posix()}")
+                continue
+            if data.get("evidence_kind") != "esp8266_target_timing":
+                errors.append(f"release-evidence: target timing JSON has wrong evidence_kind: {parsed.relative_to(ROOT).as_posix()}")
+            if data.get("status") == "PASS":
+                if not data.get("source_serial_log_sha256"):
+                    errors.append(f"release-evidence: target timing PASS lacks source serial SHA-256: {parsed.relative_to(ROOT).as_posix()}")
+                if int(data.get("sample_count", 0) or 0) <= 0:
+                    errors.append(f"release-evidence: target timing PASS lacks sample count: {parsed.relative_to(ROOT).as_posix()}")
+                if data.get("p99_ms") is None or data.get("p999_ms") is None:
+                    errors.append(f"release-evidence: target timing PASS lacks P99/P999: {parsed.relative_to(ROOT).as_posix()}")
+                if data.get("reset_failure_seen"):
+                    errors.append(f"release-evidence: target timing PASS hides reset/failure marker: {parsed.relative_to(ROOT).as_posix()}")
+    one_shot_root = ROOT / "docs" / "release" / "wemos_one_shot_evidence"
+    if one_shot_root.exists():
+        for manifest_path in one_shot_root.glob("**/manifest.json"):
+            try:
+                data = json.loads(manifest_path.read_text(encoding="utf-8", errors="ignore"))
+            except Exception:
+                continue
+            tt = data.get("target_timing")
+            if isinstance(tt, dict) and str(tt.get("status", "")).startswith("PASS"):
+                timing_json = manifest_path.parent / str(tt.get("path", "target_timing.json"))
+                if not timing_json.is_file():
+                    errors.append(f"release-evidence: one-shot target timing PASS lacks target_timing.json: {manifest_path.relative_to(ROOT).as_posix()}")
+                if not tt.get("sha256"):
+                    errors.append(f"release-evidence: one-shot target timing PASS lacks SHA-256: {manifest_path.relative_to(ROOT).as_posix()}")
+
+def check_release_report_consistency(errors: list[str]) -> None:
+    try:
+        import release_report_consistency  # type: ignore
+        for err in release_report_consistency.collect_errors(ROOT):
+            errors.append(err)
+    except Exception as exc:
+        errors.append(f"release-evidence: release_report_consistency integration failed: {exc}")
+
+
 
 def self_test() -> None:
     assert status_cells(["foo", "PASS", "bar"]) == ["PASS"]
@@ -378,6 +617,11 @@ def main() -> int:
     check_sdk_evidence_files(errors)
     check_sdk_import_evidence_contracts(errors)
     check_hil_import_contracts(errors)
+    check_operator_transcript_evidence(errors)
+    check_wemos_one_shot_evidence(errors)
+    check_eventflow_one_shot_contract(errors)
+    check_target_timing_evidence(errors)
+    check_release_report_consistency(errors)
     if errors:
         for error in errors:
             print(error, file=sys.stderr)

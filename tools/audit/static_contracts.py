@@ -102,20 +102,24 @@ def check_wemos_evidence_contracts() -> None:
         errors.append("static-contracts: missing Wemos smoke parser")
     else:
         text = parser.read_text(encoding="utf-8", errors="ignore")
-        for token in ["EV_WEMOS_SMOKE_BOOT", "EV_WEMOS_SMOKE_RUNTIME_READY", "EV_POWER_SMOKE_STATE", "--self-test"]:
+        for token in ["EV_WEMOS_SMOKE_BOOT", "EV_WEMOS_SMOKE_RUNTIME_READY", "EV_POWER_SMOKE_STATE", "--self-test", "--allow-runtime-alive-fallback", "runtime_alive_fallback", "serial.raw.log", "serial.normalized.log", "operator_exit_classification", "CONTROLLED_MONITOR_STOP"]:
             if token not in text:
                 errors.append(f"static-contracts: Wemos parser missing {token}")
+        if "runtime-alive fallback is not allowed for deep-sleep evidence" not in text:
+            errors.append("static-contracts: Wemos parser must reject runtime-alive fallback in deep-sleep mode")
     marker_files = [
         ROOT / "adapters" / "esp8266_rtos_sdk" / "targets" / "wemos_esp_wroom_02_18650" / "main" / "app_main.c",
         ROOT / "adapters" / "esp8266_rtos_sdk" / "components" / "ev_platform" / "ev_runtime_app.c",
         ROOT / "actors" / "framework" / "ev_power_actor.c",
     ]
     marker_text = "\n".join(path.read_text(encoding="utf-8", errors="ignore") for path in marker_files if path.is_file())
-    for token in ["EV_WEMOS_SMOKE_BOOT", "EV_WEMOS_SMOKE_RUNTIME_READY", "EV_WEMOS_SMOKE_TICK", "EV_POWER_SMOKE_STATE", "EV_POWER_SMOKE_DEEP_SLEEP_ENTER"]:
+    for token in ["EV_WEMOS_SMOKE_BOOT", "EV_WEMOS_SMOKE_RUNTIME_READY", "EV_WEMOS_SMOKE_TICK", "EV_WEMOS_SMOKE_RESULT PASS", "EV_POWER_SMOKE_STATE", "EV_POWER_SMOKE_DEEP_SLEEP_ENTER"]:
         if token not in marker_text:
             errors.append(f"static-contracts: Wemos/deep-sleep firmware marker missing {token}")
+    if "smoke_runtime_alive_result_after_samples" not in marker_text:
+        errors.append("static-contracts: Wemos firmware must guard runtime-alive smoke result with sample count")
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8", errors="ignore")
-    for target in ["hil-wemos-smoke-evidence", "hil-wemos-smoke-gate", "hil-wemos-deepsleep-wake-gate"]:
+    for target in ["hil-wemos-smoke-evidence", "hil-wemos-smoke-gate", "hil-wemos-deepsleep-wake-gate", "hil-wemos-smoke-late-attach-self-test", "hil-import-wemos-smoke-late-attach-evidence"]:
         if f"{target}:" not in makefile:
             errors.append(f"static-contracts: Makefile missing {target}")
 
@@ -378,7 +382,7 @@ def validate_route_qos_contract() -> None:
     delivery_header = ROOT / "runtime" / "include" / "ev" / "delivery_service.h"
     if delivery_header.exists():
         header_text = delivery_header.read_text(encoding="utf-8", errors="ignore")
-        for field in ["rejected_routes", "qos_conflict_routes"]:
+        for field in ["rejected_routes", "qos_conflict_routes", "coalesced", "replaced", "qos_dropped", "mailbox_policy_rejected"]:
             if field not in header_text:
                 errors.append(f"delivery report missing QoS visibility field: {field}")
     delivery_path = ROOT / "runtime" / "src" / "ev_delivery_service.c"
@@ -396,9 +400,32 @@ def validate_route_qos_contract() -> None:
         makefile = makefile_path.read_text(encoding="utf-8", errors="ignore")
         if "qos-contracts" not in makefile or "tools/audit/qos_contract_check.py" not in makefile:
             errors.append("QoS contract checker must be registered in Makefile")
-        for test_name in ["test_qos_contract_table", "test_qos_route_module_compatibility"]:
+        for test_name in ["test_qos_contract_table", "test_qos_route_module_compatibility", "test_qos_mailbox_algorithms"]:
             if test_name not in makefile:
                 errors.append(f"QoS host test not registered in Makefile: {test_name}")
+    mailbox_header = ROOT / "core" / "include" / "ev" / "mailbox.h"
+    mailbox_source = ROOT / "core" / "src" / "ev_mailbox.c"
+    if mailbox_header.exists() and "ev_mailbox_push_qos" not in mailbox_header.read_text(encoding="utf-8", errors="ignore"):
+        errors.append("QoS mailbox enqueue API missing: ev_mailbox_push_qos")
+    if mailbox_source.exists():
+        mailbox_code = strip_comments(mailbox_source.read_text(encoding="utf-8", errors="ignore"))
+        for symbol in ["EV_MAILBOX_DELIVERY_COALESCED", "EV_MAILBOX_DELIVERY_REPLACED", "EV_ROUTE_QOS_COALESCED", "EV_ROUTE_QOS_LATEST_ONLY"]:
+            if symbol not in mailbox_code:
+                errors.append(f"QoS mailbox algorithm missing symbol: {symbol}")
+    qos_source = ROOT / "runtime" / "src" / "ev_qos_contract.c"
+    if qos_source.exists():
+        qos_code = strip_comments(qos_source.read_text(encoding="utf-8", errors="ignore"))
+        if "EV_QOS_FAILURE_COALESCE" not in qos_code or "allows_coalesce" not in qos_code:
+            errors.append("COALESCED QoS must be promoted to a coalesce contract")
+        if "EV_QOS_FAILURE_REPLACE_LATEST" not in qos_code or "allows_latest_replace" not in qos_code:
+            errors.append("LATEST_ONLY QoS must be promoted to a latest-replace contract")
+    docs_text = ""
+    for rel in ["docs/architecture/qos_delivery_contract.md", "docs/specs/route-qos.md", "docs/release/qos_end_to_end_enforcement_report.md"]:
+        path = ROOT / rel
+        if path.exists():
+            docs_text += path.read_text(encoding="utf-8", errors="ignore")
+    if "algorithm-not-yet-" "promoted" in docs_text:
+        errors.append("QoS docs must not leave COALESCED/LATEST_ONLY as an unpromoted algorithm")
 
 def validate_trace_timestamp_contract() -> None:
     delivery_path = ROOT / "runtime" / "src" / "ev_delivery_service.c"
@@ -951,6 +978,215 @@ for rel in [
     # These are generated by eventflow gate, but the tool must mention them so release docs can be produced.
     if rel not in (eventflow_tool.read_text(encoding="utf-8", errors="ignore") if eventflow_tool.exists() else ""):
         errors.append(f"eventflow release artifact is not produced by gate: {rel}")
+
+
+# Evidence importer hardening contracts.
+import_tool = ROOT / "tools" / "release" / "import_sdk_evidence.py"
+capture_tool = ROOT / "tools" / "release" / "capture_sdk_evidence.py"
+flash_tool = ROOT / "tools" / "release" / "parse_esptool_flash_log.py"
+if not flash_tool.exists():
+    errors.append("evidence hardening: missing tools/release/parse_esptool_flash_log.py")
+legacy_sdk_or_mem_regex = "EV_SDK_BUILD_STATUS=PASS" + "|" + "EV_MEM_REPORT_RESULT PASS"
+if import_tool.exists():
+    text = import_tool.read_text(encoding="utf-8", errors="ignore")
+    if legacy_sdk_or_mem_regex in text:
+        errors.append("evidence hardening: SDK importer must not treat memory-report PASS as SDK PASS_RE")
+    for token in ["SDK_TARGET_RE", "SDK_STATUS_PASS_RE", "EV_SDK_BUILD_TARGET", "EV_SDK_BUILD_STATUS=PASS", "target_marker_match", "self-test marker", "mixed transcript", "APP_BIN"]:
+        if token not in text:
+            errors.append(f"evidence hardening: SDK importer missing strict token {token}")
+    if "mixed.log" not in text or "EV_MEM_REPORT_RESULT PASS target=self-test" not in text:
+        errors.append("evidence hardening: SDK importer self-test must include mixed transcript negative fixture")
+if not capture_tool.exists():
+    errors.append("canonical SDK evidence: missing tools/release/capture_sdk_evidence.py")
+else:
+    text = capture_tool.read_text(encoding="utf-8", errors="ignore")
+    if legacy_sdk_or_mem_regex in text:
+        errors.append("canonical SDK evidence: capture path must not treat memory-report PASS as SDK build PASS")
+    for token in ["SDK_TARGET_RE", "SDK_STATUS_PASS_RE", "SDK_RC_RE", "EV_SDK_BUILD_TARGET", "EV_SDK_BUILD_STATUS=PASS", "EV_SDK_BUILD_RC", "EV_SDK_BUILD_BEGIN", "EV_SDK_BUILD_END", "marker_summary", "target_marker_match", "mixed transcript", "APP_BIN"]:
+        if token not in text:
+            errors.append(f"canonical SDK evidence: capture tool missing strict token {token}")
+    if "EV_MEM_REPORT_RESULT PASS" not in text or "missing EV_SDK_BUILD_TARGET" not in text:
+        errors.append("canonical SDK evidence: capture self-test must reject memory-report-only PASS")
+fw_tool = ROOT / "tools" / "fw"
+if fw_tool.exists():
+    fw_text = fw_tool.read_text(encoding="utf-8", errors="ignore")
+    for token in ["EV_SDK_BUILD_TARGET=$target_name", "EV_SDK_BUILD_PROJECT=$target_path", "EV_SDK_BUILD_BEGIN", "EV_SDK_BUILD_STATUS=PASS", "EV_SDK_BUILD_STATUS=FAIL", "EV_SDK_BUILD_RC=$rc", "EV_SDK_BUILD_END"]:
+        if token not in fw_text:
+            errors.append(f"canonical SDK evidence: tools/fw missing canonical marker {token}")
+if flash_tool.exists():
+    text = flash_tool.read_text(encoding="utf-8", errors="ignore")
+    for token in ["Hash of data verified", "Chip is", "ESP8266EX", "flash_evidence.json", "--self-test"]:
+        if token not in text:
+            errors.append(f"evidence hardening: esptool flash parser missing {token}")
+for target in ["sdk-import-flash-evidence", "sdk-flash-evidence-gate", "sdk-canonical-evidence-gate", "evidence-importer-hardening-gate"]:
+    if f"{target}:" not in makefile_text:
+        errors.append(f"evidence hardening target missing from Makefile: {target}")
+for parser_rel in ["tools/hil/parse_atnel_i2c_hil_log.py", "tools/hil/parse_wemos_smoke_log.py"]:
+    parser = ROOT / parser_rel
+    if parser.exists():
+        text = parser.read_text(encoding="utf-8", errors="ignore")
+        if "safe_read_log" not in text or "placeholder path was supplied" not in text:
+            errors.append(f"evidence hardening: {parser_rel} must use controlled safe_read_log path validation")
+        if "args.log.read_text" in text:
+            errors.append(f"evidence hardening: {parser_rel} still directly reads args.log")
+for rel in [
+    "docs/release/evidence_log_capture_workflow.md",
+    "docs/release/evidence_importer_hardening_report.md",
+    "docs/release/sdk_canonical_build_evidence_capture_report.md",
+]:
+    if not (ROOT / rel).is_file():
+        errors.append(f"evidence hardening documentation missing: {rel}")
+
+
+
+# Wemos one-shot evidence workflow contracts.
+wemos_one_shot = ROOT / "tools" / "release" / "wemos_one_shot_evidence.py"
+if not wemos_one_shot.exists():
+    errors.append("wemos one-shot evidence: missing tools/release/wemos_one_shot_evidence.py")
+else:
+    text = wemos_one_shot.read_text(encoding="utf-8", errors="ignore")
+    for token in ["--one-shot-dir", "--one-shot-required", "--capture-deepsleep", "--from-one-shot-dir", "operator_intent.json", "EV_WEMOS_ONE_SHOT_FLASH", "EV_HIL_ALLOW_FLASH", "EV_WEMOS_ONE_SHOT_MONITOR", "EV_HIL_ALLOW_MONITOR", "PASS_FULL_BUILD_FLASH_SMOKE", "PASS_SMOKE_ONLY", "PARTIAL_EVIDENCE", "CONTROLLED_MONITOR_STOP", "build.log", "flash.log", "serial.raw.log", "manifest.json", "sha256sums.txt", "--self-test"]:
+        if token not in text:
+            errors.append(f"wemos one-shot evidence: tool missing contract token {token}")
+    if "code 130" in text and "not proof" not in text and "not firmware" not in text:
+        errors.append("wemos one-shot evidence: code 130 must not be treated as PASS proof")
+for target in ["wemos-one-shot-evidence-preflight", "wemos-one-shot-evidence-capture", "wemos-one-shot-evidence-gate", "wemos-one-shot-evidence-explain", "wemos-one-shot-evidence-self-test", "wemos-one-shot-sdk-import", "wemos-one-shot-sdk-import-gate", "wemos-one-shot-flash-import-gate", "wemos-one-shot-deepsleep-evidence-capture", "wemos-one-shot-deepsleep-evidence-gate", "wemos-one-shot-deepsleep-evidence-explain", "eventflow-one-shot-evidence-gate"]:
+    if f"{target}:" not in makefile_text:
+        errors.append(f"wemos one-shot evidence target missing from Makefile: {target}")
+for rel in [
+    "docs/release/wemos_one_shot_evidence_workflow.md",
+    "docs/release/wemos_one_shot_evidence_report.md",
+    "docs/architecture/wemos_one_shot_evidence_contract.md",
+]:
+    if not (ROOT / rel).is_file():
+        errors.append(f"wemos one-shot evidence documentation missing: {rel}")
+
+# Wemos one-shot release reports must be manifest-backed; gates and self-tests are read-only.
+report_consistency = ROOT / "tools" / "audit" / "release_report_consistency.py"
+if not report_consistency.exists():
+    errors.append("release report consistency: missing tools/audit/release_report_consistency.py")
+else:
+    rc_text = report_consistency.read_text(encoding="utf-8", errors="ignore")
+    for token in ["--self-test", "PASS report", "manifest.json", "test-run", "TemporaryDirectory", "build/selftest", "ENVIRONMENT_BLOCKED"]:
+        if token not in rc_text:
+            errors.append(f"release report consistency: tool missing token {token}")
+if "release-report-consistency-gate:" not in makefile_text:
+    errors.append("release report consistency: Makefile missing release-report-consistency-gate")
+if "wemos-one-shot-evidence-report:" not in makefile_text:
+    errors.append("wemos one-shot evidence: Makefile missing explicit report update target")
+if wemos_one_shot.exists():
+    text = wemos_one_shot.read_text(encoding="utf-8", errors="ignore")
+    for token in ["update_release_report", "--report", "--update-report", "Self-tests and temporary `test-run` directories are not release evidence"]:
+        if token not in text:
+            errors.append(f"wemos one-shot evidence: read-only/report contract token missing {token}")
+    if "REPORT.write_text" in text and "if update_release_report" not in text:
+        errors.append("wemos one-shot evidence: release report writes must be guarded by explicit update_release_report")
+    if "write_manifest(run, manifest, update_release_report=True)" in text:
+        errors.append("wemos one-shot evidence: self-test must not update release report")
+current_wemos_report = ROOT / "docs" / "release" / "wemos_one_shot_evidence_report.md"
+if current_wemos_report.is_file():
+    current_text = current_wemos_report.read_text(encoding="utf-8", errors="ignore")
+    if "PASS_FULL_BUILD_FLASH_SMOKE" in current_text and "test-run" in current_text:
+        errors.append("wemos one-shot evidence: stale PASS test-run report present in docs/release")
+    if "PASS_FULL_BUILD_FLASH_SMOKE" in current_text and "manifest not found" in current_text:
+        errors.append("wemos one-shot evidence: report cannot mix PASS and manifest-missing reason")
+eventflow_tool = ROOT / "tools" / "hil" / "eventflow_evidence_gate.py"
+if eventflow_tool.is_file():
+    etext = eventflow_tool.read_text(encoding="utf-8", errors="ignore")
+    if "if args.report" not in etext or "write_outputs(result)" not in etext:
+        errors.append("eventflow evidence gate: explicit --report write mode missing")
+    if "Gate and explain modes are intentionally read-only" not in etext:
+        errors.append("eventflow evidence gate: read-only gate/explain contract missing")
+
+# Operator transcript splitter contracts.
+splitter = ROOT / "tools" / "release" / "split_operator_transcript.py"
+if not splitter.exists():
+    errors.append("operator transcript evidence: missing tools/release/split_operator_transcript.py")
+else:
+    text = splitter.read_text(encoding="utf-8", errors="ignore")
+    for token in ["operator_transcript.raw.log", "manifest.json", "source_line_start", "source_line_end", "mixed transcript itself is never PASS evidence", "whole transcript", "extracted serial", "--run-parsers", "--self-test", "operator_footer.log", "operator_exit_classification", "CONTROLLED_MONITOR_STOP", "operator_exit_code"]:
+        if token not in text:
+            errors.append(f"operator transcript evidence: splitter missing contract token {token}")
+    for token in ["parse_esptool_flash_log.py", "parse_wemos_smoke_log.py", "--allow-runtime-alive-fallback", "EV_SDK_BUILD_TARGET", "operator_exit_footer.py"]:
+        if token not in text:
+            errors.append(f"operator transcript evidence: splitter missing parser/SDK token {token}")
+    if "COMMAND_TOKEN=OPERATOR_TEST_TOKEN_VALUE_SHOULD_REDACT" not in text or "<REDACTED>" not in text:
+        errors.append("operator transcript evidence: splitter self-test must cover secret redaction")
+for target in ["operator-transcript-split-self-test", "operator-transcript-stage-evidence", "operator-transcript-evidence-gate", "operator-monitor-exit-classification-self-test"]:
+    if f"{target}:" not in makefile_text:
+        errors.append(f"operator transcript evidence target missing from Makefile: {target}")
+for rel in [
+    "docs/release/operator_transcript_evidence_workflow.md",
+    "docs/release/operator_transcript_splitter_report.md",
+    "docs/release/operator_transcript_splitter_release_report.md",
+    "docs/release/operator_monitor_exit_classification_report.md",
+]:
+    if not (ROOT / rel).is_file():
+        errors.append(f"operator transcript evidence documentation missing: {rel}")
+if (ROOT / "docs" / "release" / "operator_transcript_evidence_workflow.md").is_file():
+    doc = (ROOT / "docs" / "release" / "operator_transcript_evidence_workflow.md").read_text(encoding="utf-8", errors="ignore")
+    for token in ["mixed transcript", "not direct PASS evidence", "build.log", "flash.log", "serial.raw.log", "canonical SDK markers", "code 130", "CONTROLLED_MONITOR_STOP"]:
+        if token not in doc:
+            errors.append(f"operator transcript workflow missing required phrase: {token}")
+
+
+# ESP8266 target-side timing evidence contracts.
+target_timing_tool = ROOT / "tools" / "perf" / "parse_esp8266_target_timing.py"
+if not target_timing_tool.exists():
+    errors.append("target timing evidence: missing tools/perf/parse_esp8266_target_timing.py")
+else:
+    ttext = target_timing_tool.read_text(encoding="utf-8", errors="ignore")
+    for token in ["--self-test", "--serial-log", "--from-one-shot-dir", "target_timing.json", "source_serial_log_sha256", "p99_ms", "p999_ms", "INSUFFICIENT_SAMPLES", "ENVIRONMENT_BLOCKED", "reset/failure marker", "EV_WEMOS_SMOKE_TICK", "EV_WEMOS_SMOKE_SNAPSHOT"]:
+        if token not in ttext:
+            errors.append(f"target timing evidence: parser missing contract token {token}")
+for target in ["esp8266-target-timing-self-test", "esp8266-target-timing-report", "esp8266-target-timing-gate", "wemos-one-shot-target-timing-gate"]:
+    if f"{target}:" not in makefile_text:
+        errors.append(f"target timing evidence target missing from Makefile: {target}")
+wemos_one_shot_tool = ROOT / "tools" / "release" / "wemos_one_shot_evidence.py"
+if wemos_one_shot_tool.exists() and "parse_esp8266_target_timing.py" not in wemos_one_shot_tool.read_text(encoding="utf-8", errors="ignore"):
+    errors.append("target timing evidence: Wemos one-shot workflow must optionally run target timing parser")
+for rel in [
+    "config/target_timing_budgets.json",
+    "docs/perf/esp8266_target_timing_evidence_policy.md",
+    "docs/release/esp8266_target_p99_p999_timing_report.md",
+]:
+    if not (ROOT / rel).is_file():
+        errors.append(f"target timing evidence file missing: {rel}")
+if (ROOT / "docs" / "perf" / "esp8266_target_timing_evidence_policy.md").is_file():
+    doc = (ROOT / "docs" / "perf" / "esp8266_target_timing_evidence_policy.md").read_text(encoding="utf-8", errors="ignore")
+    for token in ["P50", "P95", "P99", "P999", "ESP8266", "serial", "one-shot", "report-only"]:
+        if token not in doc:
+            errors.append(f"target timing evidence policy missing required phrase: {token}")
+
+# ESP8266 I2C SDK-bug avoidance foundation.
+i2c_checker = ROOT / "tools" / "audit" / "i2c_sdk_bug_avoidance_check.py"
+if not i2c_checker.exists():
+    errors.append("I2C SDK-bug avoidance: missing tools/audit/i2c_sdk_bug_avoidance_check.py")
+else:
+    i2c_text = i2c_checker.read_text(encoding="utf-8", errors="ignore")
+    for token in ["--self-test", "i2c_cmd_link_create", "i2c_master_cmd_begin", "EV_ESP8266_I2C_TRANSACTION_TIMEOUT_US", "ev_esp8266_i2c_stop_condition"]:
+        if token not in i2c_text:
+            errors.append(f"I2C SDK-bug avoidance checker missing token: {token}")
+for rel in [
+    "docs/architecture/esp8266_i2c_sdk_bug_avoidance.md",
+    "docs/release/i2c_sdk_bug_avoidance_report.md",
+]:
+    if not (ROOT / rel).is_file():
+        errors.append(f"I2C SDK-bug avoidance documentation missing: {rel}")
+if "i2c-sdk-bug-avoidance-gate:" not in makefile_text:
+    errors.append("I2C SDK-bug avoidance target missing from Makefile: i2c-sdk-bug-avoidance-gate")
+forbidden_i2c_tokens = ["driver/i2c.h", "i2c_cmd_link_create", "i2c_master_cmd_begin", "i2c_driver_install"]
+for root_rel in ["adapters/esp8266_rtos_sdk/components/ev_platform", "core", "runtime", "actors", "modules", "drivers", "apps", "ports"]:
+    base = ROOT / root_rel
+    if not base.exists():
+        continue
+    for path in base.rglob("*"):
+        if not path.is_file() or path.suffix not in {".c", ".h", ".py"}:
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        for token in forbidden_i2c_tokens:
+            if token in text:
+                errors.append(f"I2C SDK-bug avoidance: forbidden token {token} in {path.relative_to(ROOT).as_posix()}")
 
 if errors:
     for error in errors:

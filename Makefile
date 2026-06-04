@@ -109,6 +109,7 @@ HOST_TESTS := \
     test_route_qos_delivery_policy \
     test_qos_contract_table \
     test_qos_route_module_compatibility \
+    test_qos_mailbox_algorithms \
     test_dispatch_contract \
     test_mailbox_contract \
     test_actor_runtime \
@@ -170,6 +171,7 @@ COVERAGE_TESTS := \
     test_zero_copy_payload_contract \
     test_power_state_machine \
     test_qos_contract_table \
+    test_qos_mailbox_algorithms \
     test_deterministic_fuzz_contracts
 
 
@@ -187,7 +189,7 @@ BENCH_BINS := $(addprefix $(BENCH_BUILD_DIR)/,$(BENCH_TESTS))
 BENCH_RESULTS := $(BENCH_BUILD_DIR)/results.txt
 PERF_BUDGETS ?= config/perf_budgets.json
 
-.PHONY: all host-test property-test host-strict-test host-sanitize-cc-check host-sanitize-test host-tsan-cc-check host-tsan-test clang-tidy-gate host-gcc-analyzer-gate host-static-analysis-gate static-analysis-gate host-coverage-test coverage-report coverage-gate fuzz-smoke-gate fuzz-sanitize-gate ub-hardening-gate safety-gate hotpath-zero-alloc-gate bench perf-report perf-budget-gate perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts qos-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate sdk-build-evidence sdk-map-stack-evidence sdk-evidence-gate sdk-import-evidence sdk-import-evidence-gate sdk-full-evidence-gate hil-atnel-i2c-flash hil-atnel-i2c-monitor hil-atnel-i2c-evidence hil-atnel-i2c-gate hil-import-atnel-i2c-evidence hil-import-wemos-smoke-evidence hil-import-wemos-deepsleep-evidence hil-import-all-evidence hil-real-evidence-gate hil-wemos-smoke-flash hil-wemos-smoke-monitor hil-wemos-smoke-evidence hil-wemos-smoke-gate hil-wemos-deepsleep-wake-gate eventflow-hardware-evidence-report eventflow-hardware-evidence-gate eventflow-evidence-explain eventflow-release-gate production-release-gate quality-gate release-gate docgen docs clean
+.PHONY: all host-test property-test host-strict-test host-sanitize-cc-check host-sanitize-test host-tsan-cc-check host-tsan-test clang-tidy-gate host-gcc-analyzer-gate host-static-analysis-gate static-analysis-gate host-coverage-test coverage-report coverage-gate fuzz-smoke-gate fuzz-sanitize-gate ub-hardening-gate safety-gate i2c-sdk-bug-avoidance-gate hotpath-zero-alloc-gate bench perf-report perf-budget-gate perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts release-report-consistency-gate qos-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate sdk-build-evidence sdk-map-stack-evidence sdk-evidence-gate sdk-import-evidence sdk-import-evidence-gate sdk-import-flash-evidence sdk-flash-evidence-gate sdk-canonical-evidence-gate sdk-full-evidence-gate evidence-importer-hardening-gate hil-atnel-i2c-flash hil-atnel-i2c-monitor hil-atnel-i2c-evidence hil-atnel-i2c-gate hil-import-atnel-i2c-evidence hil-import-wemos-smoke-evidence hil-import-wemos-smoke-late-attach-evidence hil-import-wemos-deepsleep-evidence hil-import-all-evidence hil-wemos-smoke-late-attach-self-test hil-real-evidence-gate hil-wemos-smoke-flash hil-wemos-smoke-monitor hil-wemos-smoke-evidence hil-wemos-smoke-gate hil-wemos-deepsleep-wake-gate eventflow-hardware-evidence-report eventflow-hardware-evidence-gate eventflow-evidence-explain eventflow-release-gate operator-transcript-split-self-test operator-transcript-stage-evidence operator-transcript-evidence-gate operator-monitor-exit-classification-self-test wemos-one-shot-evidence-preflight wemos-one-shot-evidence-capture wemos-one-shot-evidence-gate wemos-one-shot-evidence-explain wemos-one-shot-evidence-report wemos-one-shot-evidence-self-test wemos-one-shot-sdk-import wemos-one-shot-sdk-import-gate wemos-one-shot-flash-import-gate wemos-one-shot-deepsleep-evidence-capture wemos-one-shot-deepsleep-evidence-gate wemos-one-shot-deepsleep-evidence-explain eventflow-one-shot-evidence-gate esp8266-target-timing-self-test esp8266-target-timing-report esp8266-target-timing-gate wemos-one-shot-target-timing-gate production-release-gate quality-gate release-gate docgen docs clean
 .SECONDARY: $(COMMON_OBJS) $(BENCH_COMMON_OBJS)
 
 all: host-test
@@ -307,6 +309,11 @@ ub-hardening-gate: host-strict-test host-sanitize-test host-tsan-test fuzz-smoke
 safety-gate: host-strict-test host-sanitize-test
 	@echo "safety-gate passed"
 
+
+i2c-sdk-bug-avoidance-gate:
+	$(PYTHON) tools/audit/i2c_sdk_bug_avoidance_check.py --self-test
+	$(PYTHON) tools/audit/i2c_sdk_bug_avoidance_check.py
+
 hotpath-zero-alloc-gate: routegen $(BUILD_DIR)/test_zero_copy_payload_contract
 	$(PYTHON) tools/audit/hotpath_zero_alloc_contract.py
 	./$(BUILD_DIR)/test_zero_copy_payload_contract
@@ -356,6 +363,11 @@ private-repo-secrets-policy:
 
 release-evidence-contracts:
 	$(PYTHON) tools/audit/release_evidence_contracts.py
+	$(PYTHON) tools/audit/release_report_consistency.py
+
+release-report-consistency-gate:
+	$(PYTHON) tools/audit/release_report_consistency.py --self-test
+	$(PYTHON) tools/audit/release_report_consistency.py
 
 qos-contracts:
 	$(PYTHON) tools/audit/qos_contract_check.py
@@ -391,6 +403,39 @@ sdk-import-evidence:
 
 sdk-import-evidence-gate:
 	$(PYTHON) tools/release/import_sdk_evidence.py --gate
+
+sdk-import-flash-evidence:
+	$(PYTHON) tools/release/parse_esptool_flash_log.py --self-test
+	@if [ -n "$${EV_SDK_FLASH_EVIDENCE_IMPORT_ROOT:-}" ]; then \
+		$(PYTHON) tools/release/parse_esptool_flash_log.py --import-root "$${EV_SDK_FLASH_EVIDENCE_IMPORT_ROOT}"; \
+	elif [ -n "$${EV_SDK_FLASH_LOG:-}" ] && [ -n "$${EV_SDK_FLASH_TARGET:-}" ]; then \
+		$(PYTHON) tools/release/parse_esptool_flash_log.py --target "$${EV_SDK_FLASH_TARGET}" --log "$${EV_SDK_FLASH_LOG}"; \
+	else \
+		echo "EV_SDK_FLASH_EVIDENCE ENVIRONMENT_BLOCKED: set EV_SDK_FLASH_EVIDENCE_IMPORT_ROOT or EV_SDK_FLASH_LOG+EV_SDK_FLASH_TARGET"; exit 77; \
+	fi
+
+sdk-flash-evidence-gate:
+	$(PYTHON) tools/release/parse_esptool_flash_log.py --gate
+
+sdk-canonical-evidence-gate:
+	$(PYTHON) tools/release/capture_sdk_evidence.py --self-test
+	$(PYTHON) tools/release/import_sdk_evidence.py --self-test
+	$(PYTHON) tools/release/parse_esptool_flash_log.py --self-test
+	$(PYTHON) tools/audit/release_evidence_contracts.py
+	$(PYTHON) tools/audit/static_contracts.py
+	@echo "sdk-canonical-evidence-gate passed"
+
+evidence-importer-hardening-gate:
+	$(PYTHON) tools/release/capture_sdk_evidence.py --self-test
+	$(PYTHON) tools/release/import_sdk_evidence.py --self-test
+	$(PYTHON) tools/release/parse_esptool_flash_log.py --self-test
+	$(PYTHON) tools/hil/parse_atnel_i2c_hil_log.py --self-test
+	$(PYTHON) tools/hil/parse_wemos_smoke_log.py --self-test
+	$(PYTHON) tools/hil/import_hil_serial_evidence.py --self-test
+	$(PYTHON) tools/hil/eventflow_evidence_gate.py --self-test
+	$(PYTHON) tools/audit/release_evidence_contracts.py
+	$(PYTHON) tools/audit/static_contracts.py
+	@echo "evidence-importer-hardening-gate passed"
 
 sdk-full-evidence-gate: sdk-import-evidence-gate sdk-evidence-gate sdk-memory-release-gate
 	@echo "sdk-full-evidence-gate passed"
@@ -440,6 +485,14 @@ hil-import-wemos-smoke-evidence:
 	$(PYTHON) tools/hil/import_hil_serial_evidence.py --self-test
 	@if [ -n "$${EV_HIL_WEMOS_SMOKE_SERIAL_LOG:-}" ]; then $(PYTHON) tools/hil/parse_wemos_smoke_log.py --log "$${EV_HIL_WEMOS_SMOKE_SERIAL_LOG}"; else echo "hil-import-wemos-smoke-evidence ENVIRONMENT_BLOCKED: EV_HIL_WEMOS_SMOKE_SERIAL_LOG not set"; exit 77; fi
 
+hil-wemos-smoke-late-attach-self-test:
+	$(PYTHON) tools/hil/parse_wemos_smoke_log.py --self-test
+	$(PYTHON) tools/hil/import_hil_serial_evidence.py --self-test
+
+hil-import-wemos-smoke-late-attach-evidence:
+	$(PYTHON) tools/hil/import_hil_serial_evidence.py --self-test
+	@if [ -n "$${EV_HIL_WEMOS_SMOKE_SERIAL_LOG:-}" ]; then $(PYTHON) tools/hil/parse_wemos_smoke_log.py --allow-runtime-alive-fallback --normalize --log "$${EV_HIL_WEMOS_SMOKE_SERIAL_LOG}"; else echo "hil-import-wemos-smoke-late-attach-evidence ENVIRONMENT_BLOCKED: EV_HIL_WEMOS_SMOKE_SERIAL_LOG not set"; exit 77; fi
+
 hil-import-wemos-deepsleep-evidence:
 	$(PYTHON) tools/hil/import_hil_serial_evidence.py --self-test
 	@if [ -n "$${EV_HIL_WEMOS_DEEPSLEEP_SERIAL_LOG:-}" ]; then $(PYTHON) tools/hil/parse_wemos_smoke_log.py --deepsleep --log "$${EV_HIL_WEMOS_DEEPSLEEP_SERIAL_LOG}"; else echo "hil-import-wemos-deepsleep-evidence ENVIRONMENT_BLOCKED: EV_HIL_WEMOS_DEEPSLEEP_SERIAL_LOG not set"; exit 77; fi
@@ -463,13 +516,97 @@ eventflow-evidence-explain:
 eventflow-release-gate: sdk-full-evidence-gate hil-real-evidence-gate eventflow-hardware-evidence-gate
 	@echo "eventflow-release-gate passed"
 
+operator-transcript-split-self-test:
+	$(PYTHON) tools/release/split_operator_transcript.py --self-test
+
+operator-transcript-stage-evidence:
+	@if [ -n "$${EV_OPERATOR_TRANSCRIPT_LOG:-}" ]; then \
+		$(PYTHON) tools/release/split_operator_transcript.py --input "$${EV_OPERATOR_TRANSCRIPT_LOG}" --target "$${EV_OPERATOR_TRANSCRIPT_TARGET:-wemos_esp_wroom_02_18650}" --output-dir "$${EV_OPERATOR_TRANSCRIPT_OUTPUT_DIR:-docs/release/operator_transcript_evidence/$${EV_OPERATOR_TRANSCRIPT_TARGET:-wemos_esp_wroom_02_18650}/current}" --run-parsers; \
+	else \
+		echo "operator-transcript-stage-evidence ENVIRONMENT_BLOCKED: EV_OPERATOR_TRANSCRIPT_LOG not set"; exit 77; \
+	fi
+
+operator-transcript-evidence-gate:
+	$(PYTHON) tools/release/split_operator_transcript.py --gate
+
+operator-monitor-exit-classification-self-test:
+	$(PYTHON) tools/release/operator_exit_footer.py
+	$(PYTHON) tools/release/split_operator_transcript.py --self-test
+	$(PYTHON) tools/hil/parse_wemos_smoke_log.py --self-test
+
+
+wemos-one-shot-evidence-preflight:
+	$(PYTHON) tools/release/wemos_one_shot_evidence.py --preflight --target "$${EV_WEMOS_ONE_SHOT_TARGET:-wemos_esp_wroom_02_18650}"
+
+wemos-one-shot-evidence-capture:
+	$(PYTHON) tools/release/wemos_one_shot_evidence.py --capture --target "$${EV_WEMOS_ONE_SHOT_TARGET:-wemos_esp_wroom_02_18650}" --output-dir "$${EV_WEMOS_ONE_SHOT_OUTPUT_DIR:-docs/release/wemos_one_shot_evidence/$${EV_WEMOS_ONE_SHOT_TARGET:-wemos_esp_wroom_02_18650}/current}"
+
+wemos-one-shot-evidence-gate:
+	$(PYTHON) tools/release/wemos_one_shot_evidence.py --gate --target "$${EV_WEMOS_ONE_SHOT_TARGET:-wemos_esp_wroom_02_18650}" --evidence-dir "$${EV_WEMOS_ONE_SHOT_OUTPUT_DIR:-docs/release/wemos_one_shot_evidence/$${EV_WEMOS_ONE_SHOT_TARGET:-wemos_esp_wroom_02_18650}/current}"
+
+wemos-one-shot-evidence-explain:
+	$(PYTHON) tools/release/wemos_one_shot_evidence.py --explain --target "$${EV_WEMOS_ONE_SHOT_TARGET:-wemos_esp_wroom_02_18650}" --evidence-dir "$${EV_WEMOS_ONE_SHOT_OUTPUT_DIR:-docs/release/wemos_one_shot_evidence/$${EV_WEMOS_ONE_SHOT_TARGET:-wemos_esp_wroom_02_18650}/current}"
+
+wemos-one-shot-evidence-report:
+	$(PYTHON) tools/release/wemos_one_shot_evidence.py --report --target "$${EV_WEMOS_ONE_SHOT_TARGET:-wemos_esp_wroom_02_18650}" --evidence-dir "$${EV_WEMOS_ONE_SHOT_OUTPUT_DIR:-docs/release/wemos_one_shot_evidence/$${EV_WEMOS_ONE_SHOT_TARGET:-wemos_esp_wroom_02_18650}/current}"
+
+wemos-one-shot-evidence-self-test:
+	$(PYTHON) tools/release/wemos_one_shot_evidence.py --self-test
+
+
+wemos-one-shot-sdk-import:
+	$(PYTHON) tools/release/import_sdk_evidence.py --import-target "$${EV_WEMOS_ONE_SHOT_TARGET:-wemos_esp_wroom_02_18650}" --from-one-shot-dir "$${EV_WEMOS_ONE_SHOT_EVIDENCE_DIR:-docs/release/wemos_one_shot_evidence/$${EV_WEMOS_ONE_SHOT_TARGET:-wemos_esp_wroom_02_18650}/current}"
+
+wemos-one-shot-sdk-import-gate:
+	$(PYTHON) tools/release/import_sdk_evidence.py --gate
+
+wemos-one-shot-flash-import-gate:
+	$(PYTHON) tools/release/parse_esptool_flash_log.py --target "$${EV_WEMOS_ONE_SHOT_TARGET:-wemos_esp_wroom_02_18650}" --from-one-shot-dir "$${EV_WEMOS_ONE_SHOT_EVIDENCE_DIR:-docs/release/wemos_one_shot_evidence/$${EV_WEMOS_ONE_SHOT_TARGET:-wemos_esp_wroom_02_18650}/current}"
+
+
+wemos-one-shot-deepsleep-evidence-capture:
+	$(PYTHON) tools/release/wemos_one_shot_evidence.py --capture-deepsleep --target "$${EV_WEMOS_ONE_SHOT_TARGET:-wemos_esp_wroom_02_18650}" --output-dir "$${EV_WEMOS_ONE_SHOT_DEEPSLEEP_OUTPUT_DIR:-docs/release/wemos_one_shot_evidence/$${EV_WEMOS_ONE_SHOT_TARGET:-wemos_esp_wroom_02_18650}/current-deepsleep}"
+
+wemos-one-shot-deepsleep-evidence-gate:
+	$(PYTHON) tools/release/wemos_one_shot_evidence.py --gate --target "$${EV_WEMOS_ONE_SHOT_TARGET:-wemos_esp_wroom_02_18650}" --evidence-dir "$${EV_WEMOS_ONE_SHOT_DEEPSLEEP_OUTPUT_DIR:-docs/release/wemos_one_shot_evidence/$${EV_WEMOS_ONE_SHOT_TARGET:-wemos_esp_wroom_02_18650}/current-deepsleep}"
+
+wemos-one-shot-deepsleep-evidence-explain:
+	$(PYTHON) tools/release/wemos_one_shot_evidence.py --explain --target "$${EV_WEMOS_ONE_SHOT_TARGET:-wemos_esp_wroom_02_18650}" --evidence-dir "$${EV_WEMOS_ONE_SHOT_DEEPSLEEP_OUTPUT_DIR:-docs/release/wemos_one_shot_evidence/$${EV_WEMOS_ONE_SHOT_TARGET:-wemos_esp_wroom_02_18650}/current-deepsleep}"
+
+
+eventflow-one-shot-evidence-gate:
+	$(PYTHON) tools/hil/eventflow_evidence_gate.py --gate --one-shot-required --one-shot-dir "$${EV_WEMOS_ONE_SHOT_EVIDENCE_DIR:-docs/release/wemos_one_shot_evidence/$${EV_WEMOS_ONE_SHOT_TARGET:-wemos_esp_wroom_02_18650}/current}"
+
+
+esp8266-target-timing-self-test:
+	$(PYTHON) tools/perf/parse_esp8266_target_timing.py --self-test
+
+esp8266-target-timing-report:
+	@if [ -n "$${EV_ESP8266_TARGET_TIMING_SERIAL_LOG:-}" ]; then \
+		$(PYTHON) tools/perf/parse_esp8266_target_timing.py --serial-log "$${EV_ESP8266_TARGET_TIMING_SERIAL_LOG}" --target "$${EV_ESP8266_TARGET_TIMING_TARGET:-wemos_esp_wroom_02_18650}" --output-dir "$${EV_ESP8266_TARGET_TIMING_OUTPUT_DIR:-docs/release/target_timing/$${EV_ESP8266_TARGET_TIMING_TARGET:-wemos_esp_wroom_02_18650}/current}"; \
+	else \
+		echo "esp8266-target-timing-report ENVIRONMENT_BLOCKED: EV_ESP8266_TARGET_TIMING_SERIAL_LOG not set"; exit 77; \
+	fi
+
+esp8266-target-timing-gate:
+	@if [ -n "$${EV_ESP8266_TARGET_TIMING_SERIAL_LOG:-}" ]; then \
+		$(PYTHON) tools/perf/parse_esp8266_target_timing.py --serial-log "$${EV_ESP8266_TARGET_TIMING_SERIAL_LOG}" --target "$${EV_ESP8266_TARGET_TIMING_TARGET:-wemos_esp_wroom_02_18650}" --output-dir "$${EV_ESP8266_TARGET_TIMING_OUTPUT_DIR:-docs/release/target_timing/$${EV_ESP8266_TARGET_TIMING_TARGET:-wemos_esp_wroom_02_18650}/current}"; \
+	else \
+		echo "esp8266-target-timing-gate ENVIRONMENT_BLOCKED: EV_ESP8266_TARGET_TIMING_SERIAL_LOG not set"; exit 77; \
+	fi
+
+wemos-one-shot-target-timing-gate:
+	$(PYTHON) tools/perf/parse_esp8266_target_timing.py --from-one-shot-dir "$${EV_WEMOS_ONE_SHOT_EVIDENCE_DIR:-docs/release/wemos_one_shot_evidence/$${EV_WEMOS_ONE_SHOT_TARGET:-wemos_esp_wroom_02_18650}/current}" --target "$${EV_WEMOS_ONE_SHOT_TARGET:-wemos_esp_wroom_02_18650}"
+	$(PYTHON) tools/hil/eventflow_evidence_gate.py --self-test
+
+
 sdk-memory-release-gate:
 	$(PYTHON) tools/sdk_memory_report.py --self-test
 	$(PYTHON) tools/sdk_memory_matrix.py --self-test
 	EV_SDK_MEMORY_REQUIRE_PASS=1 $(PYTHON) tools/sdk_memory_matrix.py
 
 .NOTPARALLEL: quality-gate
-quality-gate: clean routegen-check static-contracts hotpath-zero-alloc-gate actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts qos-contracts memory-budget host-test property-test
+quality-gate: clean routegen-check static-contracts i2c-sdk-bug-avoidance-gate hotpath-zero-alloc-gate actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts release-report-consistency-gate qos-contracts memory-budget host-test property-test
 	@echo "quality-gate passed"
 
 release-gate: quality-gate docgen docs

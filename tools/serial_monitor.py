@@ -16,12 +16,14 @@ from typing import Any
 import serial
 
 _STOP = False
+_STOP_SIGNUM = None
 _SERIAL = None
 
 
 def _request_stop(_signum: int, _frame: Any) -> None:
-    global _STOP
+    global _STOP, _STOP_SIGNUM
     _STOP = True
+    _STOP_SIGNUM = _signum
     ser = _SERIAL
     if ser is not None:
         cancel_read = getattr(ser, "cancel_read", None)
@@ -80,6 +82,10 @@ def main() -> int:
         pass
     finally:
         _SERIAL = None
+        if _STOP and _STOP_SIGNUM == signal.SIGINT:
+            os.write(sys.stderr.fileno(), b"\nEV_MONITOR_STOP reason=operator_sigint signal=SIGINT exit_code=0\n")
+        elif _STOP and _STOP_SIGNUM == signal.SIGTERM:
+            os.write(sys.stderr.fileno(), b"\nEV_MONITOR_STOP reason=operator_sigterm signal=SIGTERM exit_code=0\n")
         os.write(sys.stderr.fileno(), b"\n--- exit ---\n")
 
     return 0

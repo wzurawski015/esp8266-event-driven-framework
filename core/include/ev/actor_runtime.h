@@ -157,6 +157,24 @@ ev_actor_runtime_t *ev_actor_registry_find(ev_actor_registry_t *registry, ev_act
 ev_result_t ev_actor_registry_delivery(ev_actor_id_t target_actor, const ev_msg_t *msg, void *context);
 
 /**
+ * @brief Delivery callback that enqueues with explicit route QoS semantics.
+ *
+ * @param target_actor Target actor selected by send/publish.
+ * @param msg Message to enqueue.
+ * @param qos Route QoS selected before delivery hot path.
+ * @param mailbox_report Optional mailbox policy report.
+ * @param context Pointer to ev_actor_registry_t.
+ * @return EV_OK on success or policy-accepted drop/coalesce/replace, or an error code.
+ */
+ev_result_t ev_actor_registry_delivery_qos(
+    ev_actor_id_t target_actor,
+    const ev_msg_t *msg,
+    ev_route_qos_t qos,
+    ev_mailbox_delivery_report_t *mailbox_report,
+    void *context);
+
+
+/**
  * @brief Drain at most one pending message from one actor runtime.
  *
  * The drained envelope is disposed after the handler returns.

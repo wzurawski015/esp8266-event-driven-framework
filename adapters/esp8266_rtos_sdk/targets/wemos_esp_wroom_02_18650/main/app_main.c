@@ -51,6 +51,11 @@ void app_main(void)
         .uart_port = 0U,
         .uart_baud_rate = 115200U,
         .heartbeat_period_ms = 1000U,
+        .smoke_markers_enabled = 1U,
+        .smoke_runtime_alive_result_after_samples = 3U,
+        .smoke_boot_marker = "EV_WEMOS_SMOKE_BOOT target=wemos_esp_wroom_02_18650 source=runtime_app",
+        .smoke_ready_marker = "EV_WEMOS_SMOKE_RUNTIME_READY source=runtime_app",
+        .smoke_result_marker = "EV_WEMOS_SMOKE_RESULT PASS failures=0 skipped=0 mode=firmware_runtime_alive",
     };
     ev_net_port_t *runtime_net_port = NULL;
 

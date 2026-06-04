@@ -89,3 +89,7 @@ export EV_WEMOS_FLASH_VARIANT=4mb
 `EV_WEMOS_FLASH_VARIANT=4mb` may also be used with `wemos-smoke-*` and
 `wemos-wifi-*` helper commands. Leave the variable unset for release-matrix
 validation so CI continues to exercise the conservative 2 MB default.
+
+## Raw monitor Ctrl+C exit code 130
+
+When using a raw monitor, quitting with Ctrl+C may make the terminal wrapper print `[process exited with code 130]`. This is `SIGINT` from the operator, not firmware failure. Release evidence tooling classifies it as `CONTROLLED_MONITOR_STOP` and still requires Wemos smoke markers or runtime-alive fallback evidence for PASS.

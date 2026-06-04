@@ -1,0 +1,11 @@
+{
+  "deepsleep_requested": false,
+  "distclean_requested": true,
+  "flash_allowed": true,
+  "flash_requested": true,
+  "monitor_allowed": true,
+  "monitor_requested": true,
+  "operator_acknowledged_no_false_pass": true,
+  "operator_acknowledged_private_repo_secrets": true,
+  "target": "wemos_esp_wroom_02_18650"
+}

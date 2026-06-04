@@ -1,0 +1,122 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile.sdk
+#1 transferring dockerfile: 6.58kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/ubuntu:24.04@sha256:d1e2e92c075e5ca139d51a140fff46f84315c0fdce203eab2807c7e495eff4f9
+#2 DONE 0.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 359B done
+#3 DONE 0.0s
+
+#4 [1/7] FROM docker.io/library/ubuntu:24.04@sha256:d1e2e92c075e5ca139d51a140fff46f84315c0fdce203eab2807c7e495eff4f9
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 174B done
+#5 DONE 0.0s
+
+#6 [2/7] RUN set -eux;     printf '%s\n'       'Acquire::Retries "5";'       'Acquire::http::Timeout "60";'       'Acquire::https::Timeout "60";'       'Acquire::ForceIPv4 "true";'       > /etc/apt/apt.conf.d/80-ev-retries;     for attempt in 1 2 3 4 5; do       rm -rf /var/lib/apt/lists/*;       apt-get update &&       apt-get install -y --no-install-recommends         bash         build-essential         ca-certificates         ccache         cmake         file         flex         bison         gawk         git         gperf         libffi-dev         libncurses-dev         libssl-dev         make         ninja-build         patch         python-is-python3         python3         python3-pip         python3-serial         python3-venv         tar         unzip         wget         xz-utils &&       break;       if [ "$attempt" = "5" ]; then exit 1; fi;       sleep $((attempt * 10));     done;     rm -rf /var/lib/apt/lists/*;     git --version;     python3 --version;     make --version | head -n 1
+#6 CACHED
+
+#7 [3/7] RUN set -eux;     mkdir -p /opt/esp /tmp/toolchain;     for attempt in 1 2 3 4 5; do       rm -f /tmp/toolchain/lx106.tar.gz;       wget --progress=dot:giga         --tries=5         --waitretry=10         --retry-connrefused         --timeout=60         -O /tmp/toolchain/lx106.tar.gz         "https://dl.espressif.com/dl/xtensa-lx106-elf-gcc8_4_0-esp-2020r3-linux-amd64.tar.gz" &&       tar -xzf /tmp/toolchain/lx106.tar.gz -C /opt/esp &&       break;       if [ "$attempt" = "5" ]; then exit 1; fi;       sleep $((attempt * 10));     done;     rm -rf /tmp/toolchain;     /opt/esp/xtensa-lx106-elf/bin/xtensa-lx106-elf-gcc --version
+#7 CACHED
+
+#8 [4/7] COPY tools/patches/ /tmp/ev-sdk-patches/
+#8 CACHED
+
+#9 [5/7] RUN set -eux;     git config --global advice.detachedHead false;     git config --global http.lowSpeedLimit 1000;     git config --global http.lowSpeedTime 60;     git config --global url."https://github.com/eclipse-tinydtls/tinydtls.git".insteadOf        "https://git.eclipse.org/r/tinydtls/org.eclipse.tinydtls";     for attempt in 1 2 3 4 5; do       cd /;       rm -rf /opt/esp/ESP8266_RTOS_SDK;       git clone --depth 1 --branch "v3.4"         "https://github.com/espressif/ESP8266_RTOS_SDK.git" /opt/esp/ESP8266_RTOS_SDK &&       cd /opt/esp/ESP8266_RTOS_SDK &&       git submodule update --init --recursive &&       break;       if [ "$attempt" = "5" ]; then exit 1; fi;       sleep $((attempt * 10));     done;     cd /opt/esp/ESP8266_RTOS_SDK;     for p in /tmp/ev-sdk-patches/*.patch; do       [ -f "$p" ] || continue;       case "$(basename "$p")" in         *freertos-static-task-hooks*.patch)           echo "note: skipping obsolete FreeRTOSConfig patch file; tools/fw sdk-check now performs idempotent injection";           continue;           ;;       esac;       patch --batch -p1 < "$p";     done;     freertos_config=/opt/esp/ESP8266_RTOS_SDK/components/freertos/port/esp8266/include/freertos/FreeRTOSConfig.h;     tmp_file="${freertos_config}.ev-static";     sed '/EV_FREERTOS_STATIC_ALLOC_CONFIG_BEGIN/,/EV_FREERTOS_STATIC_ALLOC_CONFIG_END/d' "$freertos_config"       | sed           -e '/^[[:space:]]*#[[:space:]]*define[[:space:]][[:space:]]*configSUPPORT_STATIC_ALLOCATION[[:space:]]/d'           -e '/^[[:space:]]*#[[:space:]]*define[[:space:]][[:space:]]*configSUPPORT_DYNAMIC_ALLOCATION[[:space:]]/d'       > "$tmp_file";     cat "$tmp_file" > "$freertos_config";     rm -f "$tmp_file";     {       printf '\n/* EV_FREERTOS_STATIC_ALLOC_CONFIG_BEGIN\n';       printf ' * Project environment hardening: static Idle/Timer task hooks are enabled.\n';       printf ' * Dynamic allocation remains enabled only as an ESP8266 vendor SDK bootstrap bridge.\n';       printf ' * Runtime actor/event/I2C/IRQ hot paths remain zero-heap by project policy.\n';       printf ' */\n';       printf '#ifndef configSUPPORT_STATIC_ALLOCATION\n';       printf '#define configSUPPORT_STATIC_ALLOCATION 1\n';       printf '#endif\n';       printf '#ifndef configSUPPORT_DYNAMIC_ALLOCATION\n';       printf '#define configSUPPORT_DYNAMIC_ALLOCATION 1\n';       printf '#endif\n';       printf '/* EV_FREERTOS_STATIC_ALLOC_CONFIG_END */\n';     } >> "$freertos_config";     grep -Eq '^[[:space:]]*#define[[:space:]]+configSUPPORT_STATIC_ALLOCATION[[:space:]]+1([[:space:]]|$)' "$freertos_config";     grep -Eq '^[[:space:]]*#define[[:space:]]+configSUPPORT_DYNAMIC_ALLOCATION[[:space:]]+1([[:space:]]|$)' "$freertos_config";     rm -rf /tmp/ev-sdk-patches;     git config --system --add safe.directory /opt/esp/ESP8266_RTOS_SDK;     git -C /opt/esp/ESP8266_RTOS_SDK rev-parse --short HEAD
+#9 CACHED
+
+#10 [6/7] RUN set -eux;     python3 -m venv /opt/esp/python-env;     /opt/esp/python-env/bin/pip install --upgrade       --retries 5       --timeout 60       pip       wheel;     /opt/esp/python-env/bin/pip install       --retries 5       --timeout 60       "setuptools<82";     /opt/esp/python-env/bin/pip install       --retries 5       --timeout 60       -r /opt/esp/ESP8266_RTOS_SDK/requirements.txt;     /opt/esp/python-env/bin/pip install --upgrade       --retries 5       --timeout 60       "setuptools<82";     /opt/esp/python-env/bin/python3 -c "import pip, serial, setuptools";     /opt/esp/python-env/bin/python3 --version;     /opt/esp/python-env/bin/pip --version
+#10 CACHED
+
+#11 [7/7] WORKDIR /work
+#11 CACHED
+
+#12 exporting to image
+#12 exporting layers done
+#12 writing image sha256:db619be4ae74607dccbe3eb1edca4ad6ce1400e0c3a71091693c188cdad09c86 done
+#12 naming to docker.io/library/esp8266-event-driven-sdk:local done
+#12 DONE 0.0s
+EV_MEM_REPORT_START target=adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650 elf=adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/ev_wroom_02.elf
+EV_MEM_SECTION name=.comment size=199
+EV_MEM_SECTION name=.debug_abbrev size=221076
+EV_MEM_SECTION name=.debug_aranges size=29888
+EV_MEM_SECTION name=.debug_frame size=98112
+EV_MEM_SECTION name=.debug_info size=1991888
+EV_MEM_SECTION name=.debug_line size=1197886
+EV_MEM_SECTION name=.debug_loc size=673551
+EV_MEM_SECTION name=.debug_ranges size=36720
+EV_MEM_SECTION name=.debug_str size=219555
+EV_MEM_SECTION name=.dram0.bss size=40920
+EV_MEM_SECTION name=.dram0.data size=1644
+EV_MEM_SECTION name=.flash.rodata size=71348
+EV_MEM_SECTION name=.flash.text size=403150
+EV_MEM_SECTION name=.iram0.bss size=4216
+EV_MEM_SECTION name=.iram0.text size=22019
+EV_MEM_SECTION name=.iram0.vectors size=128
+EV_MEM_SECTION name=.noinit size=0
+EV_MEM_SECTION name=.rtc_noinit size=0
+EV_MEM_SECTION name=.xt.lit._ZN9__gnu_cxx13__scoped_lockD5Ev size=8
+EV_MEM_SECTION name=.xt.lit._ZN9__gnu_cxx24__concurrence_lock_errorD5Ev size=8
+EV_MEM_SECTION name=.xt.lit._ZN9__gnu_cxx24__concurrence_wait_errorD5Ev size=8
+EV_MEM_SECTION name=.xt.lit._ZN9__gnu_cxx26__concurrence_unlock_errorD5Ev size=8
+EV_MEM_SECTION name=.xt.lit._ZN9__gnu_cxx29__concurrence_broadcast_errorD5Ev size=8
+EV_MEM_SECTION name=.xt.lit._ZN9__gnu_cxx6__cond9broadcastEv size=8
+EV_MEM_SECTION name=.xt.lit._ZN9__gnu_cxx7__mutex4lockEv size=8
+EV_MEM_SECTION name=.xt.lit._ZNK9__gnu_cxx24__concurrence_lock_error4whatEv size=8
+EV_MEM_SECTION name=.xt.lit._ZNK9__gnu_cxx24__concurrence_wait_error4whatEv size=8
+EV_MEM_SECTION name=.xt.lit._ZNK9__gnu_cxx26__concurrence_unlock_error4whatEv size=8
+EV_MEM_SECTION name=.xt.lit._ZNK9__gnu_cxx29__concurrence_broadcast_error4whatEv size=8
+EV_MEM_SECTION name=.xt.prop._ZN9__gnu_cxx13__scoped_lockD2Ev size=72
+EV_MEM_SECTION name=.xt.prop._ZN9__gnu_cxx13__scoped_lockD5Ev size=12
+EV_MEM_SECTION name=.xt.prop._ZN9__gnu_cxx24__concurrence_lock_errorD0Ev size=36
+EV_MEM_SECTION name=.xt.prop._ZN9__gnu_cxx24__concurrence_lock_errorD2Ev size=36
+EV_MEM_SECTION name=.xt.prop._ZN9__gnu_cxx24__concurrence_lock_errorD5Ev size=12
+EV_MEM_SECTION name=.xt.prop._ZN9__gnu_cxx24__concurrence_wait_errorD0Ev size=36
+EV_MEM_SECTION name=.xt.prop._ZN9__gnu_cxx24__concurrence_wait_errorD2Ev size=36
+EV_MEM_SECTION name=.xt.prop._ZN9__gnu_cxx24__concurrence_wait_errorD5Ev size=12
+EV_MEM_SECTION name=.xt.prop._ZN9__gnu_cxx26__concurrence_unlock_errorD0Ev size=36
+EV_MEM_SECTION name=.xt.prop._ZN9__gnu_cxx26__concurrence_unlock_errorD2Ev size=36
+EV_MEM_SECTION name=.xt.prop._ZN9__gnu_cxx26__concurrence_unlock_errorD5Ev size=12
+EV_MEM_SECTION name=.xt.prop._ZN9__gnu_cxx29__concurrence_broadcast_errorD0Ev size=36
+EV_MEM_SECTION name=.xt.prop._ZN9__gnu_cxx29__concurrence_broadcast_errorD2Ev size=36
+EV_MEM_SECTION name=.xt.prop._ZN9__gnu_cxx29__concurrence_broadcast_errorD5Ev size=12
+EV_MEM_SECTION name=.xt.prop._ZN9__gnu_cxx6__cond9broadcastEv size=48
+EV_MEM_SECTION name=.xt.prop._ZN9__gnu_cxx7__mutex4lockEv size=48
+EV_MEM_SECTION name=.xt.prop._ZNK9__gnu_cxx24__concurrence_lock_error4whatEv size=48
+EV_MEM_SECTION name=.xt.prop._ZNK9__gnu_cxx24__concurrence_wait_error4whatEv size=48
+EV_MEM_SECTION name=.xt.prop._ZNK9__gnu_cxx26__concurrence_unlock_error4whatEv size=48
+EV_MEM_SECTION name=.xt.prop._ZNK9__gnu_cxx29__concurrence_broadcast_error4whatEv size=48
+EV_MEM_SECTION name=.xt.prop._ZTIN10__cxxabiv115__forced_unwindE size=12
+EV_MEM_SECTION name=.xt.prop._ZTIN10__cxxabiv117__class_type_infoE size=12
+EV_MEM_SECTION name=.xt.prop._ZTIN10__cxxabiv119__foreign_exceptionE size=12
+EV_MEM_SECTION name=.xt.prop._ZTIN10__cxxabiv120__si_class_type_infoE size=12
+EV_MEM_SECTION name=.xt.prop._ZTIN9__gnu_cxx24__concurrence_lock_errorE size=12
+EV_MEM_SECTION name=.xt.prop._ZTIN9__gnu_cxx24__concurrence_wait_errorE size=12
+EV_MEM_SECTION name=.xt.prop._ZTIN9__gnu_cxx26__concurrence_unlock_errorE size=12
+EV_MEM_SECTION name=.xt.prop._ZTIN9__gnu_cxx29__concurrence_broadcast_errorE size=12
+EV_MEM_SECTION name=.xt.prop._ZTISt13bad_exception size=12
+EV_MEM_SECTION name=.xt.prop._ZTISt9bad_alloc size=12
+EV_MEM_SECTION name=.xt.prop._ZTISt9exception size=12
+EV_MEM_SECTION name=.xt.prop._ZTISt9type_info size=12
+EV_MEM_SECTION name=.xt.prop._ZTVN10__cxxabiv117__class_type_infoE size=12
+EV_MEM_SECTION name=.xt.prop._ZTVN10__cxxabiv120__si_class_type_infoE size=12
+EV_MEM_SECTION name=.xt.prop._ZTVN9__gnu_cxx24__concurrence_lock_errorE size=12
+EV_MEM_SECTION name=.xt.prop._ZTVN9__gnu_cxx24__concurrence_wait_errorE size=12
+EV_MEM_SECTION name=.xt.prop._ZTVN9__gnu_cxx26__concurrence_unlock_errorE size=12
+EV_MEM_SECTION name=.xt.prop._ZTVN9__gnu_cxx29__concurrence_broadcast_errorE size=12
+EV_MEM_SECTION name=.xt.prop._ZTVSt13bad_exception size=12
+EV_MEM_SECTION name=.xt.prop._ZTVSt9bad_alloc size=12
+EV_MEM_SECTION name=.xtensa.info size=56
+EV_MEM_IRAM used=26363 limit=unchecked free=unknown status=unchecked
+EV_MEM_DRAM used=42564 limit=unchecked free=unknown status=unchecked
+EV_MEM_BSS size=40920 limit=unchecked status=unchecked
+EV_MEM_DATA size=1644 limit=unchecked status=unchecked
+EV_MEM_APP_BIN size=498368 limit=unchecked status=unchecked source=adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/ev_wroom_02.bin
+EV_MEM_STACK_USAGE status=not_available files=0 entries=0 max_frame=0 limit=unchecked function=unknown qualifier=unknown source=not_found
+EV_MEM_STACK status=not_available source=legacy_marker_use_EV_MEM_STACK_USAGE
+EV_MEM_REPORT_RESULT PASS failures=0 warnings=2

@@ -1158,6 +1158,36 @@ if (ROOT / "docs" / "perf" / "esp8266_target_timing_evidence_policy.md").is_file
         if token not in doc:
             errors.append(f"target timing evidence policy missing required phrase: {token}")
 
+# ESP8266 I2C SDK-bug avoidance foundation.
+i2c_checker = ROOT / "tools" / "audit" / "i2c_sdk_bug_avoidance_check.py"
+if not i2c_checker.exists():
+    errors.append("I2C SDK-bug avoidance: missing tools/audit/i2c_sdk_bug_avoidance_check.py")
+else:
+    i2c_text = i2c_checker.read_text(encoding="utf-8", errors="ignore")
+    for token in ["--self-test", "i2c_cmd_link_create", "i2c_master_cmd_begin", "EV_ESP8266_I2C_TRANSACTION_TIMEOUT_US", "ev_esp8266_i2c_stop_condition"]:
+        if token not in i2c_text:
+            errors.append(f"I2C SDK-bug avoidance checker missing token: {token}")
+for rel in [
+    "docs/architecture/esp8266_i2c_sdk_bug_avoidance.md",
+    "docs/release/i2c_sdk_bug_avoidance_report.md",
+]:
+    if not (ROOT / rel).is_file():
+        errors.append(f"I2C SDK-bug avoidance documentation missing: {rel}")
+if "i2c-sdk-bug-avoidance-gate:" not in makefile_text:
+    errors.append("I2C SDK-bug avoidance target missing from Makefile: i2c-sdk-bug-avoidance-gate")
+forbidden_i2c_tokens = ["driver/i2c.h", "i2c_cmd_link_create", "i2c_master_cmd_begin", "i2c_driver_install"]
+for root_rel in ["adapters/esp8266_rtos_sdk/components/ev_platform", "core", "runtime", "actors", "modules", "drivers", "apps", "ports"]:
+    base = ROOT / root_rel
+    if not base.exists():
+        continue
+    for path in base.rglob("*"):
+        if not path.is_file() or path.suffix not in {".c", ".h", ".py"}:
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        for token in forbidden_i2c_tokens:
+            if token in text:
+                errors.append(f"I2C SDK-bug avoidance: forbidden token {token} in {path.relative_to(ROOT).as_posix()}")
+
 if errors:
     for error in errors:
         print(error)

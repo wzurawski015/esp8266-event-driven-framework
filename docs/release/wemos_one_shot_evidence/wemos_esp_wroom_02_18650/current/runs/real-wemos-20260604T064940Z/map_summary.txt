@@ -1,0 +1,1 @@
+MAP_SUMMARY_NOT_CAPTURED reason=use SDK importer/capture on real build artifacts

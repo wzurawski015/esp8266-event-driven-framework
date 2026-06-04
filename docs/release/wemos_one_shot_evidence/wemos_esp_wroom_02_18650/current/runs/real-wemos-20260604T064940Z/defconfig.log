@@ -1,0 +1,146 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile.sdk
+#1 transferring dockerfile: 6.58kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/ubuntu:24.04@sha256:d1e2e92c075e5ca139d51a140fff46f84315c0fdce203eab2807c7e495eff4f9
+#2 DONE 0.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 359B done
+#3 DONE 0.0s
+
+#4 [1/7] FROM docker.io/library/ubuntu:24.04@sha256:d1e2e92c075e5ca139d51a140fff46f84315c0fdce203eab2807c7e495eff4f9
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 174B done
+#5 DONE 0.0s
+
+#6 [4/7] COPY tools/patches/ /tmp/ev-sdk-patches/
+#6 CACHED
+
+#7 [2/7] RUN set -eux;     printf '%s\n'       'Acquire::Retries "5";'       'Acquire::http::Timeout "60";'       'Acquire::https::Timeout "60";'       'Acquire::ForceIPv4 "true";'       > /etc/apt/apt.conf.d/80-ev-retries;     for attempt in 1 2 3 4 5; do       rm -rf /var/lib/apt/lists/*;       apt-get update &&       apt-get install -y --no-install-recommends         bash         build-essential         ca-certificates         ccache         cmake         file         flex         bison         gawk         git         gperf         libffi-dev         libncurses-dev         libssl-dev         make         ninja-build         patch         python-is-python3         python3         python3-pip         python3-serial         python3-venv         tar         unzip         wget         xz-utils &&       break;       if [ "$attempt" = "5" ]; then exit 1; fi;       sleep $((attempt * 10));     done;     rm -rf /var/lib/apt/lists/*;     git --version;     python3 --version;     make --version | head -n 1
+#7 CACHED
+
+#8 [3/7] RUN set -eux;     mkdir -p /opt/esp /tmp/toolchain;     for attempt in 1 2 3 4 5; do       rm -f /tmp/toolchain/lx106.tar.gz;       wget --progress=dot:giga         --tries=5         --waitretry=10         --retry-connrefused         --timeout=60         -O /tmp/toolchain/lx106.tar.gz         "https://dl.espressif.com/dl/xtensa-lx106-elf-gcc8_4_0-esp-2020r3-linux-amd64.tar.gz" &&       tar -xzf /tmp/toolchain/lx106.tar.gz -C /opt/esp &&       break;       if [ "$attempt" = "5" ]; then exit 1; fi;       sleep $((attempt * 10));     done;     rm -rf /tmp/toolchain;     /opt/esp/xtensa-lx106-elf/bin/xtensa-lx106-elf-gcc --version
+#8 CACHED
+
+#9 [5/7] RUN set -eux;     git config --global advice.detachedHead false;     git config --global http.lowSpeedLimit 1000;     git config --global http.lowSpeedTime 60;     git config --global url."https://github.com/eclipse-tinydtls/tinydtls.git".insteadOf        "https://git.eclipse.org/r/tinydtls/org.eclipse.tinydtls";     for attempt in 1 2 3 4 5; do       cd /;       rm -rf /opt/esp/ESP8266_RTOS_SDK;       git clone --depth 1 --branch "v3.4"         "https://github.com/espressif/ESP8266_RTOS_SDK.git" /opt/esp/ESP8266_RTOS_SDK &&       cd /opt/esp/ESP8266_RTOS_SDK &&       git submodule update --init --recursive &&       break;       if [ "$attempt" = "5" ]; then exit 1; fi;       sleep $((attempt * 10));     done;     cd /opt/esp/ESP8266_RTOS_SDK;     for p in /tmp/ev-sdk-patches/*.patch; do       [ -f "$p" ] || continue;       case "$(basename "$p")" in         *freertos-static-task-hooks*.patch)           echo "note: skipping obsolete FreeRTOSConfig patch file; tools/fw sdk-check now performs idempotent injection";           continue;           ;;       esac;       patch --batch -p1 < "$p";     done;     freertos_config=/opt/esp/ESP8266_RTOS_SDK/components/freertos/port/esp8266/include/freertos/FreeRTOSConfig.h;     tmp_file="${freertos_config}.ev-static";     sed '/EV_FREERTOS_STATIC_ALLOC_CONFIG_BEGIN/,/EV_FREERTOS_STATIC_ALLOC_CONFIG_END/d' "$freertos_config"       | sed           -e '/^[[:space:]]*#[[:space:]]*define[[:space:]][[:space:]]*configSUPPORT_STATIC_ALLOCATION[[:space:]]/d'           -e '/^[[:space:]]*#[[:space:]]*define[[:space:]][[:space:]]*configSUPPORT_DYNAMIC_ALLOCATION[[:space:]]/d'       > "$tmp_file";     cat "$tmp_file" > "$freertos_config";     rm -f "$tmp_file";     {       printf '\n/* EV_FREERTOS_STATIC_ALLOC_CONFIG_BEGIN\n';       printf ' * Project environment hardening: static Idle/Timer task hooks are enabled.\n';       printf ' * Dynamic allocation remains enabled only as an ESP8266 vendor SDK bootstrap bridge.\n';       printf ' * Runtime actor/event/I2C/IRQ hot paths remain zero-heap by project policy.\n';       printf ' */\n';       printf '#ifndef configSUPPORT_STATIC_ALLOCATION\n';       printf '#define configSUPPORT_STATIC_ALLOCATION 1\n';       printf '#endif\n';       printf '#ifndef configSUPPORT_DYNAMIC_ALLOCATION\n';       printf '#define configSUPPORT_DYNAMIC_ALLOCATION 1\n';       printf '#endif\n';       printf '/* EV_FREERTOS_STATIC_ALLOC_CONFIG_END */\n';     } >> "$freertos_config";     grep -Eq '^[[:space:]]*#define[[:space:]]+configSUPPORT_STATIC_ALLOCATION[[:space:]]+1([[:space:]]|$)' "$freertos_config";     grep -Eq '^[[:space:]]*#define[[:space:]]+configSUPPORT_DYNAMIC_ALLOCATION[[:space:]]+1([[:space:]]|$)' "$freertos_config";     rm -rf /tmp/ev-sdk-patches;     git config --system --add safe.directory /opt/esp/ESP8266_RTOS_SDK;     git -C /opt/esp/ESP8266_RTOS_SDK rev-parse --short HEAD
+#9 CACHED
+
+#10 [6/7] RUN set -eux;     python3 -m venv /opt/esp/python-env;     /opt/esp/python-env/bin/pip install --upgrade       --retries 5       --timeout 60       pip       wheel;     /opt/esp/python-env/bin/pip install       --retries 5       --timeout 60       "setuptools<82";     /opt/esp/python-env/bin/pip install       --retries 5       --timeout 60       -r /opt/esp/ESP8266_RTOS_SDK/requirements.txt;     /opt/esp/python-env/bin/pip install --upgrade       --retries 5       --timeout 60       "setuptools<82";     /opt/esp/python-env/bin/python3 -c "import pip, serial, setuptools";     /opt/esp/python-env/bin/python3 --version;     /opt/esp/python-env/bin/pip --version
+#10 CACHED
+
+#11 [7/7] WORKDIR /work
+#11 CACHED
+
+#12 exporting to image
+#12 exporting layers done
+#12 writing image sha256:db619be4ae74607dccbe3eb1edca4ad6ce1400e0c3a71091693c188cdad09c86 done
+#12 naming to docker.io/library/esp8266-event-driven-sdk:local done
+#12 DONE 0.0s
+make: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650'
+/opt/esp/ESP8266_RTOS_SDK/tools/check_python_dependencies.py:22: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  import pkg_resources
+Python requirements from /opt/esp/ESP8266_RTOS_SDK/requirements.txt are satisfied.
+DEFCONFIG
+/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/sdkconfig:18 CONFIG_MONITOR_BAUD was replaced with CONFIG_ESPTOOLPY_MONITOR_BAUD
+GENCONFIG
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/wpa_supplicant'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/wpa_supplicant'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/wifi_provisioning'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/wifi_provisioning'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/wear_levelling'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/wear_levelling'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/vfs'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/vfs'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/tcpip_adapter'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/tcpip_adapter'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/tcp_transport'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/tcp_transport'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/spiffs'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/spiffs'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/spi_ram'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/spi_ram'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/spi_flash'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/spi_flash'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/pthread'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/pthread'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/protocomm'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/protocomm'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/protobuf-c'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/protobuf-c'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/partition_table'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/partition_table'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/openssl'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/openssl'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/nvs_flash'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/nvs_flash'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/newlib'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/newlib'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/mqtt'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/mqtt'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/mdns'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/mdns'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/mbedtls'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/mbedtls'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/main'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/main'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/lwip'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/lwip'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/log'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/log'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/libsodium'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/libsodium'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/json'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/json'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/jsmn'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/jsmn'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/http_parser'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/http_parser'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/heap'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/heap'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/freertos'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/freertos'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/freemodbus'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/freemodbus'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/fatfs'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/fatfs'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/ev_platform'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/ev_platform'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/esptool_py'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/esptool_py'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/esp_ringbuf'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/esp_ringbuf'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/esp_https_ota'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/esp_https_ota'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/esp_http_server'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/esp_http_server'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/esp_http_client'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/esp_http_client'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/esp_gdbstub'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/esp_gdbstub'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/esp_event'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/esp_event'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/esp_common'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/esp_common'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/esp8266'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/esp8266'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/esp-wolfssl'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/esp-wolfssl'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/esp-tls'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/esp-tls'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/console'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/console'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/coap'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/coap'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/bootloader_support'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/bootloader_support'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/bootloader'
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/bootloader'
+make[1]: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/app_update'
+App "ev_wroom_02" version: 0bdfa4d
+make[1]: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650/build/app_update'
+make: Leaving directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650'

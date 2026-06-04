@@ -156,8 +156,8 @@ static const char *ev_hil_fault_reason_for_scl(ev_i2c_status_t stuck_status, ev_
 
 static bool ev_hil_i2c_port_is_valid(const ev_i2c_port_t *port)
 {
-    return (port != NULL) && (port->ctx != NULL) && (port->write_stream != NULL) && (port->write_regs != NULL) &&
-           (port->read_regs != NULL);
+    return (port != NULL) && (port->ctx != NULL) && (port->write_stream != NULL) &&
+           (port->read_stream != NULL) && (port->write_regs != NULL) && (port->read_regs != NULL);
 }
 
 static uint32_t ev_hil_free_heap(void)
@@ -186,6 +186,14 @@ static ev_i2c_status_t ev_hil_i2c_write_stream(const ev_esp8266_i2c_hil_config_t
                                                 size_t data_len)
 {
     return cfg->i2c_port->write_stream(cfg->i2c_port->ctx, cfg->i2c_port_num, addr, data, data_len);
+}
+
+static ev_i2c_status_t ev_hil_i2c_read_stream(const ev_esp8266_i2c_hil_config_t *cfg,
+                                               uint8_t addr,
+                                               uint8_t *data,
+                                               size_t data_len)
+{
+    return cfg->i2c_port->read_stream(cfg->i2c_port->ctx, cfg->i2c_port_num, addr, data, data_len);
 }
 
 static ev_i2c_status_t ev_hil_i2c_write_regs(const ev_esp8266_i2c_hil_config_t *cfg,
@@ -286,7 +294,7 @@ static void ev_hil_log_i2c_diag(const char *stage, ev_i2c_port_num_t port_num)
 
     if (ev_esp8266_i2c_get_diag(port_num, &diag) == EV_OK) {
         ESP_LOGI(EV_HIL_I2C_TAG,
-                 "i2c-diag:%s started=%u failed=%u nacks=%u timeouts=%u locked=%u recoveries=%u recovery_failures=%u",
+                 "i2c-diag:%s started=%u failed=%u nacks=%u timeouts=%u locked=%u recoveries=%u recovery_failures=%u addr_w_ack=%u addr_w_nack=%u addr_r_ack=%u addr_r_nack=%u read_bytes=%u final_nack=%u stop_ok=%u stop_fail=%u idle_ok=%u idle_fail=%u sda=%u scl=%u last_status=%s phase=%u",
                  stage,
                  (unsigned)diag.transactions_started,
                  (unsigned)diag.transactions_failed,
@@ -294,7 +302,41 @@ static void ev_hil_log_i2c_diag(const char *stage, ev_i2c_port_num_t port_num)
                  (unsigned)diag.timeouts,
                  (unsigned)diag.bus_locked,
                  (unsigned)diag.bus_recoveries,
-                 (unsigned)diag.bus_recovery_failures);
+                 (unsigned)diag.bus_recovery_failures,
+                 (unsigned)diag.address_write_acks,
+                 (unsigned)diag.address_write_nacks,
+                 (unsigned)diag.address_read_acks,
+                 (unsigned)diag.address_read_nacks,
+                 (unsigned)diag.read_bytes,
+                 (unsigned)diag.read_final_nack_sent,
+                 (unsigned)diag.stop_ok,
+                 (unsigned)diag.stop_release_fail,
+                 (unsigned)diag.bus_idle_after_stop_ok,
+                 (unsigned)diag.bus_idle_after_stop_fail,
+                 diag.sda_high ? 1U : 0U,
+                 diag.scl_high ? 1U : 0U,
+                 ev_hil_status_name(diag.last_status),
+                 (unsigned)diag.last_phase);
+    }
+}
+
+static void ev_hil_log_i2c_completion_evidence(const char *name, ev_i2c_port_num_t port_num)
+{
+    ev_esp8266_i2c_diag_snapshot_t diag = {0};
+
+    if (ev_esp8266_i2c_get_diag(port_num, &diag) == EV_OK) {
+        ESP_LOGI(EV_HIL_I2C_TAG,
+                 "EV_HIL_I2C_STOP_RELEASE name=%s attempted=%u ok=%u fail=%u idle_ok=%u idle_fail=%u sda=%u scl=%u last_status=%s phase=%u",
+                 (name != NULL) ? name : "unknown",
+                 (unsigned)diag.stop_attempted,
+                 (unsigned)diag.stop_ok,
+                 (unsigned)diag.stop_release_fail,
+                 (unsigned)diag.bus_idle_after_stop_ok,
+                 (unsigned)diag.bus_idle_after_stop_fail,
+                 diag.last_sda_high_after_stop ? 1U : 0U,
+                 diag.last_scl_high_after_stop ? 1U : 0U,
+                 ev_hil_status_name(diag.last_status),
+                 (unsigned)diag.last_phase);
     }
 }
 
@@ -561,17 +603,90 @@ static void ev_hil_test_oled_full_flush(const ev_esp8266_i2c_hil_config_t *cfg, 
     ev_hil_heap_gate(result, name, before_heap);
 }
 
-static void ev_hil_test_missing_device_nack(const ev_esp8266_i2c_hil_config_t *cfg, ev_hil_suite_result_t *result)
+static void ev_hil_test_read_stream_completion(const ev_esp8266_i2c_hil_config_t *cfg, ev_hil_suite_result_t *result)
 {
-    const char *const name = "missing-device-nack";
+    const char *const name = "read-stream-completion";
+    ev_esp8266_i2c_diag_snapshot_t before = {0};
+    ev_esp8266_i2c_diag_snapshot_t after = {0};
+    uint8_t sample = 0U;
     const uint32_t before_heap = ev_hil_free_heap();
-    const ev_i2c_status_t status = ev_hil_i2c_write_stream(cfg, cfg->missing_addr_7bit, NULL, 0U);
+    ev_i2c_status_t status;
 
-    if (status == EV_I2C_ERR_NACK) {
+    (void)ev_esp8266_i2c_get_diag(cfg->i2c_port_num, &before);
+    status = ev_hil_i2c_read_stream(cfg, cfg->rtc_addr_7bit, &sample, 1U);
+    (void)ev_esp8266_i2c_get_diag(cfg->i2c_port_num, &after);
+
+    if ((status == EV_I2C_OK) && (after.address_read_acks > before.address_read_acks) &&
+        (after.read_final_nack_sent > before.read_final_nack_sent) && (after.stop_ok > before.stop_ok) &&
+        (after.bus_idle_after_stop_ok > before.bus_idle_after_stop_ok)) {
+        ESP_LOGI(EV_HIL_I2C_TAG,
+                 "EV_HIL_I2C_ACK_EVIDENCE name=%s address_read_acks=%u",
+                 name,
+                 (unsigned)after.address_read_acks);
+        ESP_LOGI(EV_HIL_I2C_TAG,
+                 "EV_HIL_I2C_FINAL_NACK_SENT name=%s count=%u",
+                 name,
+                 (unsigned)after.read_final_nack_sent);
+        ev_hil_log_i2c_completion_evidence(name, cfg->i2c_port_num);
+        ev_hil_pass(result, name);
+    } else {
+        ESP_LOGE(EV_HIL_I2C_TAG, "%s expected=OK actual=%s", name, ev_hil_status_name(status));
+        ev_hil_log_i2c_completion_evidence(name, cfg->i2c_port_num);
+        ev_hil_fail(result, name, "read_stream did not prove ACK/final-NACK/STOP release");
+    }
+    ev_hil_heap_gate(result, name, before_heap);
+}
+
+static void ev_hil_test_missing_device_read_nack(const ev_esp8266_i2c_hil_config_t *cfg, ev_hil_suite_result_t *result)
+{
+    const char *const name = "missing-device-read-nack-stop-release";
+    ev_esp8266_i2c_diag_snapshot_t before = {0};
+    ev_esp8266_i2c_diag_snapshot_t after = {0};
+    const uint32_t before_heap = ev_hil_free_heap();
+    const ev_i2c_status_t status_before = ev_esp8266_i2c_get_diag(cfg->i2c_port_num, &before);
+    const ev_i2c_status_t status = ev_hil_i2c_read_stream(cfg, cfg->missing_addr_7bit, NULL, 0U);
+
+    (void)status_before;
+    (void)ev_esp8266_i2c_get_diag(cfg->i2c_port_num, &after);
+    if ((status == EV_I2C_ERR_NACK) && (after.address_read_nacks > before.address_read_nacks) &&
+        (after.stop_ok > before.stop_ok) && (after.bus_idle_after_stop_ok > before.bus_idle_after_stop_ok)) {
+        ESP_LOGI(EV_HIL_I2C_TAG,
+                 "EV_HIL_I2C_NACK_EVIDENCE name=%s address_read_nacks=%u",
+                 name,
+                 (unsigned)after.address_read_nacks);
+        ev_hil_log_i2c_completion_evidence(name, cfg->i2c_port_num);
         ev_hil_pass(result, name);
     } else {
         ESP_LOGE(EV_HIL_I2C_TAG, "%s expected=NACK actual=%s", name, ev_hil_status_name(status));
-        ev_hil_fail(result, name, "missing device did not produce NACK");
+        ev_hil_log_i2c_completion_evidence(name, cfg->i2c_port_num);
+        ev_hil_fail(result, name, "read_stream NACK did not prove STOP release");
+    }
+    ev_hil_heap_gate(result, name, before_heap);
+}
+
+static void ev_hil_test_missing_device_nack(const ev_esp8266_i2c_hil_config_t *cfg, ev_hil_suite_result_t *result)
+{
+    const char *const name = "missing-device-write-nack-stop-release";
+    ev_esp8266_i2c_diag_snapshot_t before = {0};
+    ev_esp8266_i2c_diag_snapshot_t after = {0};
+    const uint32_t before_heap = ev_hil_free_heap();
+    const ev_i2c_status_t status_before = ev_esp8266_i2c_get_diag(cfg->i2c_port_num, &before);
+    const ev_i2c_status_t status = ev_hil_i2c_write_stream(cfg, cfg->missing_addr_7bit, NULL, 0U);
+
+    (void)status_before;
+    (void)ev_esp8266_i2c_get_diag(cfg->i2c_port_num, &after);
+    if ((status == EV_I2C_ERR_NACK) && (after.address_write_nacks > before.address_write_nacks) &&
+        (after.stop_ok > before.stop_ok) && (after.bus_idle_after_stop_ok > before.bus_idle_after_stop_ok)) {
+        ESP_LOGI(EV_HIL_I2C_TAG,
+                 "EV_HIL_I2C_NACK_EVIDENCE name=%s address_write_nacks=%u",
+                 name,
+                 (unsigned)after.address_write_nacks);
+        ev_hil_log_i2c_completion_evidence(name, cfg->i2c_port_num);
+        ev_hil_pass(result, name);
+    } else {
+        ESP_LOGE(EV_HIL_I2C_TAG, "%s expected=NACK actual=%s", name, ev_hil_status_name(status));
+        ev_hil_log_i2c_completion_evidence(name, cfg->i2c_port_num);
+        ev_hil_fail(result, name, "write_stream NACK did not prove STOP release");
     }
     ev_hil_heap_gate(result, name, before_heap);
 }
@@ -897,7 +1012,9 @@ ev_result_t ev_esp8266_i2c_zero_heap_hil_run(const ev_esp8266_i2c_hil_config_t *
     ev_hil_test_mcp_read_write(cfg, &result);
     ev_hil_test_oled_partial_flush(cfg, &result);
     ev_hil_test_oled_full_flush(cfg, &result);
+    ev_hil_test_read_stream_completion(cfg, &result);
     ev_hil_test_missing_device_nack(cfg, &result);
+    ev_hil_test_missing_device_read_nack(cfg, &result);
     ev_hil_test_sda_stuck_low(cfg, &result);
     ev_hil_test_scl_held_low_timeout(cfg, &result);
     ev_hil_test_irq_flood_during_i2c(cfg, &result);

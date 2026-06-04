@@ -146,7 +146,7 @@ void ev_demo_app_record_publish_port_stats(ev_demo_app_t *app)
 
 static bool ev_demo_app_i2c_port_valid(const ev_i2c_port_t *port)
 {
-    return (port != NULL) && (port->write_stream != NULL) &&
+    return (port != NULL) && (port->write_stream != NULL) && (port->read_stream != NULL) &&
            (port->write_regs != NULL) && (port->read_regs != NULL);
 }
 

@@ -73,6 +73,10 @@ def import_all() -> int:
 
 
 def self_test() -> int:
+    """Exercise importer parser contracts without spawning slow subprocesses."""
+    import parse_atnel_i2c_hil_log as atnel_parser
+    import parse_wemos_smoke_log as wemos_parser
+
     (ROOT / 'build').mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(dir=str(ROOT / 'build')) as td:
         d = Path(td)
@@ -80,23 +84,46 @@ def self_test() -> int:
         smoke = d / 'smoke.log'
         deep = d / 'deep.log'
         late = d / 'late.log'
-        i2c.write_text('''\nEV_HIL_I2C_CASE_BEGIN name=sda-stuck-low-containment\nEV_HIL_I2C_SDA_FORCE_LOW requested=1 observed=1\nEV_HIL_I2C_BUS_STATE before=idle during=stuck after=recovered\nEV_HIL_I2C_RECOVERY_BEGIN\nEV_HIL_I2C_RECOVERY_RESULT status=PASS\nEV_HIL_I2C_CASE_RESULT name=sda-stuck-low-containment status=PASS\nEV_HIL_RESULT PASS failures=0 skipped=0\n''', encoding='utf-8')
-        base = '''\nEV_WEMOS_SMOKE_BOOT target=wemos_esp_wroom_02_18650\nEV_WEMOS_SMOKE_RUNTIME_READY\nEV_WEMOS_SMOKE_TICK seq=1\nEV_WEMOS_SMOKE_SNAPSHOT seq=1\nEV_WEMOS_SMOKE_TICK seq=2\nEV_WEMOS_SMOKE_SNAPSHOT seq=2\nEV_WEMOS_SMOKE_TICK seq=3\nEV_WEMOS_SMOKE_SNAPSHOT seq=3\nEV_WEMOS_SMOKE_RESULT PASS\n'''
+        i2c_text = """
+EV_HIL_I2C_CASE_BEGIN name=sda-stuck-low-containment
+EV_HIL_I2C_SDA_FORCE_LOW requested=1 observed=1
+EV_HIL_I2C_BUS_STATE before=idle during=stuck after=recovered
+EV_HIL_I2C_RECOVERY_BEGIN
+EV_HIL_I2C_RECOVERY_RESULT status=PASS
+EV_HIL_I2C_ACK_EVIDENCE name=read-stream-completion address_read_acks=1
+EV_HIL_I2C_NACK_EVIDENCE name=missing-device-write-nack-stop-release address_write_nacks=1
+EV_HIL_I2C_NACK_EVIDENCE name=missing-device-read-nack-stop-release address_read_nacks=1
+EV_HIL_I2C_FINAL_NACK_SENT name=read-stream-completion count=1
+EV_HIL_I2C_STOP_RELEASE name=read-stream-completion attempted=1 ok=1 fail=0 idle_ok=1 idle_fail=0 sda=1 scl=1 last_status=OK phase=10
+EV_HIL_I2C_STOP_RELEASE name=missing-device-write-nack-stop-release attempted=1 ok=1 fail=0 idle_ok=1 idle_fail=0 sda=1 scl=1 last_status=NACK phase=10
+EV_HIL_I2C_STOP_RELEASE name=missing-device-read-nack-stop-release attempted=1 ok=1 fail=0 idle_ok=1 idle_fail=0 sda=1 scl=1 last_status=NACK phase=10
+EV_HIL_I2C_CASE_RESULT name=sda-stuck-low-containment status=PASS
+EV_HIL_RESULT PASS failures=0 skipped=0
+"""
+        i2c.write_text(i2c_text, encoding='utf-8')
+        base = """\nEV_WEMOS_SMOKE_BOOT target=wemos_esp_wroom_02_18650\nEV_WEMOS_SMOKE_RUNTIME_READY\nEV_WEMOS_SMOKE_TICK seq=1\nEV_WEMOS_SMOKE_SNAPSHOT seq=1\nEV_WEMOS_SMOKE_TICK seq=2\nEV_WEMOS_SMOKE_SNAPSHOT seq=2\nEV_WEMOS_SMOKE_TICK seq=3\nEV_WEMOS_SMOKE_SNAPSHOT seq=3\nEV_WEMOS_SMOKE_RESULT PASS\n"""
         smoke.write_text(base, encoding='utf-8')
-        late.write_text('''\nEV_WEMOS_SMOKE_TICK seq=10\nEV_WEMOS_SMOKE_SNAPSHOT seq=10\nEV_WEMOS_SMOKE_TICK seq=11\nEV_WEMOS_SMOKE_SNAPSHOT seq=11\nEV_WEMOS_SMOKE_TICK seq=12\nEV_WEMOS_SMOKE_SNAPSHOT seq=12\n''', encoding='utf-8')
-        deep.write_text(base + '''\nEV_POWER_SMOKE_SLEEP_REQUEST duration_us=1000000\nEV_POWER_SMOKE_STATE ACTIVE\nEV_POWER_SMOKE_STATE SLEEP_REQUESTED\nEV_POWER_SMOKE_STATE DRAINING_RUNTIME\nEV_POWER_SMOKE_STATE LOG_FLUSHING\nEV_POWER_SMOKE_STATE PORTS_PREPARE_SLEEP\nEV_POWER_SMOKE_STATE RTC_STATE_SAVED\nEV_POWER_SMOKE_STATE ENTERING_DEEP_SLEEP\nEV_POWER_SMOKE_DEEP_SLEEP_ENTER\nEV_POWER_SMOKE_WAKE_BOOT\nEV_POWER_SMOKE_WAKE_REASON reason=timer\nEV_POWER_SMOKE_RESULT PASS\n''', encoding='utf-8')
-        assert run([sys.executable, 'tools/hil/parse_atnel_i2c_hil_log.py', '--log', str(i2c), '--evidence-dir', str(d / 'out_i2c')]) == 0
-        assert run([sys.executable, 'tools/hil/parse_wemos_smoke_log.py', '--log', str(smoke), '--evidence-dir', str(d / 'out_smoke')]) == 0
-        assert run([sys.executable, 'tools/hil/parse_wemos_smoke_log.py', '--log', str(late), '--evidence-dir', str(d / 'out_late_strict')]) != 0
-        assert run([sys.executable, 'tools/hil/parse_wemos_smoke_log.py', '--allow-runtime-alive-fallback', '--normalize', '--log', str(late), '--evidence-dir', str(d / 'out_late')]) == 0
+        late_text = """\nEV_WEMOS_SMOKE_TICK seq=10\nEV_WEMOS_SMOKE_SNAPSHOT seq=10\nEV_WEMOS_SMOKE_TICK seq=11\nEV_WEMOS_SMOKE_SNAPSHOT seq=11\nEV_WEMOS_SMOKE_TICK seq=12\nEV_WEMOS_SMOKE_SNAPSHOT seq=12\n"""
+        late.write_text(late_text, encoding='utf-8')
+        deep_text = base + """\nEV_POWER_SMOKE_SLEEP_REQUEST duration_us=1000000\nEV_POWER_SMOKE_STATE ACTIVE\nEV_POWER_SMOKE_STATE SLEEP_REQUESTED\nEV_POWER_SMOKE_STATE DRAINING_RUNTIME\nEV_POWER_SMOKE_STATE LOG_FLUSHING\nEV_POWER_SMOKE_STATE PORTS_PREPARE_SLEEP\nEV_POWER_SMOKE_STATE RTC_STATE_SAVED\nEV_POWER_SMOKE_STATE ENTERING_DEEP_SLEEP\nEV_POWER_SMOKE_DEEP_SLEEP_ENTER\nEV_POWER_SMOKE_WAKE_BOOT\nEV_POWER_SMOKE_WAKE_REASON reason=timer\nEV_POWER_SMOKE_RESULT PASS\n"""
+        deep.write_text(deep_text, encoding='utf-8')
+        assert atnel_parser.write_evidence(i2c_text, d / 'out_i2c', i2c) == 0
+        assert wemos_parser.write_evidence(base, d / 'out_smoke', require_deepsleep=False) == 0
+        assert wemos_parser.write_evidence(late_text, d / 'out_late_strict', require_deepsleep=False) != 0
+        assert wemos_parser.write_evidence(
+            late_text,
+            d / 'out_late',
+            require_deepsleep=False,
+            allow_runtime_alive_fallback=True,
+            normalize=True,
+        ) == 0
         parsed = json.loads((d / 'out_late' / 'parsed.json').read_text(encoding='utf-8'))
         assert parsed.get('runtime_alive_fallback') is True
         assert (d / 'out_late' / 'serial.raw.log').is_file()
         assert (d / 'out_late' / 'serial.normalized.log').is_file()
-        assert run([sys.executable, 'tools/hil/parse_wemos_smoke_log.py', '--deepsleep', '--log', str(deep), '--evidence-dir', str(d / 'out_deep')]) == 0
+        assert wemos_parser.write_evidence(deep_text, d / 'out_deep', require_deepsleep=True) == 0
     print('EV_HIL_IMPORT_SERIAL_EVIDENCE_SELF_TEST PASS')
     return 0
-
 
 def main() -> int:
     ap = argparse.ArgumentParser()

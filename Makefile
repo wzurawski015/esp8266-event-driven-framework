@@ -115,6 +115,7 @@ HOST_TESTS := \
     test_actor_runtime \
     test_lease_pool_contract \
     test_zero_copy_payload_contract \
+    test_i2c_port_contract \
     test_runtime_diagnostics \
     test_actor_pump_contract \
     test_domain_pump_contract \
@@ -189,7 +190,7 @@ BENCH_BINS := $(addprefix $(BENCH_BUILD_DIR)/,$(BENCH_TESTS))
 BENCH_RESULTS := $(BENCH_BUILD_DIR)/results.txt
 PERF_BUDGETS ?= config/perf_budgets.json
 
-.PHONY: all host-test property-test host-strict-test host-sanitize-cc-check host-sanitize-test host-tsan-cc-check host-tsan-test clang-tidy-gate host-gcc-analyzer-gate host-static-analysis-gate static-analysis-gate host-coverage-test coverage-report coverage-gate fuzz-smoke-gate fuzz-sanitize-gate ub-hardening-gate safety-gate i2c-sdk-bug-avoidance-gate hotpath-zero-alloc-gate bench perf-report perf-budget-gate perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts release-report-consistency-gate qos-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate sdk-build-evidence sdk-map-stack-evidence sdk-evidence-gate sdk-import-evidence sdk-import-evidence-gate sdk-import-flash-evidence sdk-flash-evidence-gate sdk-canonical-evidence-gate sdk-full-evidence-gate evidence-importer-hardening-gate hil-atnel-i2c-flash hil-atnel-i2c-monitor hil-atnel-i2c-evidence hil-atnel-i2c-gate hil-import-atnel-i2c-evidence hil-import-wemos-smoke-evidence hil-import-wemos-smoke-late-attach-evidence hil-import-wemos-deepsleep-evidence hil-import-all-evidence hil-wemos-smoke-late-attach-self-test hil-real-evidence-gate hil-wemos-smoke-flash hil-wemos-smoke-monitor hil-wemos-smoke-evidence hil-wemos-smoke-gate hil-wemos-deepsleep-wake-gate eventflow-hardware-evidence-report eventflow-hardware-evidence-gate eventflow-evidence-explain eventflow-release-gate operator-transcript-split-self-test operator-transcript-stage-evidence operator-transcript-evidence-gate operator-monitor-exit-classification-self-test wemos-one-shot-evidence-preflight wemos-one-shot-evidence-capture wemos-one-shot-evidence-gate wemos-one-shot-evidence-explain wemos-one-shot-evidence-report wemos-one-shot-evidence-self-test wemos-one-shot-sdk-import wemos-one-shot-sdk-import-gate wemos-one-shot-flash-import-gate wemos-one-shot-deepsleep-evidence-capture wemos-one-shot-deepsleep-evidence-gate wemos-one-shot-deepsleep-evidence-explain eventflow-one-shot-evidence-gate esp8266-target-timing-self-test esp8266-target-timing-report esp8266-target-timing-gate wemos-one-shot-target-timing-gate production-release-gate quality-gate release-gate docgen docs clean
+.PHONY: all host-test property-test redaction-self-test evidence-redaction-scrub host-strict-test host-sanitize-cc-check host-sanitize-test host-tsan-cc-check host-tsan-test clang-tidy-gate host-gcc-analyzer-gate host-static-analysis-gate static-analysis-gate host-coverage-test coverage-report coverage-gate fuzz-smoke-gate fuzz-sanitize-gate ub-hardening-gate safety-gate i2c-sdk-bug-avoidance-gate hotpath-zero-alloc-gate bench perf-report perf-budget-gate perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts release-report-consistency-gate qos-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate sdk-build-evidence sdk-map-stack-evidence sdk-evidence-gate sdk-import-evidence sdk-import-evidence-gate sdk-import-flash-evidence sdk-flash-evidence-gate sdk-canonical-evidence-gate sdk-full-evidence-gate evidence-importer-hardening-gate hil-atnel-i2c-flash hil-atnel-i2c-monitor hil-atnel-i2c-evidence hil-atnel-i2c-gate hil-import-atnel-i2c-evidence hil-import-wemos-smoke-evidence hil-import-wemos-smoke-late-attach-evidence hil-import-wemos-deepsleep-evidence hil-import-all-evidence hil-wemos-smoke-late-attach-self-test hil-real-evidence-gate hil-wemos-smoke-flash hil-wemos-smoke-monitor hil-wemos-smoke-evidence hil-wemos-smoke-gate hil-wemos-deepsleep-wake-gate eventflow-hardware-evidence-report eventflow-hardware-evidence-gate eventflow-evidence-explain eventflow-release-gate operator-transcript-split-self-test operator-transcript-stage-evidence operator-transcript-evidence-gate operator-monitor-exit-classification-self-test wemos-one-shot-evidence-preflight wemos-one-shot-evidence-capture wemos-one-shot-evidence-gate wemos-one-shot-evidence-explain wemos-one-shot-evidence-report wemos-one-shot-evidence-self-test wemos-one-shot-sdk-import wemos-one-shot-sdk-import-gate wemos-one-shot-flash-import-gate wemos-one-shot-deepsleep-evidence-capture wemos-one-shot-deepsleep-evidence-gate wemos-one-shot-deepsleep-evidence-explain eventflow-one-shot-evidence-gate esp8266-target-timing-self-test esp8266-target-timing-report esp8266-target-timing-gate wemos-one-shot-target-timing-gate production-release-gate quality-gate release-gate docgen docs clean
 .SECONDARY: $(COMMON_OBJS) $(BENCH_COMMON_OBJS)
 
 all: host-test
@@ -425,7 +426,14 @@ sdk-canonical-evidence-gate:
 	$(PYTHON) tools/audit/static_contracts.py
 	@echo "sdk-canonical-evidence-gate passed"
 
-evidence-importer-hardening-gate:
+redaction-self-test:
+	$(PYTHON) tools/lib/ev_redaction.py --self-test
+	$(PYTHON) tools/release/redact_existing_evidence.py --self-test
+
+evidence-redaction-scrub:
+	$(PYTHON) tools/release/redact_existing_evidence.py --apply
+
+evidence-importer-hardening-gate: redaction-self-test
 	$(PYTHON) tools/release/capture_sdk_evidence.py --self-test
 	$(PYTHON) tools/release/import_sdk_evidence.py --self-test
 	$(PYTHON) tools/release/parse_esptool_flash_log.py --self-test
@@ -606,7 +614,7 @@ sdk-memory-release-gate:
 	EV_SDK_MEMORY_REQUIRE_PASS=1 $(PYTHON) tools/sdk_memory_matrix.py
 
 .NOTPARALLEL: quality-gate
-quality-gate: clean routegen-check static-contracts i2c-sdk-bug-avoidance-gate hotpath-zero-alloc-gate actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts release-report-consistency-gate qos-contracts memory-budget host-test property-test
+quality-gate: clean redaction-self-test routegen-check static-contracts i2c-sdk-bug-avoidance-gate hotpath-zero-alloc-gate actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts release-report-consistency-gate qos-contracts memory-budget host-test property-test
 	@echo "quality-gate passed"
 
 release-gate: quality-gate docgen docs

@@ -24,6 +24,8 @@ from operator_exit_footer import classify_footer_lines
 # Contract dependency: tools/release/operator_exit_footer.py
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools" / "lib"))
+from ev_redaction import redact_text
 DEFAULT_EVIDENCE_ROOT = ROOT / "docs" / "release" / "operator_transcript_evidence"
 
 PLACEHOLDER_RE = re.compile(r"(^|/)(path|PATH)/(to/)?|<[^>]+>|YOUR_|/path/", re.I)
@@ -61,15 +63,7 @@ class Segment:
 
 
 def redact(text: str) -> str:
-    def repl_assign(match: re.Match[str]) -> str:
-        return f"{match.group('key')}=<REDACTED>"
-
-    def repl_define(match: re.Match[str]) -> str:
-        return f"{match.group('prefix')}\"<REDACTED>\""
-
-    text = SECRET_DEFINE_RE.sub(repl_define, text)
-    text = SECRET_ASSIGN_RE.sub(repl_assign, text)
-    return text
+    return redact_text(text)
 
 
 def sha256_bytes(data: bytes) -> str:

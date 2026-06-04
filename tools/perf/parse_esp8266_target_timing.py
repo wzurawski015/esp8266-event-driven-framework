@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Parse ESP8266 target-side P50/P95/P99/P999 timing evidence."""
 from __future__ import annotations
-import argparse, hashlib, json, math, re, tempfile
+import argparse, hashlib, json, math, re, sys, tempfile
 from pathlib import Path
 from typing import Any
 ROOT=Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT/'tools'/'lib'))
+from ev_redaction import redact_text
 DEFAULT_TARGET='wemos_esp_wroom_02_18650'
 BUDGET_FILE=ROOT/'config'/'target_timing_budgets.json'
 DEFAULT_OUTPUT=ROOT/'docs'/'release'/'target_timing'/DEFAULT_TARGET/'current'
@@ -17,7 +19,7 @@ OPERATOR_STOP_RE=re.compile(r'process exited with code 130|EV_MONITOR_STOP\s+rea
 SECRET_RE=re.compile(r'(WIFI_PASSWORD|COMMAND_TOKEN|EV_BOARD_NET_WIFI_PASSWORD|EV_BOARD_NET_COMMAND_TOKEN)\S*',re.I)
 PLACEHOLDER_RE=re.compile(r'(^|/)(path|PATH)/(to/)?|<[^>]+>|YOUR_|/path/',re.I)
 DEFAULT_BUDGETS={'min_samples':8,'max_gap_ms_warning':2500,'max_gap_ms_hard':10000,'p99_report_only':True,'p999_report_only':True}
-def redact(text:str)->str: return SECRET_RE.sub(lambda m:m.group(1)+'=<REDACTED>',text)
+def redact(text:str)->str: return redact_text(text)
 def sha256_file(path:Path)->str:
     h=hashlib.sha256()
     with path.open('rb') as fh:

@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools" / "lib"))
+from ev_redaction import redact_text
 TARGETS_DEF = ROOT / "config" / "sdk_targets.def"
 EVIDENCE_ROOT = ROOT / "docs" / "release" / "sdk_evidence"
 BUILD_REPORT = ROOT / "docs" / "release" / "sdk_build_matrix_report.md"
@@ -87,10 +89,7 @@ class EvidenceError(Exception):
 
 
 def redact(text: str) -> str:
-    out = text
-    for pat in SECRET_PATTERNS:
-        out = pat.sub(lambda m: m.group(1) + "<REDACTED>", out)
-    return out
+    return redact_text(text)
 
 
 def is_placeholder_path(path: Path | str) -> bool:

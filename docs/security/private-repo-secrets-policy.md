@@ -39,3 +39,15 @@ make public-release-safety-gate
 ```
 
 `make quality-gate` uses the private containment policy. Public release packaging must explicitly run `make public-release-safety-gate` and is expected to fail while real local secrets are intentionally tracked.
+
+## Evidence redaction rule
+
+Shared redaction tooling must redact by both pattern and value:
+
+- pattern-based redaction covers key/value lines and ESP SDK WiFi status lines;
+- value-based redaction loads current literal values only from allowlisted
+  private-lab secret files and replaces copied values in memory with
+  `<REDACTED>`.
+
+This value lookup is permitted only for containment/redaction.  Tools must never
+print or serialize the loaded values.

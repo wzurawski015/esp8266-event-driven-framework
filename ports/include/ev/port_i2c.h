@@ -58,6 +58,29 @@ typedef ev_i2c_status_t (*ev_i2c_write_stream_fn_t)(void *ctx,
                                                     size_t data_len);
 
 /**
+ * @brief Read a raw byte stream from a 7-bit addressed I2C slave.
+ *
+ * The operation emits a START condition, the target address in read mode,
+ * @p data_len input bytes, and a STOP condition.  Implementations must ACK
+ * every received byte except the final byte, which must be followed by NACK
+ * before STOP.  Passing @p data_len equal to zero is allowed and performs an
+ * address-only read probe; in that case @p data may be NULL.
+ * Implementations must use a bounded wait policy and must never block indefinitely.
+ *
+ * @param ctx Adapter-owned context bound into the public port object.
+ * @param port_num Logical I2C controller identifier.
+ * @param device_address_7bit Target 7-bit slave address.
+ * @param data Destination buffer that receives input bytes, or NULL when @p data_len is zero.
+ * @param data_len Number of bytes to read.
+ * @return Normalized transport status for the transaction.
+ */
+typedef ev_i2c_status_t (*ev_i2c_read_stream_fn_t)(void *ctx,
+                                                   ev_i2c_port_num_t port_num,
+                                                   uint8_t device_address_7bit,
+                                                   uint8_t *data,
+                                                   size_t data_len);
+
+/**
  * @brief Write one or more bytes starting at an 8-bit device register.
  *
  * The operation emits a START condition, the target address in write mode,
@@ -108,13 +131,14 @@ typedef ev_i2c_status_t (*ev_i2c_read_regs_fn_t)(void *ctx,
  * @brief Platform I2C master contract.
  *
  * The public contract exposes only the operations required by the current
- * bring-up stages: raw stream writes, register writes, and register reads.
+ * bring-up stages: raw stream writes/reads, register writes, and register reads.
  * Each call is expected to be bounded in time and safe to use from concurrent
  * callers through adapter-owned synchronization.
  */
 typedef struct ev_i2c_port {
     void *ctx; /**< Caller-owned adapter context bound by the implementation. */
     ev_i2c_write_stream_fn_t write_stream; /**< Write a raw byte stream to one slave. */
+    ev_i2c_read_stream_fn_t read_stream; /**< Read a raw byte stream from one slave. */
     ev_i2c_write_regs_fn_t write_regs; /**< Write one or more device registers. */
     ev_i2c_read_regs_fn_t read_regs; /**< Read one or more device registers. */
 } ev_i2c_port_t;

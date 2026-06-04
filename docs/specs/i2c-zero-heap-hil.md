@@ -125,3 +125,44 @@ The IRQ flood HIL task emits `EV_HIL_STACK task=irq-flood high_water_words=<n>` 
 ## Board GPIO diagnostics
 
 ATNEL I2C HIL fault diagnostics require real board GPIO definitions. The target fails at compile time if `EV_BOARD_I2C_SDA_GPIO` or `EV_BOARD_I2C_SCL_GPIO` are unavailable, preventing ambiguous `sda_gpio=-1`/`scl_gpio=-1` release logs.
+
+## Raw `read_stream` transaction contract
+
+The public I2C port includes a bounded raw `read_stream` operation for devices
+that return a byte stream without an 8-bit register selector.  The acceptance
+contract is:
+
+```text
+START
+ADDR + READ
+read N bytes
+ACK after every byte except the final byte
+NACK after the final byte
+STOP
+SDA=1 and SCL=1 sampled after STOP/release
+```
+
+`data_len == 0` is a legal address-read probe.  In that case the adapter emits
+`START + ADDR/R + STOP`; `data` may be `NULL` only for this zero-length probe.
+Invalid buffers, invalid 7-bit addresses and payload lengths outside the adapter
+budget must return a bounded error and must not touch memory out of range.
+
+## Bus-completion evidence markers
+
+A real ATNEL PASS must contain evidence that both successful and failing I2C
+transactions release the bus.  The parser is fail-closed and requires these
+markers before accepting PASS:
+
+```text
+EV_HIL_I2C_ACK_EVIDENCE name=read-stream-completion ...
+EV_HIL_I2C_FINAL_NACK_SENT name=read-stream-completion ...
+EV_HIL_I2C_NACK_EVIDENCE name=missing-device-write-nack-stop-release ...
+EV_HIL_I2C_NACK_EVIDENCE name=missing-device-read-nack-stop-release ...
+EV_HIL_I2C_STOP_RELEASE name=read-stream-completion ... sda=1 scl=1 fail=0
+EV_HIL_I2C_STOP_RELEASE name=missing-device-write-nack-stop-release ... sda=1 scl=1 fail=0
+EV_HIL_I2C_STOP_RELEASE name=missing-device-read-nack-stop-release ... sda=1 scl=1 fail=0
+```
+
+The marker set intentionally distinguishes write-address NACK, read-address
+NACK, final read NACK and STOP/release evidence.  A status code alone is not
+enough for release qualification.

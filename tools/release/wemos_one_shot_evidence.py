@@ -23,6 +23,8 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools" / "lib"))
+from ev_redaction import redact_text
 TARGET_DEFAULT = "wemos_esp_wroom_02_18650"
 DEFAULT_BASE = ROOT / "docs" / "release" / "wemos_one_shot_evidence" / TARGET_DEFAULT
 REPORT = ROOT / "docs" / "release" / "wemos_one_shot_evidence_report.md"
@@ -69,10 +71,7 @@ def sha256_file(path: Path) -> str:
 
 
 def redact(text: str) -> str:
-    out = text
-    for pat in SECRET_PATTERNS:
-        out = pat.sub(lambda m: m.group(1) + "<REDACTED>", out)
-    return out
+    return redact_text(text)
 
 
 def is_placeholder_path(path: Path | str | None) -> bool:

@@ -81,3 +81,16 @@ boundary.
 ## Adapter bootstrap exceptions
 
 Adapter/bootstrap SDK primitives are not allowed implicitly. `make static-contracts` validates `tools/audit/adapter_exception_allowlist.def`, rejects unapproved occurrences, and treats stale allowlist rows as errors. `xTaskCreate` is allowed only as a HIL bootstrap fallback; `xTaskCreateStatic` is classified as static-safe.
+
+## I2C port completion contract
+
+`port_i2c.h` exposes four bounded operations: `write_stream`, `read_stream`,
+`write_regs` and `read_regs`.  The raw stream operations are for devices without
+a register selector; register operations remain explicit and do not fake a raw
+stream by inventing a register byte.
+
+All I2C implementations must keep synchronization adapter-owned, must avoid heap
+allocation in the transaction hot-path, and must make STOP/release observable in
+HIL diagnostics.  Host fakes are required to implement the same public function
+set and to reject invalid address/buffer/range inputs without undefined
+behavior.

@@ -2,6 +2,11 @@
 
 #include <string.h>
 
+static bool fake_i2c_reg_range_is_valid(uint8_t first_reg, size_t len)
+{
+    return len <= ((size_t)256U - (size_t)first_reg);
+}
+
 static ev_i2c_status_t fake_i2c_port_status_for(fake_i2c_port_t *fake, uint8_t addr_7bit)
 {
     if ((fake == NULL) || (addr_7bit >= 128U)) {
@@ -46,6 +51,35 @@ static ev_i2c_status_t fake_i2c_write_stream(void *ctx,
     return EV_I2C_OK;
 }
 
+static ev_i2c_status_t fake_i2c_read_stream(void *ctx,
+                                            ev_i2c_port_num_t port_num,
+                                            uint8_t device_address_7bit,
+                                            uint8_t *data,
+                                            size_t data_len)
+{
+    fake_i2c_port_t *fake = (fake_i2c_port_t *)ctx;
+    ev_i2c_status_t status;
+
+    (void)port_num;
+    if ((fake == NULL) || ((data == NULL) && (data_len != 0U)) || (device_address_7bit >= 128U) ||
+        (data_len > FAKE_I2C_STREAM_CAPACITY)) {
+        return EV_I2C_ERR_BUS_LOCKED;
+    }
+
+    ++fake->read_stream_calls;
+    ++fake->read_stream_calls_by_addr[device_address_7bit];
+    fake->last_addr = device_address_7bit;
+    status = fake_i2c_port_status_for(fake, device_address_7bit);
+    if (status != EV_I2C_OK) {
+        return status;
+    }
+
+    if (data_len > 0U) {
+        memcpy(data, fake->read_stream_data[device_address_7bit], data_len);
+    }
+    return EV_I2C_OK;
+}
+
 static ev_i2c_status_t fake_i2c_write_regs(void *ctx,
                                            ev_i2c_port_num_t port_num,
                                            uint8_t device_address_7bit,
@@ -57,7 +91,8 @@ static ev_i2c_status_t fake_i2c_write_regs(void *ctx,
     ev_i2c_status_t status;
 
     (void)port_num;
-    if ((fake == NULL) || ((data == NULL) && (data_len != 0U)) || (device_address_7bit >= 128U)) {
+    if ((fake == NULL) || ((data == NULL) && (data_len != 0U)) || (device_address_7bit >= 128U) ||
+        !fake_i2c_reg_range_is_valid(first_reg, data_len)) {
         return EV_I2C_ERR_BUS_LOCKED;
     }
 
@@ -88,7 +123,8 @@ static ev_i2c_status_t fake_i2c_read_regs(void *ctx,
     ev_i2c_status_t status;
 
     (void)port_num;
-    if ((fake == NULL) || (data == NULL) || (data_len == 0U) || (device_address_7bit >= 128U)) {
+    if ((fake == NULL) || (data == NULL) || (data_len == 0U) || (device_address_7bit >= 128U) ||
+        !fake_i2c_reg_range_is_valid(first_reg, data_len)) {
         return EV_I2C_ERR_BUS_LOCKED;
     }
 
@@ -119,6 +155,7 @@ void fake_i2c_port_bind(ev_i2c_port_t *out_port, fake_i2c_port_t *fake)
         memset(out_port, 0, sizeof(*out_port));
         out_port->ctx = fake;
         out_port->write_stream = fake_i2c_write_stream;
+        out_port->read_stream = fake_i2c_read_stream;
         out_port->write_regs = fake_i2c_write_regs;
         out_port->read_regs = fake_i2c_read_regs;
     }
@@ -141,7 +178,16 @@ void fake_i2c_port_set_status(fake_i2c_port_t *fake, uint8_t addr_7bit, ev_i2c_s
 
 void fake_i2c_port_seed_regs(fake_i2c_port_t *fake, uint8_t addr_7bit, uint8_t first_reg, const uint8_t *src, size_t len)
 {
-    if ((fake != NULL) && (src != NULL) && (addr_7bit < 128U) && (len > 0U)) {
+    if ((fake != NULL) && (src != NULL) && (addr_7bit < 128U) && (len > 0U) &&
+        fake_i2c_reg_range_is_valid(first_reg, len)) {
         memcpy(&fake->regs[addr_7bit][first_reg], src, len);
+    }
+}
+
+void fake_i2c_port_seed_read_stream(fake_i2c_port_t *fake, uint8_t addr_7bit, const uint8_t *src, size_t len)
+{
+    if ((fake != NULL) && (src != NULL) && (addr_7bit < 128U) && (len > 0U) &&
+        (len <= FAKE_I2C_STREAM_CAPACITY)) {
+        memcpy(fake->read_stream_data[addr_7bit], src, len);
     }
 }

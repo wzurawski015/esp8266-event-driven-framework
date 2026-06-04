@@ -24,6 +24,8 @@ from pathlib import Path
 from typing import Iterable
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools" / "lib"))
+from ev_redaction import redact_text
 TARGETS_DEF = ROOT / "config" / "sdk_targets.def"
 EVIDENCE_ROOT = ROOT / "docs" / "release" / "sdk_evidence"
 SDK_BUILD_REPORT = ROOT / "docs" / "release" / "sdk_build_matrix_report.md"
@@ -74,10 +76,7 @@ def parse_targets() -> list[Target]:
 
 
 def redact(text: str) -> str:
-    out = text
-    for pattern in SECRET_PATTERNS:
-        out = pattern.sub(lambda m: m.group(1) + "<REDACTED>", out)
-    return out
+    return redact_text(text)
 
 
 def sha256(path: Path) -> str:

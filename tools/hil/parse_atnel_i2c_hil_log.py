@@ -10,6 +10,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools" / "lib"))
+from ev_redaction import redact_text
 REPORT = ROOT / "docs" / "release" / "hil_atnel_i2c_report.md"
 DEFAULT_EVIDENCE = ROOT / "docs" / "release" / "hil_evidence" / "i2c" / "current"
 GLOBAL_PASS = re.compile(r"EV_HIL_RESULT PASS failures=0 skipped=0")
@@ -21,12 +23,20 @@ UNCOUPLED = re.compile(r"EV_HIL_I2C_SDA_FORCE_LOW\s+requested=1\s+observed=0|FIX
 BUS_STATE = re.compile(r"EV_HIL_I2C_BUS_STATE")
 RECOVERY_BEGIN = re.compile(r"EV_HIL_I2C_RECOVERY_BEGIN")
 RECOVERY_PASS = re.compile(r"EV_HIL_I2C_RECOVERY_RESULT\s+status=(?:PASS|OK)")
+ACK_EVIDENCE = re.compile(r"EV_HIL_I2C_ACK_EVIDENCE\s+name=read-stream-completion")
+WRITE_NACK_EVIDENCE = re.compile(r"EV_HIL_I2C_NACK_EVIDENCE\s+name=missing-device-write-nack-stop-release")
+READ_NACK_EVIDENCE = re.compile(r"EV_HIL_I2C_NACK_EVIDENCE\s+name=missing-device-read-nack-stop-release")
+FINAL_NACK_SENT = re.compile(r"EV_HIL_I2C_FINAL_NACK_SENT\s+name=read-stream-completion")
+STOP_RELEASE_OK = re.compile(r"EV_HIL_I2C_STOP_RELEASE\s+name=[^\s]+.*?ok=([1-9][0-9]*).*?fail=0.*?sda=1\s+scl=1")
+READ_STREAM_STOP_RELEASE_OK = re.compile(r"EV_HIL_I2C_STOP_RELEASE\s+name=read-stream-completion.*?ok=([1-9][0-9]*).*?fail=0.*?sda=1\s+scl=1")
+WRITE_NACK_STOP_RELEASE_OK = re.compile(r"EV_HIL_I2C_STOP_RELEASE\s+name=missing-device-write-nack-stop-release.*?ok=([1-9][0-9]*).*?fail=0.*?sda=1\s+scl=1")
+READ_NACK_STOP_RELEASE_OK = re.compile(r"EV_HIL_I2C_STOP_RELEASE\s+name=missing-device-read-nack-stop-release.*?ok=([1-9][0-9]*).*?fail=0.*?sda=1\s+scl=1")
 SECRET_RE = re.compile(r"(WIFI_PASSWORD|COMMAND_TOKEN|EV_BOARD_NET_WIFI_PASSWORD|EV_BOARD_NET_COMMAND_TOKEN)\S*")
 PLACEHOLDER_RE = re.compile(r"(^|/)(path|PATH)/(to/)?|<[^>]+>|YOUR_|/path/", re.I)
 
 
 def redact(text: str) -> str:
-    return SECRET_RE.sub(lambda m: m.group(1) + "=<REDACTED>", text)
+    return redact_text(text)
 
 
 def sha256(path: Path) -> str:
@@ -66,6 +76,14 @@ def parse_text(text: str) -> dict[str, object]:
     has_bus_state = bool(BUS_STATE.search(redacted))
     has_recovery_begin = bool(RECOVERY_BEGIN.search(redacted))
     has_recovery_pass = bool(RECOVERY_PASS.search(redacted))
+    has_ack_evidence = bool(ACK_EVIDENCE.search(redacted))
+    has_write_nack_evidence = bool(WRITE_NACK_EVIDENCE.search(redacted))
+    has_read_nack_evidence = bool(READ_NACK_EVIDENCE.search(redacted))
+    has_final_nack_sent = bool(FINAL_NACK_SENT.search(redacted))
+    has_stop_release_ok = bool(STOP_RELEASE_OK.search(redacted))
+    has_read_stream_stop_release_ok = bool(READ_STREAM_STOP_RELEASE_OK.search(redacted))
+    has_write_nack_stop_release_ok = bool(WRITE_NACK_STOP_RELEASE_OK.search(redacted))
+    has_read_nack_stop_release_ok = bool(READ_NACK_STOP_RELEASE_OK.search(redacted))
     fail_reason = None
     m = CASE_FAIL.search(redacted)
     if m:
@@ -87,6 +105,22 @@ def parse_text(text: str) -> dict[str, object]:
         failures.append("missing EV_HIL_I2C_RECOVERY_BEGIN marker")
     if not has_recovery_pass:
         failures.append("missing recovery PASS/OK marker")
+    if not has_ack_evidence:
+        failures.append("missing read_stream ACK evidence marker")
+    if not has_write_nack_evidence:
+        failures.append("missing write_stream NACK evidence marker")
+    if not has_read_nack_evidence:
+        failures.append("missing read_stream NACK evidence marker")
+    if not has_final_nack_sent:
+        failures.append("missing read_stream final-NACK evidence marker")
+    if not has_stop_release_ok:
+        failures.append("missing STOP-release idle evidence marker")
+    if not has_read_stream_stop_release_ok:
+        failures.append("missing read_stream STOP-release idle evidence marker")
+    if not has_write_nack_stop_release_ok:
+        failures.append("missing write_stream NACK STOP-release idle evidence marker")
+    if not has_read_nack_stop_release_ok:
+        failures.append("missing read_stream NACK STOP-release idle evidence marker")
     if fail_reason:
         failures.append(f"case failure marker: {fail_reason}")
     return {
@@ -99,6 +133,15 @@ def parse_text(text: str) -> dict[str, object]:
         "bus_state": has_bus_state,
         "recovery_begin": has_recovery_begin,
         "recovery_pass": has_recovery_pass,
+        "ack_evidence": has_ack_evidence,
+        "write_nack_evidence": has_write_nack_evidence,
+        "read_nack_evidence": has_read_nack_evidence,
+        "nack_evidence": has_write_nack_evidence and has_read_nack_evidence,
+        "final_nack_sent": has_final_nack_sent,
+        "stop_release_ok": has_stop_release_ok,
+        "read_stream_stop_release_ok": has_read_stream_stop_release_ok,
+        "write_nack_stop_release_ok": has_write_nack_stop_release_ok,
+        "read_nack_stop_release_ok": has_read_nack_stop_release_ok,
         "failures": failures,
     }
 
@@ -117,7 +160,8 @@ def write_report(parsed: dict[str, object], evidence_dir: Path, serial_log: Path
         f"| Parsed evidence | `{parsed_rel}` |\n\n"
         "PASS requires `EV_HIL_RESULT PASS failures=0 skipped=0`, "
         "`EV_HIL_I2C_CASE_RESULT name=sda-stuck-low-containment status=PASS`, "
-        "an observed SDA-low coupling marker, and recovery OK. Placeholder or missing paths are reported as ENVIRONMENT_BLOCKED, not Python tracebacks.\n",
+        "observed SDA-low coupling, recovery OK, read_stream ACK/final-NACK markers, "
+        "write_stream/read_stream NACK markers, and per-case STOP-release idle evidence. Placeholder or missing paths are reported as ENVIRONMENT_BLOCKED, not Python tracebacks.\n",
         encoding="utf-8",
     )
 
@@ -164,6 +208,13 @@ EV_HIL_I2C_SDA_FORCE_LOW requested=1 observed=1
 EV_HIL_I2C_BUS_STATE before=idle during=stuck after=recovered
 EV_HIL_I2C_RECOVERY_BEGIN
 EV_HIL_I2C_RECOVERY_RESULT status=PASS
+EV_HIL_I2C_ACK_EVIDENCE name=read-stream-completion address_read_acks=1
+EV_HIL_I2C_NACK_EVIDENCE name=missing-device-write-nack-stop-release address_write_nacks=1
+EV_HIL_I2C_NACK_EVIDENCE name=missing-device-read-nack-stop-release address_read_nacks=1
+EV_HIL_I2C_FINAL_NACK_SENT name=read-stream-completion count=1
+EV_HIL_I2C_STOP_RELEASE name=read-stream-completion attempted=1 ok=1 fail=0 idle_ok=1 idle_fail=0 sda=1 scl=1 last_status=OK phase=10
+EV_HIL_I2C_STOP_RELEASE name=missing-device-write-nack-stop-release attempted=1 ok=1 fail=0 idle_ok=1 idle_fail=0 sda=1 scl=1 last_status=NACK phase=10
+EV_HIL_I2C_STOP_RELEASE name=missing-device-read-nack-stop-release attempted=1 ok=1 fail=0 idle_ok=1 idle_fail=0 sda=1 scl=1 last_status=NACK phase=10
 EV_HIL_I2C_CASE_RESULT name=sda-stuck-low-containment status=PASS
 EV_HIL_RESULT PASS failures=0 skipped=0
 """
@@ -171,6 +222,7 @@ EV_HIL_RESULT PASS failures=0 skipped=0
     assert parse_text(valid.replace("EV_HIL_RESULT PASS failures=0 skipped=0", ""))["status"] == "FAIL"
     assert parse_text(valid.replace("observed=1", "observed=0"))["status"] == "FAIL"
     assert "<REDACTED>" in redact("WIFI_PASSWORD=secret")
+    assert "real-ssid" not in redact("I (7223) wifi:connected with real-ssid, aid = 23")
     assert safe_read_log(Path("/path/atnel-i2c.log"))[0] == "ENVIRONMENT_BLOCKED"
     print("ATNEL_I2C_HIL_LOG_PARSER_SELF_TEST PASS")
     return 0

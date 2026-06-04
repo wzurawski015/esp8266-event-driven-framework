@@ -11,16 +11,21 @@
 extern "C" {
 #endif
 
+#define FAKE_I2C_STREAM_CAPACITY 64U
+
 typedef struct {
     ev_i2c_status_t default_status;
     ev_i2c_status_t status_by_addr[128];
     bool forced_status_valid[128];
     bool present[128];
     uint8_t regs[128][256];
+    uint8_t read_stream_data[128][FAKE_I2C_STREAM_CAPACITY];
     uint32_t write_stream_calls;
+    uint32_t read_stream_calls;
     uint32_t write_regs_calls;
     uint32_t read_regs_calls;
     uint32_t write_stream_calls_by_addr[128];
+    uint32_t read_stream_calls_by_addr[128];
     uint32_t write_regs_calls_by_addr[128];
     uint32_t read_regs_calls_by_addr[128];
     uint8_t last_addr;
@@ -32,6 +37,7 @@ void fake_i2c_port_bind(ev_i2c_port_t *out_port, fake_i2c_port_t *fake);
 void fake_i2c_port_set_present(fake_i2c_port_t *fake, uint8_t addr_7bit, bool present);
 void fake_i2c_port_set_status(fake_i2c_port_t *fake, uint8_t addr_7bit, ev_i2c_status_t status);
 void fake_i2c_port_seed_regs(fake_i2c_port_t *fake, uint8_t addr_7bit, uint8_t first_reg, const uint8_t *src, size_t len);
+void fake_i2c_port_seed_read_stream(fake_i2c_port_t *fake, uint8_t addr_7bit, const uint8_t *src, size_t len);
 
 #ifdef __cplusplus
 }

@@ -31,11 +31,29 @@ typedef struct ev_esp8266_i2c_diag_snapshot {
     uint32_t bus_locked; /**< Number of bus-locked or unsafe-bus outcomes. */
     uint32_t bus_recoveries; /**< Number of attempted bounded bus-recovery sequences. */
     uint32_t bus_recovery_failures; /**< Number of bus-recovery attempts that did not restore idle bus state. */
+    uint32_t address_write_acks; /**< Number of address/write phases acknowledged by slaves. */
+    uint32_t address_write_nacks; /**< Number of address/write phases that returned NACK. */
+    uint32_t address_read_acks; /**< Number of address/read phases acknowledged by slaves. */
+    uint32_t address_read_nacks; /**< Number of address/read phases that returned NACK. */
+    uint32_t data_write_acks; /**< Number of register/data write bytes acknowledged by slaves. */
+    uint32_t data_write_nacks; /**< Number of register/data write bytes that returned NACK. */
+    uint32_t read_bytes; /**< Number of data bytes read from slaves. */
+    uint32_t read_final_nack_sent; /**< Number of final-byte NACK handshakes sent by the master. */
+    uint32_t stop_attempted; /**< Number of STOP sequences attempted after a started transaction. */
+    uint32_t stop_ok; /**< Number of STOP sequences that released the bus. */
+    uint32_t stop_release_fail; /**< Number of STOP sequences that did not release SDA/SCL. */
+    uint32_t bus_idle_after_stop_ok; /**< Number of post-STOP SDA/SCL idle confirmations. */
+    uint32_t bus_idle_after_stop_fail; /**< Number of post-STOP SDA/SCL idle failures. */
     uint32_t sleep_prepare_attempts; /**< Number of bounded sleep-prepare checks touching the I2C bus. */
     uint32_t sleep_prepare_failures; /**< Number of I2C sleep-prepare rejections. */
+    ev_i2c_status_t last_status; /**< Last normalized transaction status recorded by the adapter. */
+    uint8_t last_addr_7bit; /**< Last target 7-bit address observed by the adapter. */
+    uint8_t last_phase; /**< Last internal transaction phase observed by diagnostics. */
     bool transaction_active; /**< True while a runtime transaction owns the software I2C master. */
     bool sda_high; /**< Last sampled SDA idle level. */
     bool scl_high; /**< Last sampled SCL idle level. */
+    bool last_sda_high_after_stop; /**< SDA level sampled after the most recent STOP. */
+    bool last_scl_high_after_stop; /**< SCL level sampled after the most recent STOP. */
 } ev_esp8266_i2c_diag_snapshot_t;
 
 /**

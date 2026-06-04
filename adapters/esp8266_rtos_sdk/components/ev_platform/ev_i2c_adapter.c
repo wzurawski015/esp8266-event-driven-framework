@@ -37,6 +37,7 @@
 
 #define EV_ESP8266_I2C_WRITE_STREAM_COMMANDS 4U
 #define EV_ESP8266_I2C_WRITE_REGS_COMMANDS 5U
+#define EV_ESP8266_I2C_READ_STREAM_COMMANDS 5U
 #define EV_ESP8266_I2C_READ_REGS_COMMANDS 8U
 
 #if EV_ESP8266_I2C_WRITE_STREAM_COMMANDS > EV_I2C_MAX_COMMANDS_PER_TRANSACTION
@@ -45,11 +46,28 @@
 #if EV_ESP8266_I2C_WRITE_REGS_COMMANDS > EV_I2C_MAX_COMMANDS_PER_TRANSACTION
 #error "EV_I2C_MAX_COMMANDS_PER_TRANSACTION is too small for write_regs"
 #endif
+#if EV_ESP8266_I2C_READ_STREAM_COMMANDS > EV_I2C_MAX_COMMANDS_PER_TRANSACTION
+#error "EV_I2C_MAX_COMMANDS_PER_TRANSACTION is too small for read_stream"
+#endif
 #if EV_ESP8266_I2C_READ_REGS_COMMANDS > EV_I2C_MAX_COMMANDS_PER_TRANSACTION
 #error "EV_I2C_MAX_COMMANDS_PER_TRANSACTION is too small for read_regs"
 #endif
 
 static const char *const k_ev_i2c_tag = "ev_i2c";
+
+typedef enum ev_esp8266_i2c_phase {
+    EV_ESP8266_I2C_PHASE_IDLE = 0,
+    EV_ESP8266_I2C_PHASE_START = 1,
+    EV_ESP8266_I2C_PHASE_ADDR_W = 2,
+    EV_ESP8266_I2C_PHASE_REG = 3,
+    EV_ESP8266_I2C_PHASE_DATA_W = 4,
+    EV_ESP8266_I2C_PHASE_RESTART = 5,
+    EV_ESP8266_I2C_PHASE_ADDR_R = 6,
+    EV_ESP8266_I2C_PHASE_DATA_R = 7,
+    EV_ESP8266_I2C_PHASE_FINAL_NACK = 8,
+    EV_ESP8266_I2C_PHASE_STOP = 9,
+    EV_ESP8266_I2C_PHASE_RELEASE = 10
+} ev_esp8266_i2c_phase_t;
 
 typedef struct ev_esp8266_i2c_adapter_ctx {
     ev_i2c_port_num_t port_num;
@@ -63,8 +81,26 @@ typedef struct ev_esp8266_i2c_adapter_ctx {
     uint32_t bus_locked;
     uint32_t bus_recoveries;
     uint32_t bus_recovery_failures;
+    uint32_t address_write_acks;
+    uint32_t address_write_nacks;
+    uint32_t address_read_acks;
+    uint32_t address_read_nacks;
+    uint32_t data_write_acks;
+    uint32_t data_write_nacks;
+    uint32_t read_bytes;
+    uint32_t read_final_nack_sent;
+    uint32_t stop_attempted;
+    uint32_t stop_ok;
+    uint32_t stop_release_fail;
+    uint32_t bus_idle_after_stop_ok;
+    uint32_t bus_idle_after_stop_fail;
     uint32_t sleep_prepare_attempts;
     uint32_t sleep_prepare_failures;
+    ev_i2c_status_t last_status;
+    uint8_t last_addr_7bit;
+    uint8_t last_phase;
+    bool last_sda_high_after_stop;
+    bool last_scl_high_after_stop;
     volatile bool transaction_active;
 } ev_esp8266_i2c_adapter_ctx_t;
 
@@ -76,6 +112,41 @@ static ev_esp8266_i2c_adapter_ctx_t g_ev_i2c0_ctx = {
     .scl_pin = -1,
     .configured = false,
 };
+
+static void ev_esp8266_i2c_reset_diag(ev_esp8266_i2c_adapter_ctx_t *ctx)
+{
+    if (ctx == NULL) {
+        return;
+    }
+    ctx->transactions_started = 0U;
+    ctx->transactions_failed = 0U;
+    ctx->nacks = 0U;
+    ctx->timeouts = 0U;
+    ctx->bus_locked = 0U;
+    ctx->bus_recoveries = 0U;
+    ctx->bus_recovery_failures = 0U;
+    ctx->address_write_acks = 0U;
+    ctx->address_write_nacks = 0U;
+    ctx->address_read_acks = 0U;
+    ctx->address_read_nacks = 0U;
+    ctx->data_write_acks = 0U;
+    ctx->data_write_nacks = 0U;
+    ctx->read_bytes = 0U;
+    ctx->read_final_nack_sent = 0U;
+    ctx->stop_attempted = 0U;
+    ctx->stop_ok = 0U;
+    ctx->stop_release_fail = 0U;
+    ctx->bus_idle_after_stop_ok = 0U;
+    ctx->bus_idle_after_stop_fail = 0U;
+    ctx->sleep_prepare_attempts = 0U;
+    ctx->sleep_prepare_failures = 0U;
+    ctx->last_status = EV_I2C_OK;
+    ctx->last_addr_7bit = 0U;
+    ctx->last_phase = (uint8_t)EV_ESP8266_I2C_PHASE_IDLE;
+    ctx->last_sda_high_after_stop = false;
+    ctx->last_scl_high_after_stop = false;
+    ctx->transaction_active = false;
+}
 
 static bool ev_esp8266_i2c_pin_is_valid(int pin)
 {
@@ -99,8 +170,64 @@ static bool ev_esp8266_i2c_payload_len_is_valid(size_t data_len)
     return data_len <= EV_ESP8266_I2C_MAX_PAYLOAD_BYTES;
 }
 
+static void ev_esp8266_i2c_set_phase(ev_esp8266_i2c_adapter_ctx_t *ctx, ev_esp8266_i2c_phase_t phase)
+{
+    if (ctx != NULL) {
+        ctx->last_phase = (uint8_t)phase;
+    }
+}
+
+static void ev_esp8266_i2c_begin_diag(ev_esp8266_i2c_adapter_ctx_t *ctx, uint8_t device_address_7bit)
+{
+    if (ctx != NULL) {
+        ctx->last_addr_7bit = device_address_7bit;
+        ctx->last_status = EV_I2C_OK;
+        ctx->last_phase = (uint8_t)EV_ESP8266_I2C_PHASE_IDLE;
+    }
+}
+
+static void ev_esp8266_i2c_note_ack_phase(ev_esp8266_i2c_adapter_ctx_t *ctx,
+                                           ev_esp8266_i2c_phase_t phase,
+                                           ev_i2c_status_t status)
+{
+    if (ctx == NULL) {
+        return;
+    }
+
+    ev_esp8266_i2c_set_phase(ctx, phase);
+    switch (phase) {
+    case EV_ESP8266_I2C_PHASE_ADDR_W:
+        if (status == EV_I2C_OK) {
+            ++ctx->address_write_acks;
+        } else if (status == EV_I2C_ERR_NACK) {
+            ++ctx->address_write_nacks;
+        }
+        break;
+    case EV_ESP8266_I2C_PHASE_ADDR_R:
+        if (status == EV_I2C_OK) {
+            ++ctx->address_read_acks;
+        } else if (status == EV_I2C_ERR_NACK) {
+            ++ctx->address_read_nacks;
+        }
+        break;
+    case EV_ESP8266_I2C_PHASE_REG:
+    case EV_ESP8266_I2C_PHASE_DATA_W:
+        if (status == EV_I2C_OK) {
+            ++ctx->data_write_acks;
+        } else if (status == EV_I2C_ERR_NACK) {
+            ++ctx->data_write_nacks;
+        }
+        break;
+    default:
+        break;
+    }
+}
+
 static ev_i2c_status_t ev_esp8266_i2c_record_status(ev_esp8266_i2c_adapter_ctx_t *ctx, ev_i2c_status_t status)
 {
+    if (ctx != NULL) {
+        ctx->last_status = status;
+    }
     if ((ctx != NULL) && (status != EV_I2C_OK)) {
         ++ctx->transactions_failed;
         switch (status) {
@@ -299,26 +426,46 @@ static ev_i2c_status_t ev_esp8266_i2c_start_condition(ev_esp8266_i2c_adapter_ctx
     return EV_I2C_OK;
 }
 
-static ev_i2c_status_t ev_esp8266_i2c_stop_condition(const ev_esp8266_i2c_adapter_ctx_t *ctx, int64_t started_us)
+static ev_i2c_status_t ev_esp8266_i2c_stop_condition(ev_esp8266_i2c_adapter_ctx_t *ctx, int64_t started_us)
 {
     ev_i2c_status_t status;
+    bool sda_high;
+    bool scl_high;
+
+    ev_esp8266_i2c_set_phase(ctx, EV_ESP8266_I2C_PHASE_STOP);
+    ++ctx->stop_attempted;
 
     ev_esp8266_i2c_drive_sda_low(ctx);
     ets_delay_us(EV_ESP8266_I2C_HALF_PERIOD_US);
 
     status = ev_esp8266_i2c_raise_scl(ctx, started_us);
     if (status != EV_I2C_OK) {
-        ev_esp8266_i2c_release_sda(ctx);
+        ev_esp8266_i2c_release_bus_lines(ctx);
+        ++ctx->stop_release_fail;
+        ++ctx->bus_idle_after_stop_fail;
+        ctx->last_sda_high_after_stop = ev_esp8266_i2c_sample_sda(ctx);
+        ctx->last_scl_high_after_stop = ev_esp8266_i2c_sample_scl(ctx);
+        ev_esp8266_i2c_set_phase(ctx, EV_ESP8266_I2C_PHASE_RELEASE);
         return status;
     }
 
     ev_esp8266_i2c_release_sda(ctx);
     ets_delay_us(EV_ESP8266_I2C_HALF_PERIOD_US);
 
-    if (!ev_esp8266_i2c_sample_sda(ctx)) {
+    sda_high = ev_esp8266_i2c_sample_sda(ctx);
+    scl_high = ev_esp8266_i2c_sample_scl(ctx);
+    ctx->last_sda_high_after_stop = sda_high;
+    ctx->last_scl_high_after_stop = scl_high;
+    ev_esp8266_i2c_set_phase(ctx, EV_ESP8266_I2C_PHASE_RELEASE);
+
+    if (!sda_high || !scl_high) {
+        ++ctx->stop_release_fail;
+        ++ctx->bus_idle_after_stop_fail;
         return EV_I2C_ERR_BUS_LOCKED;
     }
 
+    ++ctx->stop_ok;
+    ++ctx->bus_idle_after_stop_ok;
     return EV_I2C_OK;
 }
 
@@ -364,7 +511,17 @@ static ev_i2c_status_t ev_esp8266_i2c_write_byte(const ev_esp8266_i2c_adapter_ct
     }
 }
 
-static ev_i2c_status_t ev_esp8266_i2c_read_byte(const ev_esp8266_i2c_adapter_ctx_t *ctx,
+static ev_i2c_status_t ev_esp8266_i2c_write_byte_observed(ev_esp8266_i2c_adapter_ctx_t *ctx,
+                                                           uint8_t value,
+                                                           int64_t started_us,
+                                                           ev_esp8266_i2c_phase_t phase)
+{
+    ev_i2c_status_t status = ev_esp8266_i2c_write_byte(ctx, value, started_us);
+    ev_esp8266_i2c_note_ack_phase(ctx, phase, status);
+    return status;
+}
+
+static ev_i2c_status_t ev_esp8266_i2c_read_byte(ev_esp8266_i2c_adapter_ctx_t *ctx,
                                                  uint8_t *out_value,
                                                  bool ack_after_byte,
                                                  int64_t started_us)
@@ -405,11 +562,19 @@ static ev_i2c_status_t ev_esp8266_i2c_read_byte(const ev_esp8266_i2c_adapter_ctx
     ev_esp8266_i2c_lower_scl(ctx);
     ev_esp8266_i2c_release_sda(ctx);
 
+    ++ctx->read_bytes;
+    if (ack_after_byte) {
+        ev_esp8266_i2c_set_phase(ctx, EV_ESP8266_I2C_PHASE_DATA_R);
+    } else {
+        ++ctx->read_final_nack_sent;
+        ev_esp8266_i2c_set_phase(ctx, EV_ESP8266_I2C_PHASE_FINAL_NACK);
+    }
+
     *out_value = value;
     return EV_I2C_OK;
 }
 
-static ev_i2c_status_t ev_esp8266_i2c_write_payload(const ev_esp8266_i2c_adapter_ctx_t *ctx,
+static ev_i2c_status_t ev_esp8266_i2c_write_payload(ev_esp8266_i2c_adapter_ctx_t *ctx,
                                                      const uint8_t *data,
                                                      size_t data_len,
                                                      int64_t started_us)
@@ -417,7 +582,7 @@ static ev_i2c_status_t ev_esp8266_i2c_write_payload(const ev_esp8266_i2c_adapter
     size_t offset;
 
     for (offset = 0U; offset < data_len; ++offset) {
-        ev_i2c_status_t status = ev_esp8266_i2c_write_byte(ctx, data[offset], started_us);
+        ev_i2c_status_t status = ev_esp8266_i2c_write_byte_observed(ctx, data[offset], started_us, EV_ESP8266_I2C_PHASE_DATA_W);
         if (status != EV_I2C_OK) {
             return status;
         }
@@ -516,6 +681,7 @@ static ev_i2c_status_t ev_esp8266_i2c_write_stream(void *ctx,
     if (((data_len > 0U) && (data == NULL)) || !ev_esp8266_i2c_payload_len_is_valid(data_len)) {
         return EV_I2C_ERR_BUS_LOCKED;
     }
+    ev_esp8266_i2c_begin_diag(adapter, device_address_7bit);
 
     status = ev_esp8266_i2c_take_bus();
     if (status != EV_I2C_OK) {
@@ -526,11 +692,15 @@ static ev_i2c_status_t ev_esp8266_i2c_write_stream(void *ctx,
 
     status = ev_esp8266_i2c_begin_locked(adapter, &started_us);
     if (status == EV_I2C_OK) {
+        ev_esp8266_i2c_set_phase(adapter, EV_ESP8266_I2C_PHASE_START);
         status = ev_esp8266_i2c_start_condition(adapter, started_us);
     }
     if (status == EV_I2C_OK) {
         started = true;
-        status = ev_esp8266_i2c_write_byte(adapter, (uint8_t)((device_address_7bit << 1U) | 0U), started_us);
+        status = ev_esp8266_i2c_write_byte_observed(adapter,
+                                                     (uint8_t)((device_address_7bit << 1U) | 0U),
+                                                     started_us,
+                                                     EV_ESP8266_I2C_PHASE_ADDR_W);
     }
     if ((status == EV_I2C_OK) && (data_len > 0U)) {
         status = ev_esp8266_i2c_write_payload(adapter, data, data_len, started_us);
@@ -560,6 +730,7 @@ static ev_i2c_status_t ev_esp8266_i2c_write_regs(void *ctx,
     if (((data_len > 0U) && (data == NULL)) || !ev_esp8266_i2c_payload_len_is_valid(data_len)) {
         return EV_I2C_ERR_BUS_LOCKED;
     }
+    ev_esp8266_i2c_begin_diag(adapter, device_address_7bit);
 
     status = ev_esp8266_i2c_take_bus();
     if (status != EV_I2C_OK) {
@@ -570,17 +741,72 @@ static ev_i2c_status_t ev_esp8266_i2c_write_regs(void *ctx,
 
     status = ev_esp8266_i2c_begin_locked(adapter, &started_us);
     if (status == EV_I2C_OK) {
+        ev_esp8266_i2c_set_phase(adapter, EV_ESP8266_I2C_PHASE_START);
         status = ev_esp8266_i2c_start_condition(adapter, started_us);
     }
     if (status == EV_I2C_OK) {
         started = true;
-        status = ev_esp8266_i2c_write_byte(adapter, (uint8_t)((device_address_7bit << 1U) | 0U), started_us);
+        status = ev_esp8266_i2c_write_byte_observed(adapter,
+                                                     (uint8_t)((device_address_7bit << 1U) | 0U),
+                                                     started_us,
+                                                     EV_ESP8266_I2C_PHASE_ADDR_W);
     }
     if (status == EV_I2C_OK) {
-        status = ev_esp8266_i2c_write_byte(adapter, first_reg, started_us);
+        status = ev_esp8266_i2c_write_byte_observed(adapter, first_reg, started_us, EV_ESP8266_I2C_PHASE_REG);
     }
     if ((status == EV_I2C_OK) && (data_len > 0U)) {
         status = ev_esp8266_i2c_write_payload(adapter, data, data_len, started_us);
+    }
+
+    status = ev_esp8266_i2c_finish_locked(adapter, started, started_us, status);
+    adapter->transaction_active = false;
+    ev_esp8266_i2c_give_bus();
+    return status;
+}
+
+static ev_i2c_status_t ev_esp8266_i2c_read_stream(void *ctx,
+                                                   ev_i2c_port_num_t port_num,
+                                                   uint8_t device_address_7bit,
+                                                   uint8_t *data,
+                                                   size_t data_len)
+{
+    ev_esp8266_i2c_adapter_ctx_t *adapter = (ev_esp8266_i2c_adapter_ctx_t *)ctx;
+    ev_i2c_status_t status;
+    int64_t started_us = 0;
+    size_t offset;
+    bool started = false;
+
+    if (!ev_esp8266_i2c_txn_is_valid(adapter, port_num, device_address_7bit)) {
+        return EV_I2C_ERR_BUS_LOCKED;
+    }
+    if (((data_len > 0U) && (data == NULL)) || !ev_esp8266_i2c_payload_len_is_valid(data_len)) {
+        return EV_I2C_ERR_BUS_LOCKED;
+    }
+    ev_esp8266_i2c_begin_diag(adapter, device_address_7bit);
+
+    status = ev_esp8266_i2c_take_bus();
+    if (status != EV_I2C_OK) {
+        return ev_esp8266_i2c_record_status(adapter, status);
+    }
+
+    adapter->transaction_active = true;
+
+    status = ev_esp8266_i2c_begin_locked(adapter, &started_us);
+    if (status == EV_I2C_OK) {
+        ev_esp8266_i2c_set_phase(adapter, EV_ESP8266_I2C_PHASE_START);
+        status = ev_esp8266_i2c_start_condition(adapter, started_us);
+    }
+    if (status == EV_I2C_OK) {
+        started = true;
+        status = ev_esp8266_i2c_write_byte_observed(adapter,
+                                                     (uint8_t)((device_address_7bit << 1U) | 1U),
+                                                     started_us,
+                                                     EV_ESP8266_I2C_PHASE_ADDR_R);
+    }
+
+    for (offset = 0U; (status == EV_I2C_OK) && (offset < data_len); ++offset) {
+        const bool ack_after_byte = (offset + 1U) < data_len;
+        status = ev_esp8266_i2c_read_byte(adapter, &data[offset], ack_after_byte, started_us);
     }
 
     status = ev_esp8266_i2c_finish_locked(adapter, started, started_us, status);
@@ -608,6 +834,7 @@ static ev_i2c_status_t ev_esp8266_i2c_read_regs(void *ctx,
     if ((data == NULL) || (data_len == 0U) || !ev_esp8266_i2c_payload_len_is_valid(data_len)) {
         return EV_I2C_ERR_BUS_LOCKED;
     }
+    ev_esp8266_i2c_begin_diag(adapter, device_address_7bit);
 
     status = ev_esp8266_i2c_take_bus();
     if (status != EV_I2C_OK) {
@@ -618,20 +845,28 @@ static ev_i2c_status_t ev_esp8266_i2c_read_regs(void *ctx,
 
     status = ev_esp8266_i2c_begin_locked(adapter, &started_us);
     if (status == EV_I2C_OK) {
+        ev_esp8266_i2c_set_phase(adapter, EV_ESP8266_I2C_PHASE_START);
         status = ev_esp8266_i2c_start_condition(adapter, started_us);
     }
     if (status == EV_I2C_OK) {
         started = true;
-        status = ev_esp8266_i2c_write_byte(adapter, (uint8_t)((device_address_7bit << 1U) | 0U), started_us);
+        status = ev_esp8266_i2c_write_byte_observed(adapter,
+                                                     (uint8_t)((device_address_7bit << 1U) | 0U),
+                                                     started_us,
+                                                     EV_ESP8266_I2C_PHASE_ADDR_W);
     }
     if (status == EV_I2C_OK) {
-        status = ev_esp8266_i2c_write_byte(adapter, first_reg, started_us);
+        status = ev_esp8266_i2c_write_byte_observed(adapter, first_reg, started_us, EV_ESP8266_I2C_PHASE_REG);
     }
     if (status == EV_I2C_OK) {
+        ev_esp8266_i2c_set_phase(adapter, EV_ESP8266_I2C_PHASE_RESTART);
         status = ev_esp8266_i2c_start_condition(adapter, started_us);
     }
     if (status == EV_I2C_OK) {
-        status = ev_esp8266_i2c_write_byte(adapter, (uint8_t)((device_address_7bit << 1U) | 1U), started_us);
+        status = ev_esp8266_i2c_write_byte_observed(adapter,
+                                                     (uint8_t)((device_address_7bit << 1U) | 1U),
+                                                     started_us,
+                                                     EV_ESP8266_I2C_PHASE_ADDR_R);
     }
 
     for (offset = 0U; (status == EV_I2C_OK) && (offset < data_len); ++offset) {
@@ -758,11 +993,29 @@ ev_result_t ev_esp8266_i2c_get_diag(ev_i2c_port_num_t port_num, ev_esp8266_i2c_d
     out_snapshot->bus_locked = ctx->bus_locked;
     out_snapshot->bus_recoveries = ctx->bus_recoveries;
     out_snapshot->bus_recovery_failures = ctx->bus_recovery_failures;
+    out_snapshot->address_write_acks = ctx->address_write_acks;
+    out_snapshot->address_write_nacks = ctx->address_write_nacks;
+    out_snapshot->address_read_acks = ctx->address_read_acks;
+    out_snapshot->address_read_nacks = ctx->address_read_nacks;
+    out_snapshot->data_write_acks = ctx->data_write_acks;
+    out_snapshot->data_write_nacks = ctx->data_write_nacks;
+    out_snapshot->read_bytes = ctx->read_bytes;
+    out_snapshot->read_final_nack_sent = ctx->read_final_nack_sent;
+    out_snapshot->stop_attempted = ctx->stop_attempted;
+    out_snapshot->stop_ok = ctx->stop_ok;
+    out_snapshot->stop_release_fail = ctx->stop_release_fail;
+    out_snapshot->bus_idle_after_stop_ok = ctx->bus_idle_after_stop_ok;
+    out_snapshot->bus_idle_after_stop_fail = ctx->bus_idle_after_stop_fail;
     out_snapshot->sleep_prepare_attempts = ctx->sleep_prepare_attempts;
     out_snapshot->sleep_prepare_failures = ctx->sleep_prepare_failures;
+    out_snapshot->last_status = ctx->last_status;
+    out_snapshot->last_addr_7bit = ctx->last_addr_7bit;
+    out_snapshot->last_phase = ctx->last_phase;
     out_snapshot->transaction_active = ctx->transaction_active;
     out_snapshot->sda_high = ev_esp8266_i2c_sample_sda(ctx);
     out_snapshot->scl_high = ev_esp8266_i2c_sample_scl(ctx);
+    out_snapshot->last_sda_high_after_stop = ctx->last_sda_high_after_stop;
+    out_snapshot->last_scl_high_after_stop = ctx->last_scl_high_after_stop;
     return EV_OK;
 }
 ev_result_t ev_esp8266_i2c_prepare_for_sleep(ev_i2c_port_num_t port_num)
@@ -856,16 +1109,7 @@ ev_result_t ev_esp8266_i2c_port_init(ev_i2c_port_t *out_port, int sda_pin, int s
     g_ev_i2c0_ctx.sda_pin = sda_pin;
     g_ev_i2c0_ctx.scl_pin = scl_pin;
     g_ev_i2c0_ctx.configured = true;
-    g_ev_i2c0_ctx.transactions_started = 0U;
-    g_ev_i2c0_ctx.transactions_failed = 0U;
-    g_ev_i2c0_ctx.nacks = 0U;
-    g_ev_i2c0_ctx.timeouts = 0U;
-    g_ev_i2c0_ctx.bus_locked = 0U;
-    g_ev_i2c0_ctx.bus_recoveries = 0U;
-    g_ev_i2c0_ctx.bus_recovery_failures = 0U;
-    g_ev_i2c0_ctx.sleep_prepare_attempts = 0U;
-    g_ev_i2c0_ctx.sleep_prepare_failures = 0U;
-    g_ev_i2c0_ctx.transaction_active = false;
+    ev_esp8266_i2c_reset_diag(&g_ev_i2c0_ctx);
 
     ev_esp8266_i2c_release_bus_lines(&g_ev_i2c0_ctx);
     ets_delay_us(EV_ESP8266_I2C_HALF_PERIOD_US);
@@ -879,6 +1123,7 @@ ev_result_t ev_esp8266_i2c_port_init(ev_i2c_port_t *out_port, int sda_pin, int s
 
     out_port->ctx = &g_ev_i2c0_ctx;
     out_port->write_stream = ev_esp8266_i2c_write_stream;
+    out_port->read_stream = ev_esp8266_i2c_read_stream;
     out_port->write_regs = ev_esp8266_i2c_write_regs;
     out_port->read_regs = ev_esp8266_i2c_read_regs;
 

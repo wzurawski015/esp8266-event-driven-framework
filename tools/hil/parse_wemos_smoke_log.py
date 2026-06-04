@@ -16,7 +16,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-import sys
+sys.path.insert(0, str(ROOT / "tools" / "lib"))
+from ev_redaction import redact_text
 sys.path.insert(0, str(ROOT / "tools" / "release"))
 from operator_exit_footer import strip_footer
 
@@ -56,7 +57,7 @@ MIN_RUNTIME_ALIVE_SAMPLES = 3
 
 
 def redact(text: str) -> str:
-    return SECRET_RE.sub(lambda m: m.group(1) + "=<REDACTED>", text)
+    return redact_text(text)
 
 
 def sha256(path: Path) -> str:
@@ -354,6 +355,9 @@ EV_WEMOS_SMOKE_SNAPSHOT seq=10
     assert parse_text(late + "^C\n[process exited with code 130 (0x00000082)]\n", require_deepsleep=True, allow_runtime_alive_fallback=True)["status"] == "FAIL"
     assert parse_text(deep.replace("EV_POWER_SMOKE_WAKE_BOOT", ""), require_deepsleep=True)["status"] == "FAIL"
     assert "<REDACTED>" in redact("COMMAND_TOKEN=secret")
+    sdk_wifi = "I (7223) wifi:connected with lab-ssid-value, aid = 23"
+    assert "lab-ssid-value" not in redact(sdk_wifi)
+    assert "wifi:connected with <REDACTED>, aid = 23" in redact(sdk_wifi)
     assert safe_read_log(Path("/path/wemos-smoke.log"))[0] == "ENVIRONMENT_BLOCKED"
     print("WEMOS_SMOKE_LOG_PARSER_SELF_TEST PASS")
     return 0

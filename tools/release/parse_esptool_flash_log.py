@@ -16,6 +16,8 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools" / "lib"))
+from ev_redaction import redact_text
 TARGETS_DEF = ROOT / "config" / "sdk_targets.def"
 EVIDENCE_ROOT = ROOT / "docs" / "release" / "sdk_evidence"
 TARGET_RE = re.compile(r"^\s*EV_SDK_TARGET\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^\)]+)\s*\)")
@@ -30,7 +32,7 @@ FLASH_REQUIRED_CLASSES = {"physical_smoke", "hil_sdk"}
 
 
 def redact(text: str) -> str:
-    return SECRET_RE.sub(lambda m: m.group(1) + "=<REDACTED>", text)
+    return redact_text(text)
 
 
 def sha256(path: Path) -> str:

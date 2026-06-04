@@ -157,6 +157,7 @@ static void ev_esp8266_net_increment_counter(uint32_t *counter)
     ev_esp8266_net_unlock();
 }
 
+#if EV_ESP8266_NET_ENABLE_MQTT
 static ev_result_t ev_esp8266_net_payload_retain(void *ctx, const void *payload, size_t payload_size)
 {
     ev_esp8266_net_payload_slot_t *slot = (ev_esp8266_net_payload_slot_t *)ctx;
@@ -253,6 +254,8 @@ static void ev_esp8266_net_payload_make_lease(ev_esp8266_net_payload_slot_t *slo
     out_lease->release_fn = ev_esp8266_net_payload_release;
     out_lease->lifecycle_ctx = slot;
 }
+
+#endif
 
 
 static ev_esp8266_net_state_snapshot_t ev_esp8266_net_snapshot_state(ev_esp8266_net_ctx_t *net)

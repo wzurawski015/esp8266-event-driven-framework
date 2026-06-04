@@ -51,3 +51,25 @@ Shared redaction tooling must redact by both pattern and value:
 
 This value lookup is permitted only for containment/redaction.  Tools must never
 print or serialize the loaded values.
+
+## Phase 2 privacy classes
+
+Secret containment is now class-based rather than a broad path bypass.
+
+| Class | Private repo | Public release | Notes |
+|---|---:|---:|---|
+| `PRIVATE_LAB_SECRET_SOURCE` | allowed | forbidden | Explicit BSP-local secret source files only. |
+| `PRIVATE_LAB_RAW_EVIDENCE` | allowed | forbidden | Explicit raw/private lab transcripts such as `serial.raw.log`; never exported to public bundles. |
+| `PUBLIC_SANITIZED` | secret values forbidden | secret values forbidden | Redacted, normalized, summary, report, JSON/Markdown and hash sidecars. |
+| `UNKNOWN` | secret values forbidden | secret values forbidden | Ordinary source/documentation paths. |
+
+The canonical classifier is `tools/lib/ev_privacy_classification.py`.  The
+private policy still scans all text files and value-matches the current allowed
+secrets, but skips only paths classified as private-lab source/raw evidence in
+`PRIVATE_REPO` mode.  Files named `*.redacted.*`, `*.normalized.*`, reports,
+JSON/JSONL and Markdown remain sanitized-only even in a private repo.
+
+`make evidence-redaction-scrub` sanitizes committed public/redacted evidence and
+refreshes Wemos one-shot SHA sidecars while leaving explicit raw/private evidence
+untouched.  This is intentionally different from a global `docs/release/**`
+allowlist: raw evidence can remain private; redacted evidence must be true.

@@ -324,7 +324,7 @@ static void ev_hil_log_onewire_diag(const char *stage)
 
     if (ev_esp8266_onewire_get_diag(&diag) == EV_OK) {
         ESP_LOGI(EV_HIL_ONEWIRE_TAG,
-                 "onewire-diag:%s ops=%u crit=%u reset_crit=%u bit_crit=%u max_us=%u reset_max_us=%u bit_max_us=%u budget_violations=%u reset_low_us=%u bus_errors=%u",
+                 "onewire-diag:%s ops=%u crit=%u reset_crit=%u bit_crit=%u max_us=%u reset_max_us=%u bit_max_us=%u budget_violations=%u reset_low_us=%u bus_errors=%u busy=%u dq_high=%u",
                  stage,
                  (unsigned)diag.operations_started,
                  (unsigned)diag.critical_sections,
@@ -335,7 +335,9 @@ static void ev_hil_log_onewire_diag(const char *stage)
                  (unsigned)diag.max_bit_critical_section_us,
                  (unsigned)diag.critical_section_budget_violations,
                  (unsigned)diag.max_reset_low_hold_us,
-                 (unsigned)diag.bus_errors);
+                 (unsigned)diag.bus_errors,
+                 diag.busy ? 1U : 0U,
+                 diag.dq_high ? 1U : 0U);
     }
 }
 
@@ -395,6 +397,10 @@ static void ev_hil_test_ds18b20_read_irq_flood(const ev_esp8266_onewire_hil_conf
             ev_hil_fail(result, name, "DS18B20 scratchpad CRC mismatch");
             return;
         }
+        ESP_LOGI(EV_HIL_ONEWIRE_TAG,
+                 "EV_HIL_ONEWIRE_DS18B20_SCRATCHPAD_CRC name=%s iteration=%u status=PASS",
+                 name,
+                 (unsigned)i);
         drained += ev_hil_irq_drain(cfg->irq_port);
     }
 
@@ -417,7 +423,17 @@ static void ev_hil_test_ds18b20_read_irq_flood(const ev_esp8266_onewire_hil_conf
         ev_hil_fail(result, name, "OneWire bit scheduler-protected timing section budget exceeded");
     } else if (after_ow.critical_section_budget_violations != before_ow.critical_section_budget_violations) {
         ev_hil_fail(result, name, "OneWire scheduler-protected timing section budget violation observed");
+    } else if (after_ow.bus_errors != before_ow.bus_errors) {
+        ev_hil_fail(result, name, "OneWire bus error observed during DS18B20 flood test");
+    } else if (after_ow.busy || !after_ow.dq_high) {
+        ev_hil_fail(result, name, "OneWire DQ line was not released after DS18B20 transaction");
     } else {
+        ESP_LOGI(EV_HIL_ONEWIRE_TAG,
+                 "EV_HIL_ONEWIRE_RELEASE_EVIDENCE name=%s dq=1 busy=0 bus_errors_delta=0 max_crit_us=%u reset_max_us=%u bit_max_us=%u",
+                 name,
+                 (unsigned)after_ow.max_critical_section_us,
+                 (unsigned)after_ow.max_reset_critical_section_us,
+                 (unsigned)after_ow.max_bit_critical_section_us);
         ESP_LOGI(EV_HIL_ONEWIRE_TAG,
                  "%s drained=%u toggles=%u dropped_delta=0 max_crit_us=%u reset_max_us=%u bit_max_us=%u",
                  name,

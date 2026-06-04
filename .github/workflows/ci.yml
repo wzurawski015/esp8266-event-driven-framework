@@ -8,6 +8,8 @@ on:
 jobs:
   host-smoke:
     runs-on: ubuntu-latest
+    env:
+      EV_REPO_MODE: PRIVATE_REPO
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -29,6 +31,8 @@ jobs:
 
   sdk-target-smoke:
     runs-on: ubuntu-latest
+    env:
+      EV_REPO_MODE: PRIVATE_REPO
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -53,6 +57,8 @@ jobs:
 
   sdk-atnel-target-smoke:
     runs-on: ubuntu-latest
+    env:
+      EV_REPO_MODE: PRIVATE_REPO
     steps:
       - name: Checkout
         uses: actions/checkout@v5

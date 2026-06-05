@@ -44,6 +44,9 @@ typedef struct ev_esp8266_i2c_diag_snapshot {
     uint32_t stop_release_fail; /**< Number of STOP sequences that did not release SDA/SCL. */
     uint32_t bus_idle_after_stop_ok; /**< Number of post-STOP SDA/SCL idle confirmations. */
     uint32_t bus_idle_after_stop_fail; /**< Number of post-STOP SDA/SCL idle failures. */
+    uint32_t transaction_lock_count; /**< Number of successful whole-transaction I2C mutex acquisitions. */
+    uint32_t transaction_unlock_count; /**< Number of whole-transaction I2C mutex releases. */
+    uint32_t transaction_lock_unbalanced; /**< Number of observed lock/unlock imbalance conditions. */
     uint32_t sleep_prepare_attempts; /**< Number of bounded sleep-prepare checks touching the I2C bus. */
     uint32_t sleep_prepare_failures; /**< Number of I2C sleep-prepare rejections. */
     ev_i2c_status_t last_status; /**< Last normalized transaction status recorded by the adapter. */

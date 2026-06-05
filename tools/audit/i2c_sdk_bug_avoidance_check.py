@@ -33,6 +33,8 @@ REQUIRED_ADAPTER_TOKENS = [
     'EV_ESP8266_I2C_TRANSACTION_TIMEOUT_US',
     'EV_ESP8266_I2C_CLOCK_STRETCH_TIMEOUT_US',
     'EV_ESP8266_I2C_RECOVERY_PULSES',
+    'EV_ESP8266_I2C_SPEED_SAFE_HZ',
+    'EV_ESP8266_I2C_TARGET_SPEED_HZ',
     'ev_esp8266_i2c_stop_condition',
     'ev_esp8266_i2c_recover_bus',
     'ev_esp8266_i2c_prepare_for_sleep',
@@ -186,7 +188,7 @@ def self_test() -> int:
         adapter.write_text(
             '/* boot-time xSemaphoreCreateMutex exception */\n'
             'GPIO_MODE_OUTPUT_OD\nEV_ESP8266_I2C_TRANSACTION_TIMEOUT_US\n'
-            'EV_ESP8266_I2C_CLOCK_STRETCH_TIMEOUT_US\nEV_ESP8266_I2C_RECOVERY_PULSES\n'
+            'EV_ESP8266_I2C_CLOCK_STRETCH_TIMEOUT_US\nEV_ESP8266_I2C_RECOVERY_PULSES\nEV_ESP8266_I2C_SPEED_SAFE_HZ\nEV_ESP8266_I2C_TARGET_SPEED_HZ\n'
             'ev_esp8266_i2c_stop_condition\nev_esp8266_i2c_recover_bus\n'
             'ev_esp8266_i2c_prepare_for_sleep\nev_esp8266_i2c_release_bus_lines\n'
             'xSemaphoreCreateMutex();\n',

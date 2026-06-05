@@ -31,6 +31,11 @@ STOP_RELEASE_OK = re.compile(r"EV_HIL_I2C_STOP_RELEASE\s+name=[^\s]+.*?ok=([1-9]
 READ_STREAM_STOP_RELEASE_OK = re.compile(r"EV_HIL_I2C_STOP_RELEASE\s+name=read-stream-completion.*?ok=([1-9][0-9]*).*?fail=0.*?sda=1\s+scl=1")
 WRITE_NACK_STOP_RELEASE_OK = re.compile(r"EV_HIL_I2C_STOP_RELEASE\s+name=missing-device-write-nack-stop-release.*?ok=([1-9][0-9]*).*?fail=0.*?sda=1\s+scl=1")
 READ_NACK_STOP_RELEASE_OK = re.compile(r"EV_HIL_I2C_STOP_RELEASE\s+name=missing-device-read-nack-stop-release.*?ok=([1-9][0-9]*).*?fail=0.*?sda=1\s+scl=1")
+BOARD_PIN_MAP = re.compile(r"EV_HIL_BOARD_PIN_MAP\s+board=\S+\s+i2c_port=0\s+scl_gpio=\d+\s+sda_gpio=\d+\s+onewire_gpio=\d+\s+source=bsp/atnel_air_esp_motherboard/pins.def")
+SPEED_POLICY = re.compile(r"EV_HIL_I2C_SPEED_POLICY\s+.*safe_hz=100000.*fast_hz=400000.*fast_requires_logic_analyzer=1")
+RECOVERY_EVIDENCE = re.compile(r"EV_HIL_I2C_RECOVERY_EVIDENCE\s+case=sda-stuck-low-containment.*?pulses=\d+.*?sda=1\s+scl=1")
+CLOCK_STRETCH_EVIDENCE = re.compile(r"EV_HIL_I2C_CLOCK_STRETCH_EVIDENCE\s+case=scl-held-low-timeout.*?scl_held_low_case=PASS")
+MUTEX_EVIDENCE = re.compile(r"EV_HIL_I2C_MUTEX_EVIDENCE\s+name=[^\s]+.*?unbalanced=0")
 SECRET_RE = re.compile(r"(WIFI_PASSWORD|COMMAND_TOKEN|EV_BOARD_NET_WIFI_PASSWORD|EV_BOARD_NET_COMMAND_TOKEN)\S*")
 PLACEHOLDER_RE = re.compile(r"(^|/)(path|PATH)/(to/)?|<[^>]+>|YOUR_|/path/", re.I)
 
@@ -84,6 +89,11 @@ def parse_text(text: str) -> dict[str, object]:
     has_read_stream_stop_release_ok = bool(READ_STREAM_STOP_RELEASE_OK.search(redacted))
     has_write_nack_stop_release_ok = bool(WRITE_NACK_STOP_RELEASE_OK.search(redacted))
     has_read_nack_stop_release_ok = bool(READ_NACK_STOP_RELEASE_OK.search(redacted))
+    has_board_pin_map = bool(BOARD_PIN_MAP.search(redacted))
+    has_speed_policy = bool(SPEED_POLICY.search(redacted))
+    has_recovery_evidence = bool(RECOVERY_EVIDENCE.search(redacted))
+    has_clock_stretch_evidence = bool(CLOCK_STRETCH_EVIDENCE.search(redacted))
+    has_mutex_evidence = bool(MUTEX_EVIDENCE.search(redacted))
     fail_reason = None
     m = CASE_FAIL.search(redacted)
     if m:
@@ -93,6 +103,10 @@ def parse_text(text: str) -> dict[str, object]:
         failures.append("FIXTURE_NOT_COUPLED")
     if not has_global_pass:
         failures.append("missing EV_HIL_RESULT PASS failures=0 skipped=0")
+    if not has_board_pin_map:
+        failures.append("missing EV_HIL_BOARD_PIN_MAP marker")
+    if not has_speed_policy:
+        failures.append("missing EV_HIL_I2C_SPEED_POLICY marker")
     if not has_case_begin:
         failures.append("missing EV_HIL_I2C_CASE_BEGIN marker")
     if not has_case_pass:
@@ -105,6 +119,12 @@ def parse_text(text: str) -> dict[str, object]:
         failures.append("missing EV_HIL_I2C_RECOVERY_BEGIN marker")
     if not has_recovery_pass:
         failures.append("missing recovery PASS/OK marker")
+    if not has_recovery_evidence:
+        failures.append("missing bounded recovery evidence marker")
+    if not has_clock_stretch_evidence:
+        failures.append("missing clock-stretch/held-low evidence marker")
+    if not has_mutex_evidence:
+        failures.append("missing whole-transaction mutex evidence marker")
     if not has_ack_evidence:
         failures.append("missing read_stream ACK evidence marker")
     if not has_write_nack_evidence:
@@ -129,10 +149,15 @@ def parse_text(text: str) -> dict[str, object]:
         "global_pass": has_global_pass,
         "case_begin": has_case_begin,
         "case_pass": has_case_pass,
+        "board_pin_map": has_board_pin_map,
+        "speed_policy": has_speed_policy,
         "fixture_coupled": has_coupled and not fixture_not_coupled,
         "bus_state": has_bus_state,
         "recovery_begin": has_recovery_begin,
         "recovery_pass": has_recovery_pass,
+        "recovery_evidence": has_recovery_evidence,
+        "clock_stretch_evidence": has_clock_stretch_evidence,
+        "mutex_evidence": has_mutex_evidence,
         "ack_evidence": has_ack_evidence,
         "write_nack_evidence": has_write_nack_evidence,
         "read_nack_evidence": has_read_nack_evidence,
@@ -203,16 +228,21 @@ def environment_blocked(reason: str, evidence_dir: Path = DEFAULT_EVIDENCE) -> i
 
 def self_test() -> int:
     valid = """
+EV_HIL_BOARD_PIN_MAP board=ev_atnel i2c_port=0 scl_gpio=4 sda_gpio=5 onewire_gpio=12 source=bsp/atnel_air_esp_motherboard/pins.def
+EV_HIL_I2C_SPEED_POLICY default_hz=100000 safe_hz=100000 fast_hz=400000 fast_requires_logic_analyzer=1
 EV_HIL_I2C_CASE_BEGIN name=sda-stuck-low-containment
 EV_HIL_I2C_SDA_FORCE_LOW requested=1 observed=1
 EV_HIL_I2C_BUS_STATE before=idle during=stuck after=recovered
 EV_HIL_I2C_RECOVERY_BEGIN
 EV_HIL_I2C_RECOVERY_RESULT status=PASS
+EV_HIL_I2C_RECOVERY_EVIDENCE case=sda-stuck-low-containment pulses=9 stop_attempted=1 sda=1 scl=1 recovery_count_delta=1 post_recovery_probe=ACK
+EV_HIL_I2C_CLOCK_STRETCH_EVIDENCE case=scl-held-low-timeout max_wait_us=300 timeout_status=TIMEOUT recovery_status=OK scl_held_low_case=PASS
 EV_HIL_I2C_ACK_EVIDENCE name=read-stream-completion address_read_acks=1
 EV_HIL_I2C_NACK_EVIDENCE name=missing-device-write-nack-stop-release address_write_nacks=1
 EV_HIL_I2C_NACK_EVIDENCE name=missing-device-read-nack-stop-release address_read_nacks=1
 EV_HIL_I2C_FINAL_NACK_SENT name=read-stream-completion count=1
 EV_HIL_I2C_STOP_RELEASE name=read-stream-completion attempted=1 ok=1 fail=0 idle_ok=1 idle_fail=0 sda=1 scl=1 last_status=OK phase=10
+EV_HIL_I2C_MUTEX_EVIDENCE name=read-stream-completion transaction_lock_count_delta=1 transaction_unlock_count_delta=1 unbalanced=0
 EV_HIL_I2C_STOP_RELEASE name=missing-device-write-nack-stop-release attempted=1 ok=1 fail=0 idle_ok=1 idle_fail=0 sda=1 scl=1 last_status=NACK phase=10
 EV_HIL_I2C_STOP_RELEASE name=missing-device-read-nack-stop-release attempted=1 ok=1 fail=0 idle_ok=1 idle_fail=0 sda=1 scl=1 last_status=NACK phase=10
 EV_HIL_I2C_CASE_RESULT name=sda-stuck-low-containment status=PASS

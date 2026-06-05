@@ -30,6 +30,14 @@
 #define EV_ESP8266_I2C_TRANSACTION_TIMEOUT_US ((int64_t)EV_ESP8266_I2C_CMD_TIMEOUT_MS * 1000LL)
 #define EV_ESP8266_I2C_MUTEX_TIMEOUT_MS 250U
 #define EV_ESP8266_I2C_MUTEX_TIMEOUT_TICKS pdMS_TO_TICKS(EV_ESP8266_I2C_MUTEX_TIMEOUT_MS)
+#define EV_ESP8266_I2C_SPEED_SAFE_HZ 100000U
+#define EV_ESP8266_I2C_SPEED_FAST_HZ 400000U
+#ifndef EV_ESP8266_I2C_TARGET_SPEED_HZ
+#define EV_ESP8266_I2C_TARGET_SPEED_HZ EV_ESP8266_I2C_SPEED_SAFE_HZ
+#endif
+#if (EV_ESP8266_I2C_TARGET_SPEED_HZ > EV_ESP8266_I2C_SPEED_SAFE_HZ) && !defined(EV_ESP8266_I2C_FAST_MODE_LOGIC_ANALYZER_EVIDENCE)
+#error "ESP8266 I2C >100 kHz requires explicit logic-analyzer evidence acknowledgement"
+#endif
 #define EV_ESP8266_I2C_HALF_PERIOD_US 5U
 #define EV_ESP8266_I2C_CLOCK_STRETCH_TIMEOUT_US 300U
 #define EV_ESP8266_I2C_RECOVERY_PULSES 9U
@@ -94,6 +102,9 @@ typedef struct ev_esp8266_i2c_adapter_ctx {
     uint32_t stop_release_fail;
     uint32_t bus_idle_after_stop_ok;
     uint32_t bus_idle_after_stop_fail;
+    uint32_t transaction_lock_count;
+    uint32_t transaction_unlock_count;
+    uint32_t transaction_lock_unbalanced;
     uint32_t sleep_prepare_attempts;
     uint32_t sleep_prepare_failures;
     ev_i2c_status_t last_status;
@@ -138,6 +149,9 @@ static void ev_esp8266_i2c_reset_diag(ev_esp8266_i2c_adapter_ctx_t *ctx)
     ctx->stop_release_fail = 0U;
     ctx->bus_idle_after_stop_ok = 0U;
     ctx->bus_idle_after_stop_fail = 0U;
+    ctx->transaction_lock_count = 0U;
+    ctx->transaction_unlock_count = 0U;
+    ctx->transaction_lock_unbalanced = 0U;
     ctx->sleep_prepare_attempts = 0U;
     ctx->sleep_prepare_failures = 0U;
     ctx->last_status = EV_I2C_OK;
@@ -603,9 +617,9 @@ static ev_i2c_status_t ev_esp8266_i2c_write_payload(ev_esp8266_i2c_adapter_ctx_t
  *   therefore permitted here only during boot-time hardware initialization; no
  *   runtime I2C transaction allocates heap memory.
  */
-static ev_i2c_status_t ev_esp8266_i2c_take_bus_with_timeout(TickType_t timeout_ticks)
+static ev_i2c_status_t ev_esp8266_i2c_take_bus_with_timeout(ev_esp8266_i2c_adapter_ctx_t *ctx, TickType_t timeout_ticks)
 {
-    if (g_ev_i2c_bus_mutex == NULL) {
+    if ((ctx == NULL) || (g_ev_i2c_bus_mutex == NULL)) {
         return EV_I2C_ERR_BUS_LOCKED;
     }
 
@@ -613,17 +627,24 @@ static ev_i2c_status_t ev_esp8266_i2c_take_bus_with_timeout(TickType_t timeout_t
         return EV_I2C_ERR_TIMEOUT;
     }
 
+    ++ctx->transaction_lock_count;
     return EV_I2C_OK;
 }
 
-static ev_i2c_status_t ev_esp8266_i2c_take_bus(void)
+static ev_i2c_status_t ev_esp8266_i2c_take_bus(ev_esp8266_i2c_adapter_ctx_t *ctx)
 {
-    return ev_esp8266_i2c_take_bus_with_timeout(EV_ESP8266_I2C_MUTEX_TIMEOUT_TICKS);
+    return ev_esp8266_i2c_take_bus_with_timeout(ctx, EV_ESP8266_I2C_MUTEX_TIMEOUT_TICKS);
 }
 
-static void ev_esp8266_i2c_give_bus(void)
+static void ev_esp8266_i2c_give_bus(ev_esp8266_i2c_adapter_ctx_t *ctx)
 {
     if (g_ev_i2c_bus_mutex != NULL) {
+        if ((ctx != NULL) && (ctx->transaction_unlock_count >= ctx->transaction_lock_count)) {
+            ++ctx->transaction_lock_unbalanced;
+        }
+        if (ctx != NULL) {
+            ++ctx->transaction_unlock_count;
+        }
         (void)xSemaphoreGive(g_ev_i2c_bus_mutex);
     }
 }
@@ -683,7 +704,7 @@ static ev_i2c_status_t ev_esp8266_i2c_write_stream(void *ctx,
     }
     ev_esp8266_i2c_begin_diag(adapter, device_address_7bit);
 
-    status = ev_esp8266_i2c_take_bus();
+    status = ev_esp8266_i2c_take_bus(adapter);
     if (status != EV_I2C_OK) {
         return ev_esp8266_i2c_record_status(adapter, status);
     }
@@ -708,7 +729,7 @@ static ev_i2c_status_t ev_esp8266_i2c_write_stream(void *ctx,
 
     status = ev_esp8266_i2c_finish_locked(adapter, started, started_us, status);
     adapter->transaction_active = false;
-    ev_esp8266_i2c_give_bus();
+    ev_esp8266_i2c_give_bus(adapter);
     return status;
 }
 
@@ -732,7 +753,7 @@ static ev_i2c_status_t ev_esp8266_i2c_write_regs(void *ctx,
     }
     ev_esp8266_i2c_begin_diag(adapter, device_address_7bit);
 
-    status = ev_esp8266_i2c_take_bus();
+    status = ev_esp8266_i2c_take_bus(adapter);
     if (status != EV_I2C_OK) {
         return ev_esp8266_i2c_record_status(adapter, status);
     }
@@ -760,7 +781,7 @@ static ev_i2c_status_t ev_esp8266_i2c_write_regs(void *ctx,
 
     status = ev_esp8266_i2c_finish_locked(adapter, started, started_us, status);
     adapter->transaction_active = false;
-    ev_esp8266_i2c_give_bus();
+    ev_esp8266_i2c_give_bus(adapter);
     return status;
 }
 
@@ -784,7 +805,7 @@ static ev_i2c_status_t ev_esp8266_i2c_read_stream(void *ctx,
     }
     ev_esp8266_i2c_begin_diag(adapter, device_address_7bit);
 
-    status = ev_esp8266_i2c_take_bus();
+    status = ev_esp8266_i2c_take_bus(adapter);
     if (status != EV_I2C_OK) {
         return ev_esp8266_i2c_record_status(adapter, status);
     }
@@ -811,7 +832,7 @@ static ev_i2c_status_t ev_esp8266_i2c_read_stream(void *ctx,
 
     status = ev_esp8266_i2c_finish_locked(adapter, started, started_us, status);
     adapter->transaction_active = false;
-    ev_esp8266_i2c_give_bus();
+    ev_esp8266_i2c_give_bus(adapter);
     return status;
 }
 
@@ -836,7 +857,7 @@ static ev_i2c_status_t ev_esp8266_i2c_read_regs(void *ctx,
     }
     ev_esp8266_i2c_begin_diag(adapter, device_address_7bit);
 
-    status = ev_esp8266_i2c_take_bus();
+    status = ev_esp8266_i2c_take_bus(adapter);
     if (status != EV_I2C_OK) {
         return ev_esp8266_i2c_record_status(adapter, status);
     }
@@ -876,7 +897,7 @@ static ev_i2c_status_t ev_esp8266_i2c_read_regs(void *ctx,
 
     status = ev_esp8266_i2c_finish_locked(adapter, started, started_us, status);
     adapter->transaction_active = false;
-    ev_esp8266_i2c_give_bus();
+    ev_esp8266_i2c_give_bus(adapter);
     return status;
 }
 
@@ -1006,6 +1027,9 @@ ev_result_t ev_esp8266_i2c_get_diag(ev_i2c_port_num_t port_num, ev_esp8266_i2c_d
     out_snapshot->stop_release_fail = ctx->stop_release_fail;
     out_snapshot->bus_idle_after_stop_ok = ctx->bus_idle_after_stop_ok;
     out_snapshot->bus_idle_after_stop_fail = ctx->bus_idle_after_stop_fail;
+    out_snapshot->transaction_lock_count = ctx->transaction_lock_count;
+    out_snapshot->transaction_unlock_count = ctx->transaction_unlock_count;
+    out_snapshot->transaction_lock_unbalanced = ctx->transaction_lock_unbalanced;
     out_snapshot->sleep_prepare_attempts = ctx->sleep_prepare_attempts;
     out_snapshot->sleep_prepare_failures = ctx->sleep_prepare_failures;
     out_snapshot->last_status = ctx->last_status;
@@ -1034,7 +1058,7 @@ ev_result_t ev_esp8266_i2c_prepare_for_sleep(ev_i2c_port_num_t port_num)
         return EV_ERR_STATE;
     }
 
-    status = ev_esp8266_i2c_take_bus_with_timeout(0);
+    status = ev_esp8266_i2c_take_bus_with_timeout(ctx, 0);
     if (status != EV_I2C_OK) {
         ++ctx->sleep_prepare_failures;
         (void)ev_esp8266_i2c_record_status(ctx, status);
@@ -1043,7 +1067,7 @@ ev_result_t ev_esp8266_i2c_prepare_for_sleep(ev_i2c_port_num_t port_num)
 
     if (ctx->transaction_active) {
         ++ctx->sleep_prepare_failures;
-        ev_esp8266_i2c_give_bus();
+        ev_esp8266_i2c_give_bus(ctx);
         return EV_ERR_STATE;
     }
 
@@ -1055,7 +1079,7 @@ ev_result_t ev_esp8266_i2c_prepare_for_sleep(ev_i2c_port_num_t port_num)
         status = EV_I2C_ERR_BUS_LOCKED;
     }
 
-    ev_esp8266_i2c_give_bus();
+    ev_esp8266_i2c_give_bus(ctx);
     if (status != EV_I2C_OK) {
         ++ctx->sleep_prepare_failures;
         (void)ev_esp8266_i2c_record_status(ctx, status);

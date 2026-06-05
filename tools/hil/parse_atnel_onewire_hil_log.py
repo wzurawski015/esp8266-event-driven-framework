@@ -25,6 +25,10 @@ STACK_MARKER = re.compile(r"EV_HIL_STACK\s+task=irq-flood\s+(?:high_water_words=
 IRQ_DIAG = re.compile(r"irq-diag:(?:before|after)")
 ONEWIRE_DIAG = re.compile(r"onewire-diag:(?:before|after).*dq_high=([01])")
 SUMMARY_OK = re.compile(r"HIL summary passed=\d+ failed=0 skipped=0")
+PIN_MAP = re.compile(r"EV_HIL_ONEWIRE_PIN_MAP\s+board=\S+\s+dq_gpio=\d+\s+pullup=external\s+required=1")
+TIMING_MARKER = re.compile(r"EV_HIL_ONEWIRE_TIMING\s+.*reset_low_us=\d+.*slot_min_us=\d+.*slot_max_us=\d+")
+WIFI_TIMING_ON = re.compile(r"EV_HIL_ONEWIRE_TIMING\s+.*wifi=on|EV_HIL_ONEWIRE_WIFI_TIMING\s+status=PASS\s+wifi=on")
+WIFI_TIMING_BLOCKED = re.compile(r"EV_HIL_ONEWIRE_WIFI_TIMING\s+status=ENVIRONMENT_BLOCKED")
 PLACEHOLDER_RE = re.compile(r"(^|/)(path|PATH)/(to/)?|<[^>]+>|YOUR_|/path/", re.I)
 
 
@@ -70,6 +74,10 @@ def parse_text(text: str) -> dict[str, object]:
     has_irq_diag = len(IRQ_DIAG.findall(redacted)) >= 2
     has_onewire_diag = len(ONEWIRE_DIAG.findall(redacted)) >= 2
     summary_ok = bool(SUMMARY_OK.search(redacted))
+    has_pin_map = bool(PIN_MAP.search(redacted))
+    has_timing_marker = bool(TIMING_MARKER.search(redacted))
+    has_wifi_timing_on = bool(WIFI_TIMING_ON.search(redacted))
+    has_wifi_timing_blocked = bool(WIFI_TIMING_BLOCKED.search(redacted))
     failures: list[str] = []
     if has_global_fail:
         failures.append("failure marker observed")
@@ -77,6 +85,14 @@ def parse_text(text: str) -> dict[str, object]:
         failures.append("missing EV_HIL_RESULT PASS failures=0 skipped=0")
     if not summary_ok:
         failures.append("missing HIL summary failed=0 skipped=0")
+    if not has_pin_map:
+        failures.append("missing EV_HIL_ONEWIRE_PIN_MAP marker")
+    if not has_timing_marker:
+        failures.append("missing EV_HIL_ONEWIRE_TIMING marker")
+    if not has_wifi_timing_on:
+        failures.append("missing WiFi-on OneWire timing evidence")
+    if has_wifi_timing_blocked:
+        failures.append("WiFi-on timing evidence is ENVIRONMENT_BLOCKED")
     if not has_case_pass:
         failures.append("missing DS18B20 IRQ-flood case PASS marker")
     if not has_crc_pass:
@@ -100,6 +116,10 @@ def parse_text(text: str) -> dict[str, object]:
         "irq_diag_before_after": has_irq_diag,
         "onewire_diag_before_after": has_onewire_diag,
         "summary_ok": summary_ok,
+        "pin_map": has_pin_map,
+        "timing_marker": has_timing_marker,
+        "wifi_timing_on": has_wifi_timing_on,
+        "wifi_timing_blocked": has_wifi_timing_blocked,
         "failures": failures,
     }
 
@@ -162,7 +182,10 @@ def self_test() -> int:
     valid = """
 irq-diag:before write=0 read=0 pending=0 dropped=0 high_watermark=0 mask=0x00000000
 onewire-diag:before ops=0 crit=0 reset_crit=0 bit_crit=0 max_us=0 reset_max_us=0 bit_max_us=0 budget_violations=0 reset_low_us=0 bus_errors=0 busy=0 dq_high=1
+EV_HIL_ONEWIRE_PIN_MAP board=ev_atnel dq_gpio=12 pullup=external required=1 source=bsp/atnel_air_esp_motherboard/pins.def wifi=on
 EV_HIL_STACK task=irq-flood high_water_words=123
+EV_HIL_ONEWIRE_TIMING reset_low_us=500 reset_high_us=480 presence_low_us=120 slot_min_us=60 slot_max_us=80 recovery_min_us=2 wifi=on
+EV_HIL_ONEWIRE_WIFI_TIMING status=PASS wifi=on
 EV_HIL_ONEWIRE_DS18B20_SCRATCHPAD_CRC name=ds18b20-read-irq-flood iteration=0 status=PASS
 EV_HIL_ONEWIRE_RELEASE_EVIDENCE name=ds18b20-read-irq-flood dq=1 busy=0 bus_errors_delta=0 max_crit_us=70 reset_max_us=600 bit_max_us=10
 EV_HIL_CASE ds18b20-read-irq-flood PASS
@@ -173,7 +196,8 @@ EV_HIL_RESULT PASS failures=0 skipped=0
 """
     assert parse_text(valid)["status"] == "PASS"
     assert parse_text(valid.replace("EV_HIL_ONEWIRE_RELEASE_EVIDENCE", "MISSING_RELEASE"))["status"] == "FAIL"
-    assert parse_text(valid.replace("status=PASS", "status=FAIL", 1))["status"] == "FAIL"
+    assert parse_text(valid.replace("EV_HIL_ONEWIRE_WIFI_TIMING status=PASS wifi=on", "EV_HIL_ONEWIRE_WIFI_TIMING status=ENVIRONMENT_BLOCKED"))["status"] == "FAIL"
+    assert parse_text(valid.replace("EV_HIL_ONEWIRE_DS18B20_SCRATCHPAD_CRC name=ds18b20-read-irq-flood iteration=0 status=PASS", "EV_HIL_ONEWIRE_DS18B20_SCRATCHPAD_CRC name=ds18b20-read-irq-flood iteration=0 status=FAIL"))["status"] == "FAIL"
     assert "real-ssid" not in redact("wifi:connected with real-ssid, aid = 1")
     assert safe_read_log(Path("/path/onewire.log"))[0] == "ENVIRONMENT_BLOCKED"
     print("ATNEL_ONEWIRE_HIL_LOG_PARSER_SELF_TEST PASS")

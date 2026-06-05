@@ -78,7 +78,16 @@ def run_git_diff_check(root: Path) -> int:
     if not inside_git_worktree(root):
         print("patch-hygiene-gate git-diff-check NO_GIT_WORKTREE")
         return 0
-    return subprocess.run(["git", "diff", "--check"], cwd=root).returncode
+    return subprocess.run([
+        "git",
+        "diff",
+        "--check",
+        "--",
+        ".",
+        ":(exclude)build/**",
+        ":(exclude)docs/generated/**",
+        ":(exclude)docs/release/**",
+    ], cwd=root).returncode
 
 
 def self_test() -> None:

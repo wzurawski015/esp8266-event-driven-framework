@@ -104,16 +104,33 @@ int main(void)
     assert(actor.conversion_pending);
     assert(actor.conversion_deadline_ms == 1550U);
 
+    {
+        const uint32_t now_before_noncanonical = actor.actor_now_ms;
+        const uint32_t reads_before_noncanonical = fake.read_calls;
+        send_event(&actor, EV_TICK_1S);
+        assert(actor.actor_now_ms == now_before_noncanonical);
+        assert(actor.noncanonical_ticks_ignored == 1U);
+        assert(fake.read_calls == reads_before_noncanonical);
+        assert(capture.temp_count == 2U);
+    }
+
     seed_valid_scratchpad(scratchpad, (int16_t)0xFF5EU);
     fake_onewire_port_seed_read_bytes(&fake, scratchpad, sizeof(scratchpad));
-    send_event(&actor, EV_TICK_1S);
+    for (i = 0U; i < 7U; ++i) {
+        send_event(&actor, EV_TICK_100MS);
+    }
+    assert(fake.read_calls == EV_DS18B20_SCRATCHPAD_BYTES);
+    assert(capture.temp_count == 2U);
+    send_event(&actor, EV_TICK_100MS);
     assert(capture.temp_count == 4U);
     assert(capture.last_temp < 0);
 
     seed_valid_scratchpad(scratchpad, 0x0191);
     scratchpad[0] ^= 0x01U;
     fake_onewire_port_seed_read_bytes(&fake, scratchpad, sizeof(scratchpad));
-    send_event(&actor, EV_TICK_1S);
+    for (i = 0U; i < 8U; ++i) {
+        send_event(&actor, EV_TICK_100MS);
+    }
     assert(actor.crc_failures == 1U);
     assert(capture.temp_count == 4U);
 

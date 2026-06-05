@@ -475,12 +475,17 @@ def validate_host_safety_gate_contract() -> None:
     if "host-test" not in strict_body or "HOST_STRICT_CFLAGS" not in strict_body:
         errors.append("host-strict-test must build and run host-test with HOST_STRICT_CFLAGS")
     sanitize_body = extract_make_target_body(makefile, "host-sanitize-test")
-    if "host-test" not in sanitize_body or "HOST_SANITIZE_CFLAGS" not in sanitize_body:
-        errors.append("host-sanitize-test must build and run host-test with HOST_SANITIZE_CFLAGS")
+    sanitize_target_line = re.search(r"^host-sanitize-test\s*:(.*)$", makefile, flags=re.MULTILINE)
+    sanitize_deps = sanitize_target_line.group(1) if sanitize_target_line is not None else ""
+    sanitizer_shards = ["host-sanitize-core-test", "host-sanitize-runtime-test", "host-sanitize-actors-test"]
+    if "host-test" not in sanitize_body:
+        shard_text = "\n".join(extract_make_target_body(makefile, shard) for shard in sanitizer_shards)
+        if "HOST_SANITIZE_CFLAGS" not in shard_text or not all(shard in sanitize_deps for shard in sanitizer_shards):
+            errors.append("host-sanitize-test must run full host-test or deterministic HOST_SANITIZE_CFLAGS shards")
     if "sdk-" in sanitize_body:
         errors.append("host-sanitize-test must remain host-only and must not invoke SDK targets")
-    if re.search(r"host-sanitize-test\s*:[^\n]*host-sanitize-cc-check", makefile) is None:
-        errors.append("host-sanitize-test must depend on host-sanitize-cc-check")
+    if "host-sanitize-cc-check" not in sanitize_deps and not all(re.search(rf"{re.escape(shard)}\s*:[^\n]*host-sanitize-cc-check", makefile) for shard in sanitizer_shards):
+        errors.append("host-sanitize-test must depend directly or through shards on host-sanitize-cc-check")
     tsan_body = extract_make_target_body(makefile, "host-tsan-test")
     if "sdk-" in tsan_body:
         errors.append("host-tsan-test must remain host-only and must not invoke SDK targets")

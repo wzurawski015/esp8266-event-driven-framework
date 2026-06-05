@@ -25,7 +25,10 @@ The same sequence is required at 400 kHz, plus rise/fall-time notes.  The board
 has external pull-ups and a shared motherboard I2C bus; bus capacitance changes
 when I2C OUT wiring or modules are attached.  Therefore 400 kHz is not a default
 configuration and must not be enabled by profile policy without attached HIL
-logic-analyzer evidence.
+logic-analyzer evidence.  `EV_ESP8266_I2C_TARGET_SPEED_HZ` is a requested
+upper-bound target: the software master must use ceil half-period arithmetic, so
+400 kHz requests use a conservative nominal `2 us` half-period until a measured
+`measured_hz` proves the actual waveform.
 
 ## Firmware/parser markers
 

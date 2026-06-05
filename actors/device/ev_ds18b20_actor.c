@@ -11,7 +11,6 @@
 #include "ev/publish.h"
 
 #define EV_DS18B20_TICK_100MS_DELTA_MS 100U
-#define EV_DS18B20_TICK_1S_DELTA_MS 1000U
 
 static bool ev_ds18b20_actor_deadline_due(uint32_t now_ms, uint32_t deadline_ms)
 {
@@ -236,7 +235,8 @@ ev_result_t ev_ds18b20_actor_handle(void *actor_context, const ev_msg_t *msg)
         return ev_ds18b20_actor_handle_tick(ctx, EV_DS18B20_TICK_100MS_DELTA_MS);
 
     case EV_TICK_1S:
-        return ev_ds18b20_actor_handle_tick(ctx, EV_DS18B20_TICK_1S_DELTA_MS);
+        ++ctx->noncanonical_ticks_ignored;
+        return ev_ds18b20_actor_try_read(ctx);
 
     default:
         return EV_ERR_CONTRACT;

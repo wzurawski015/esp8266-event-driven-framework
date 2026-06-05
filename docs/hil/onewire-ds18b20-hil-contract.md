@@ -4,7 +4,7 @@ ATNEL OneWire HIL is a separate evidence stream from I2C.  A parser self-test ca
 prove parser behavior, but only a real serial transcript can produce a hardware
 PASS.
 
-A real PASS requires all of these markers:
+A real PASS requires all of these markers.  The detailed `EV_HIL_ONEWIRE_TIMING ... wifi=on` marker and the explicit `EV_HIL_ONEWIRE_WIFI_TIMING status=PASS wifi=on` marker are separate requirements; either one alone is insufficient.
 
 ```text
 EV_HIL_ONEWIRE_PIN_MAP ... dq_gpio=<n> pullup=external ... wifi=on

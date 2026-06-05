@@ -27,8 +27,9 @@ ONEWIRE_DIAG = re.compile(r"onewire-diag:(?:before|after).*dq_high=([01])")
 SUMMARY_OK = re.compile(r"HIL summary passed=\d+ failed=0 skipped=0")
 PIN_MAP = re.compile(r"EV_HIL_ONEWIRE_PIN_MAP\s+board=\S+\s+dq_gpio=\d+\s+pullup=external\s+required=1.*wifi=on")
 TIMING_MARKER = re.compile(r"EV_HIL_ONEWIRE_TIMING\s+.*reset_low_us=\d+.*slot_min_us=\d+.*slot_max_us=\d+")
-WIFI_TIMING_ON = re.compile(r"EV_HIL_ONEWIRE_TIMING\s+.*wifi=on|EV_HIL_ONEWIRE_WIFI_TIMING\s+status=PASS\s+wifi=on")
-WIFI_TIMING_BLOCKED = re.compile(r"EV_HIL_ONEWIRE_WIFI_TIMING\s+status=ENVIRONMENT_BLOCKED")
+TIMING_MARKER_WIFI_ON = re.compile(r"EV_HIL_ONEWIRE_TIMING\s+.*reset_low_us=\d+.*slot_min_us=\d+.*slot_max_us=\d+.*wifi=on")
+WIFI_TIMING_PASS_ON = re.compile(r"EV_HIL_ONEWIRE_WIFI_TIMING\s+status=PASS\s+wifi=on")
+WIFI_TIMING_BLOCKED = re.compile(r"EV_HIL_ONEWIRE_WIFI_TIMING\s+status=ENVIRONMENT_BLOCKED|EV_HIL_ONEWIRE_WIFI_TIMING\s+status=PASS\s+wifi=(?:off|blocked)")
 PLACEHOLDER_RE = re.compile(r"(^|/)(path|PATH)/(to/)?|<[^>]+>|YOUR_|/path/", re.I)
 
 
@@ -76,7 +77,8 @@ def parse_text(text: str) -> dict[str, object]:
     summary_ok = bool(SUMMARY_OK.search(redacted))
     has_pin_map = bool(PIN_MAP.search(redacted))
     has_timing_marker = bool(TIMING_MARKER.search(redacted))
-    has_wifi_timing_on = bool(WIFI_TIMING_ON.search(redacted))
+    has_timing_marker_wifi_on = bool(TIMING_MARKER_WIFI_ON.search(redacted))
+    has_wifi_timing_pass_on = bool(WIFI_TIMING_PASS_ON.search(redacted))
     has_wifi_timing_blocked = bool(WIFI_TIMING_BLOCKED.search(redacted))
     failures: list[str] = []
     if has_global_fail:
@@ -89,8 +91,10 @@ def parse_text(text: str) -> dict[str, object]:
         failures.append("missing EV_HIL_ONEWIRE_PIN_MAP marker")
     if not has_timing_marker:
         failures.append("missing EV_HIL_ONEWIRE_TIMING marker")
-    if not has_wifi_timing_on:
-        failures.append("missing WiFi-on OneWire timing evidence")
+    if not has_timing_marker_wifi_on:
+        failures.append("missing detailed EV_HIL_ONEWIRE_TIMING marker with wifi=on")
+    if not has_wifi_timing_pass_on:
+        failures.append("missing EV_HIL_ONEWIRE_WIFI_TIMING status=PASS wifi=on")
     if has_wifi_timing_blocked:
         failures.append("WiFi-on timing evidence is ENVIRONMENT_BLOCKED")
     if not has_case_pass:
@@ -118,7 +122,8 @@ def parse_text(text: str) -> dict[str, object]:
         "summary_ok": summary_ok,
         "pin_map": has_pin_map,
         "timing_marker": has_timing_marker,
-        "wifi_timing_on": has_wifi_timing_on,
+        "timing_marker_wifi_on": has_timing_marker_wifi_on,
+        "wifi_timing_pass_on": has_wifi_timing_pass_on,
         "wifi_timing_blocked": has_wifi_timing_blocked,
         "failures": failures,
     }
@@ -196,6 +201,8 @@ EV_HIL_RESULT PASS failures=0 skipped=0
 """
     assert parse_text(valid)["status"] == "PASS"
     assert parse_text(valid.replace("EV_HIL_ONEWIRE_RELEASE_EVIDENCE", "MISSING_RELEASE"))["status"] == "FAIL"
+    assert parse_text(valid.replace("EV_HIL_ONEWIRE_WIFI_TIMING status=PASS wifi=on", "MISSING_WIFI_TIMING_PASS"))["status"] == "FAIL"
+    assert parse_text(valid.replace("EV_HIL_ONEWIRE_TIMING reset_low_us=500 reset_high_us=480 presence_low_us=120 slot_min_us=60 slot_max_us=80 recovery_min_us=2 wifi=on", "EV_HIL_ONEWIRE_TIMING reset_low_us=500 reset_high_us=480 presence_low_us=120 slot_min_us=60 slot_max_us=80 recovery_min_us=2 wifi=off"))["status"] == "FAIL"
     assert parse_text(valid.replace("EV_HIL_ONEWIRE_WIFI_TIMING status=PASS wifi=on", "EV_HIL_ONEWIRE_WIFI_TIMING status=ENVIRONMENT_BLOCKED wifi=blocked"))["status"] == "FAIL"
     assert parse_text(valid.replace("wifi=on", "wifi=off"))["status"] == "FAIL"
     assert parse_text(valid.replace("EV_HIL_ONEWIRE_DS18B20_SCRATCHPAD_CRC name=ds18b20-read-irq-flood iteration=0 status=PASS", "EV_HIL_ONEWIRE_DS18B20_SCRATCHPAD_CRC name=ds18b20-read-irq-flood iteration=0 status=FAIL"))["status"] == "FAIL"

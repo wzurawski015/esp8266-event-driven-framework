@@ -47,6 +47,7 @@ typedef struct {
     uint32_t no_device_failures;
     uint32_t io_failures;
     uint32_t conversion_deadline_skips;
+    uint32_t noncanonical_ticks_ignored;
 } ev_ds18b20_actor_ctx_t;
 
 /**
@@ -78,8 +79,9 @@ ev_result_t ev_ds18b20_actor_configure_resolution(ev_ds18b20_actor_ctx_t *ctx, u
  *
  * Supported events:
  * - EV_BOOT_COMPLETED
- * - EV_TICK_1S
- * - EV_TICK_100MS for deadline-oriented host/HIL smoke paths
+ * - EV_TICK_100MS as the canonical conversion timebase
+ * - EV_TICK_1S is accepted only as a non-canonical compatibility tick; it
+ *   never advances actor_now_ms and never shortens a conversion deadline.
  *
  * @param actor_context Pointer to ev_ds18b20_actor_ctx_t.
  * @param msg Runtime envelope delivered to the actor.

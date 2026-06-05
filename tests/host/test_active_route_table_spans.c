@@ -144,7 +144,7 @@ static void assert_builder_finalizes_active_route_spans(void)
     static_tick_span = ev_route_span_for_event(EV_TICK_1S);
     tick_span = ev_active_route_table_span_for_event(routes, EV_TICK_1S);
     assert(tick_span.count == static_tick_span.count);
-    assert(tick_span.count == 9U);
+    assert(tick_span.count == 8U);
 
     assert(ev_msg_init_publish(&msg, EV_FAULT_REPORTED, ACT_APP) == EV_OK);
     assert(ev_runtime_graph_publish(&graph, &msg, &report) == EV_OK);

@@ -13,12 +13,16 @@ from pathlib import Path
 from time import monotonic
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools" / "audit"))
+from sdk_warning_policy import evaluate_log  # noqa: E402
+
 TARGETS_DEF = ROOT / "config" / "sdk_targets.def"
 REPORT_MD = ROOT / "docs" / "release" / "sdk_build_matrix_report.md"
 JSONL = ROOT / "logs" / "sdk" / "sdk_build_matrix.jsonl"
 ALLOWED_CLASSES = {"buildable_sdk", "hil_sdk", "metadata_only", "physical_smoke", "disabled_until_project_exists"}
 BUILD_CLASSES = {"buildable_sdk", "hil_sdk", "physical_smoke"}
 TARGET_RE = re.compile(r"^\s*EV_SDK_TARGET\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^\)]+)\s*\)\s*$")
+
 
 @dataclass(frozen=True)
 class Target:
@@ -88,19 +92,39 @@ def check_targets(targets: list[Target]) -> int:
     return 0
 
 
+def _matrix_status(build_status: str, warning_status: str) -> str:
+    if build_status in {"NOT_APPLICABLE", "NOT_RUN"}:
+        return build_status
+    if build_status != "PASS":
+        return "FAIL"
+    return "PASS" if warning_status == "PASS" else "FAIL"
+
+
+def _warning_summary_from_log(log_path: Path, target_name: str) -> tuple[str, int, str]:
+    try:
+        text = log_path.read_text(encoding="utf-8", errors="ignore")
+    except OSError as exc:
+        return "ENVIRONMENT_BLOCKED", 0, str(exc)
+    result = evaluate_log(text, latest=True, target=target_name, strict=True)
+    return str(result["status"]), int(result.get("warning_count", 0)), str(result.get("reason", ""))
+
+
 def markdown_rows(targets: list[Target], status: str = "NOT_RUN", reason: str = "not executed in this report") -> str:
     lines = [
         "# SDK build matrix report",
         "",
-        "This report is machine-generatable. `PASS` is used only when the SDK build command actually ran successfully.",
+        "This report is machine-generatable. `PASS` is used only when the SDK build command and project warning policy both ran successfully.",
         "",
-        "| Target | Class | Path | Baud | Family | Status | Reason |",
-        "|---|---|---|---:|---|---:|---|",
+        "| Target | Class | Path | Baud | Family | Status | Build | Warning policy | Warnings | Log | Reason |",
+        "|---|---|---|---:|---|---:|---:|---:|---:|---|---|",
     ]
     for target in targets:
         row_status = "NOT_APPLICABLE" if target.klass == "metadata_only" else status
         row_reason = "metadata-only target; no SDK Makefile/main project" if target.klass == "metadata_only" else reason
-        lines.append(f"| `{target.name}` | `{target.klass}` | `{target.path}` | `{target.baud}` | `{target.family}` | {row_status} | {row_reason} |")
+        warning_status = "NOT_APPLICABLE" if target.klass == "metadata_only" else "NOT_RUN"
+        lines.append(
+            f"| `{target.name}` | `{target.klass}` | `{target.path}` | `{target.baud}` | `{target.family}` | {row_status} | {row_status} | {warning_status} | 0 | `` | {row_reason} |"
+        )
     lines.append("")
     return "\n".join(lines)
 
@@ -111,13 +135,17 @@ def write_not_run_report(targets: list[Target], reason: str) -> None:
     JSONL.parent.mkdir(parents=True, exist_ok=True)
     with JSONL.open("w", encoding="utf-8") as fp:
         for target in targets:
-            status = "NOT_APPLICABLE" if target.klass == "metadata_only" else "NOT_RUN"
+            build_status = "NOT_APPLICABLE" if target.klass == "metadata_only" else "NOT_RUN"
+            warning_status = "NOT_APPLICABLE" if target.klass == "metadata_only" else "NOT_RUN"
             row = {
                 "target": target.name,
                 "path": target.path,
                 "class": target.klass,
                 "command": "sdk-build-matrix-report",
-                "status": status,
+                "status": build_status,
+                "build_status": build_status,
+                "warning_policy_status": warning_status,
+                "warning_count": 0,
                 "duration_ms": 0,
                 "log_path": "",
                 "reason": "metadata-only target" if target.klass == "metadata_only" else reason,
@@ -132,11 +160,11 @@ def run_build_matrix(targets: list[Target], fw: str, include_hil: bool) -> int:
     with JSONL.open("w", encoding="utf-8") as fp:
         for target in targets:
             if target.klass == "metadata_only":
-                row = {"target": target.name, "path": target.path, "class": target.klass, "command": "sdk-build-one", "status": "NOT_APPLICABLE", "duration_ms": 0, "log_path": "", "reason": "metadata-only target"}
+                row = {"target": target.name, "path": target.path, "class": target.klass, "command": "sdk-build-one", "status": "NOT_APPLICABLE", "build_status": "NOT_APPLICABLE", "warning_policy_status": "NOT_APPLICABLE", "warning_count": 0, "duration_ms": 0, "log_path": "", "reason": "metadata-only target"}
                 fp.write(json.dumps(row, sort_keys=True) + "\n")
                 continue
             if target.klass == "hil_sdk" and not include_hil:
-                row = {"target": target.name, "path": target.path, "class": target.klass, "command": "sdk-build-one", "status": "NOT_RUN", "duration_ms": 0, "log_path": "", "reason": "hil_sdk excluded; set --include-hil"}
+                row = {"target": target.name, "path": target.path, "class": target.klass, "command": "sdk-build-one", "status": "NOT_RUN", "build_status": "NOT_RUN", "warning_policy_status": "NOT_RUN", "warning_count": 0, "duration_ms": 0, "log_path": "", "reason": "hil_sdk excluded; set --include-hil"}
                 fp.write(json.dumps(row, sort_keys=True) + "\n")
                 continue
             log_dir = ROOT / "logs" / "sdk" / target.name
@@ -146,35 +174,85 @@ def run_build_matrix(targets: list[Target], fw: str, include_hil: bool) -> int:
             with log_path.open("w", encoding="utf-8") as log:
                 completed = subprocess.run([fw, "sdk-build-one", target.name], cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, text=True)
             duration_ms = int((monotonic() - start) * 1000)
-            status = "PASS" if completed.returncode == 0 else "FAIL"
-            failures += 0 if completed.returncode == 0 else 1
-            row = {"target": target.name, "path": target.path, "class": target.klass, "command": "sdk-build-one", "status": status, "duration_ms": duration_ms, "log_path": str(log_path.relative_to(ROOT)), "reason": ""}
+            build_status = "PASS" if completed.returncode == 0 else "FAIL"
+            warning_status, warning_count, warning_reason = _warning_summary_from_log(log_path, target.name)
+            status = _matrix_status(build_status, warning_status)
+            reason = "" if status == "PASS" else (warning_reason or f"build_status={build_status} warning_policy_status={warning_status}")
+            failures += 0 if status == "PASS" else 1
+            row = {
+                "target": target.name,
+                "path": target.path,
+                "class": target.klass,
+                "command": "sdk-build-one",
+                "status": status,
+                "build_status": build_status,
+                "warning_policy_status": warning_status,
+                "warning_count": warning_count,
+                "duration_ms": duration_ms,
+                "log_path": str(log_path.relative_to(ROOT)),
+                "reason": reason,
+            }
             fp.write(json.dumps(row, sort_keys=True) + "\n")
     write_matrix_report_from_jsonl(targets)
     return 0 if failures == 0 else 1
 
 
 def write_matrix_report_from_jsonl(targets: list[Target]) -> None:
-    rows_by_target: dict[str, dict[str, str]] = {}
+    rows_by_target: dict[str, dict[str, object]] = {}
     if JSONL.exists():
         for raw in JSONL.read_text(encoding="utf-8").splitlines():
             if raw.strip():
                 row = json.loads(raw)
-                rows_by_target[row["target"]] = row
+                rows_by_target[str(row["target"])] = row
     lines = [
         "# SDK build matrix report",
         "",
-        "| Target | Class | Path | Status | Log | Reason |",
-        "|---|---|---|---:|---|---|",
+        "| Target | Class | Path | Status | Build | Warning policy | Warnings | Log | Reason |",
+        "|---|---|---|---:|---:|---:|---:|---|---|",
     ]
     for target in targets:
         row = rows_by_target.get(target.name, {})
-        status = row.get("status", "NOT_RUN")
-        log_path = row.get("log_path", "")
-        reason = row.get("reason", "")
-        lines.append(f"| `{target.name}` | `{target.klass}` | `{target.path}` | {status} | `{log_path}` | {reason} |")
+        status = str(row.get("status", "NOT_RUN"))
+        build_status = str(row.get("build_status", status))
+        warning_status = str(row.get("warning_policy_status", "NOT_RUN"))
+        warning_count = int(row.get("warning_count", 0))
+        log_path = str(row.get("log_path", ""))
+        reason = str(row.get("reason", ""))
+        lines.append(f"| `{target.name}` | `{target.klass}` | `{target.path}` | {status} | {build_status} | {warning_status} | {warning_count} | `{log_path}` | {reason} |")
     lines.append("")
     REPORT_MD.write_text("\n".join(lines), encoding="utf-8")
+
+
+def self_test() -> None:
+    pass_log = "\n".join([
+        "EV_SDK_BUILD_TARGET=t1",
+        "EV_SDK_BUILD_BEGIN",
+        "EV_SDK_BUILD_STATUS=PASS",
+        "EV_SDK_BUILD_RC=0",
+        "EV_SDK_BUILD_END",
+    ])
+    warn_log = "\n".join([
+        "EV_SDK_BUILD_TARGET=t1",
+        "EV_SDK_BUILD_BEGIN",
+        "/work/drivers/src/example.c:1:2: warning: bad [-Wunused-function]",
+        "EV_SDK_BUILD_STATUS=PASS",
+        "EV_SDK_BUILD_RC=0",
+        "EV_SDK_BUILD_END",
+    ])
+    from tempfile import TemporaryDirectory
+    with TemporaryDirectory() as td:
+        root = Path(td)
+        p = root / "pass.log"
+        w = root / "warn.log"
+        p.write_text(pass_log, encoding="utf-8")
+        w.write_text(warn_log, encoding="utf-8")
+        assert _warning_summary_from_log(p, "t1")[:2] == ("PASS", 0)
+        assert _warning_summary_from_log(w, "t1")[:2] == ("FAIL", 1)
+    assert _matrix_status("PASS", "PASS") == "PASS"
+    assert _matrix_status("PASS", "FAIL") == "FAIL"
+    assert _matrix_status("FAIL", "PASS") == "FAIL"
+    assert _matrix_status("NOT_RUN", "NOT_RUN") == "NOT_RUN"
+    print("SDK_MATRIX_WARNING_POLICY_SELF_TEST PASS")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -182,6 +260,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("list")
     sub.add_parser("check")
+    sub.add_parser("self-test")
     p_path = sub.add_parser("path")
     p_path.add_argument("target")
     p_report = sub.add_parser("report")
@@ -197,6 +276,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.cmd == "check":
         return check_targets(targets)
+    if args.cmd == "self-test":
+        self_test()
+        return 0
     if args.cmd == "path":
         for target in targets:
             if target.name == args.target:
@@ -216,6 +298,7 @@ def main(argv: list[str] | None = None) -> int:
             return rc
         return run_build_matrix(targets, args.fw, args.include_hil)
     return 2
+
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -30,8 +30,12 @@ def check_text(adapter_text: str, doc_text: str) -> list[str]:
         failures.append("missing lab-only guard for speeds above 400 kHz")
     if "EV_ESP8266_I2C_TARGET_HALF_PERIOD_US" not in adapter_text or "EV_ESP8266_I2C_HALF_PERIOD_US" not in adapter_text:
         failures.append("I2C half-period is not derived from target speed")
-    if "500000U / EV_ESP8266_I2C_TARGET_SPEED_HZ" not in adapter_text:
-        failures.append("missing target-speed to half-period formula")
+    if "500000U + EV_ESP8266_I2C_TARGET_SPEED_HZ - 1U" not in adapter_text:
+        failures.append("missing ceil target-speed to half-period formula")
+    if "500000U / EV_ESP8266_I2C_TARGET_SPEED_HZ" in adapter_text:
+        failures.append("I2C half-period uses overspeed-prone integer truncation")
+    if "EV_ESP8266_I2C_HALF_PERIOD_US != 2U" not in adapter_text:
+        failures.append("400 kHz evidence-gated profile must use conservative 2 us ceil half-period")
     for token in ("100 kHz", "400 kHz", "final NACK", "SDA stuck-low recovery"):
         if token not in doc_text:
             failures.append(f"logic analyzer contract missing {token!r}")
@@ -55,8 +59,11 @@ def self_test() -> None:
 #if (EV_ESP8266_I2C_TARGET_SPEED_HZ > EV_ESP8266_I2C_SPEED_FAST_HZ) && !defined(EV_ESP8266_I2C_TURBO_LAB_ONLY)
 #error x
 #endif
-#define EV_ESP8266_I2C_TARGET_HALF_PERIOD_US (500000U / EV_ESP8266_I2C_TARGET_SPEED_HZ)
+#define EV_ESP8266_I2C_TARGET_HALF_PERIOD_US ((500000U + EV_ESP8266_I2C_TARGET_SPEED_HZ - 1U) / EV_ESP8266_I2C_TARGET_SPEED_HZ)
 #define EV_ESP8266_I2C_HALF_PERIOD_US ((EV_ESP8266_I2C_TARGET_HALF_PERIOD_US > 0U) ? EV_ESP8266_I2C_TARGET_HALF_PERIOD_US : 1U)
+#if (EV_ESP8266_I2C_TARGET_SPEED_HZ == EV_ESP8266_I2C_SPEED_FAST_HZ) && (EV_ESP8266_I2C_HALF_PERIOD_US != 2U)
+#error x
+#endif
 """
     good_doc = "100 kHz 400 kHz final NACK SDA stuck-low recovery"
     assert check_text(good_adapter, good_doc) == []
@@ -64,6 +71,7 @@ def self_test() -> None:
     assert any("400" in item for item in check_text(good_adapter.replace("EV_ESP8266_I2C_SPEED_FAST_HZ 400000U", ""), good_doc))
     assert any("zero" in item for item in check_text(good_adapter.replace("EV_ESP8266_I2C_TARGET_SPEED_HZ == 0U", ""), good_doc))
     assert any("lab-only" in item for item in check_text(good_adapter.replace("EV_ESP8266_I2C_TURBO_LAB_ONLY", ""), good_doc))
+    assert any("truncation" in item for item in check_text(good_adapter + "\n#define BAD (500000U / EV_ESP8266_I2C_TARGET_SPEED_HZ)\n", good_doc))
     print("I2C_SPEED_POLICY_SELF_TEST PASS")
 
 

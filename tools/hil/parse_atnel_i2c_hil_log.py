@@ -36,6 +36,7 @@ SPEED_POLICY = re.compile(r"EV_HIL_I2C_SPEED_POLICY\s+.*safe_hz=100000.*fast_hz=
 RECOVERY_EVIDENCE = re.compile(r"EV_HIL_I2C_RECOVERY_EVIDENCE\s+case=sda-stuck-low-containment.*?pulses=\d+.*?sda=1\s+scl=1")
 CLOCK_STRETCH_EVIDENCE = re.compile(r"EV_HIL_I2C_CLOCK_STRETCH_EVIDENCE\s+case=scl-held-low-timeout.*?scl_held_low_case=PASS")
 MUTEX_EVIDENCE = re.compile(r"EV_HIL_I2C_MUTEX_EVIDENCE\s+name=[^\s]+.*?unbalanced=0")
+SCAN_NACK_POLICY = re.compile(r"EV_HIL_I2C_SCAN_NACK_POLICY\s+addr7=0x[0-7][0-9A-Fa-f]\s+status=NACK\s+recovery_delta=0\s+stop_release_ok=1")
 SECRET_RE = re.compile(r"(WIFI_PASSWORD|COMMAND_TOKEN|EV_BOARD_NET_WIFI_PASSWORD|EV_BOARD_NET_COMMAND_TOKEN)\S*")
 PLACEHOLDER_RE = re.compile(r"(^|/)(path|PATH)/(to/)?|<[^>]+>|YOUR_|/path/", re.I)
 
@@ -94,6 +95,7 @@ def parse_text(text: str) -> dict[str, object]:
     has_recovery_evidence = bool(RECOVERY_EVIDENCE.search(redacted))
     has_clock_stretch_evidence = bool(CLOCK_STRETCH_EVIDENCE.search(redacted))
     has_mutex_evidence = bool(MUTEX_EVIDENCE.search(redacted))
+    has_scan_nack_policy = bool(SCAN_NACK_POLICY.search(redacted))
     fail_reason = None
     m = CASE_FAIL.search(redacted)
     if m:
@@ -125,6 +127,8 @@ def parse_text(text: str) -> dict[str, object]:
         failures.append("missing clock-stretch/held-low evidence marker")
     if not has_mutex_evidence:
         failures.append("missing whole-transaction mutex evidence marker")
+    if not has_scan_nack_policy:
+        failures.append("missing scan/missing-address NACK no-recovery policy marker")
     if not has_ack_evidence:
         failures.append("missing read_stream ACK evidence marker")
     if not has_write_nack_evidence:
@@ -158,6 +162,7 @@ def parse_text(text: str) -> dict[str, object]:
         "recovery_evidence": has_recovery_evidence,
         "clock_stretch_evidence": has_clock_stretch_evidence,
         "mutex_evidence": has_mutex_evidence,
+        "scan_nack_policy": has_scan_nack_policy,
         "ack_evidence": has_ack_evidence,
         "write_nack_evidence": has_write_nack_evidence,
         "read_nack_evidence": has_read_nack_evidence,
@@ -245,6 +250,7 @@ EV_HIL_I2C_STOP_RELEASE name=read-stream-completion attempted=1 ok=1 fail=0 idle
 EV_HIL_I2C_MUTEX_EVIDENCE name=read-stream-completion transaction_lock_count_delta=1 transaction_unlock_count_delta=1 unbalanced=0
 EV_HIL_I2C_STOP_RELEASE name=missing-device-write-nack-stop-release attempted=1 ok=1 fail=0 idle_ok=1 idle_fail=0 sda=1 scl=1 last_status=NACK phase=10
 EV_HIL_I2C_STOP_RELEASE name=missing-device-read-nack-stop-release attempted=1 ok=1 fail=0 idle_ok=1 idle_fail=0 sda=1 scl=1 last_status=NACK phase=10
+EV_HIL_I2C_SCAN_NACK_POLICY addr7=0x7E status=NACK recovery_delta=0 stop_release_ok=1
 EV_HIL_I2C_CASE_RESULT name=sda-stuck-low-containment status=PASS
 EV_HIL_RESULT PASS failures=0 skipped=0
 """

@@ -15,6 +15,7 @@ static ev_result_t fake_now(void *ctx, uint32_t *out_now_ms)
         return EV_ERR_INVALID_ARG;
     }
     *out_now_ms = *now;
+    *now += 1U;
     return EV_OK;
 }
 
@@ -82,6 +83,7 @@ int main(void)
     assert(report.irq_samples == 1U);
     assert(report.timers_published == 1U);
     assert(report.partial == 0U);
+    assert(report.elapsed_ms > 0U);
 
     max_mailbox_depth = metric_u32(&graph, EV_METRIC_ACTOR_PENDING_HIGH_WATER);
     if (report.pending_before > max_mailbox_depth) {

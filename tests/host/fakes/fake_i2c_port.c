@@ -31,7 +31,8 @@ static ev_i2c_status_t fake_i2c_write_stream(void *ctx,
     ev_i2c_status_t status;
 
     (void)port_num;
-    if ((fake == NULL) || ((data == NULL) && (data_len != 0U)) || (device_address_7bit >= 128U)) {
+    if ((fake == NULL) || ((data == NULL) && (data_len != 0U)) || (device_address_7bit >= 128U) ||
+        (data_len > FAKE_I2C_STREAM_CAPACITY)) {
         return EV_I2C_ERR_BUS_LOCKED;
     }
 
@@ -43,9 +44,10 @@ static ev_i2c_status_t fake_i2c_write_stream(void *ctx,
         return status;
     }
 
-    if ((data_len >= 2U) && (data != NULL)) {
-        uint8_t control = data[0];
-        (void)control;
+    fake->last_write_stream_len = 0U;
+    if (data_len > 0U) {
+        memcpy(fake->last_write_stream_data, data, data_len);
+        fake->last_write_stream_len = data_len;
     }
 
     return EV_I2C_OK;

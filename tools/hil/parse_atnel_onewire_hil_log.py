@@ -25,7 +25,7 @@ STACK_MARKER = re.compile(r"EV_HIL_STACK\s+task=irq-flood\s+(?:high_water_words=
 IRQ_DIAG = re.compile(r"irq-diag:(?:before|after)")
 ONEWIRE_DIAG = re.compile(r"onewire-diag:(?:before|after).*dq_high=([01])")
 SUMMARY_OK = re.compile(r"HIL summary passed=\d+ failed=0 skipped=0")
-PIN_MAP = re.compile(r"EV_HIL_ONEWIRE_PIN_MAP\s+board=\S+\s+dq_gpio=\d+\s+pullup=external\s+required=1")
+PIN_MAP = re.compile(r"EV_HIL_ONEWIRE_PIN_MAP\s+board=\S+\s+dq_gpio=\d+\s+pullup=external\s+required=1.*wifi=on")
 TIMING_MARKER = re.compile(r"EV_HIL_ONEWIRE_TIMING\s+.*reset_low_us=\d+.*slot_min_us=\d+.*slot_max_us=\d+")
 WIFI_TIMING_ON = re.compile(r"EV_HIL_ONEWIRE_TIMING\s+.*wifi=on|EV_HIL_ONEWIRE_WIFI_TIMING\s+status=PASS\s+wifi=on")
 WIFI_TIMING_BLOCKED = re.compile(r"EV_HIL_ONEWIRE_WIFI_TIMING\s+status=ENVIRONMENT_BLOCKED")
@@ -196,7 +196,8 @@ EV_HIL_RESULT PASS failures=0 skipped=0
 """
     assert parse_text(valid)["status"] == "PASS"
     assert parse_text(valid.replace("EV_HIL_ONEWIRE_RELEASE_EVIDENCE", "MISSING_RELEASE"))["status"] == "FAIL"
-    assert parse_text(valid.replace("EV_HIL_ONEWIRE_WIFI_TIMING status=PASS wifi=on", "EV_HIL_ONEWIRE_WIFI_TIMING status=ENVIRONMENT_BLOCKED"))["status"] == "FAIL"
+    assert parse_text(valid.replace("EV_HIL_ONEWIRE_WIFI_TIMING status=PASS wifi=on", "EV_HIL_ONEWIRE_WIFI_TIMING status=ENVIRONMENT_BLOCKED wifi=blocked"))["status"] == "FAIL"
+    assert parse_text(valid.replace("wifi=on", "wifi=off"))["status"] == "FAIL"
     assert parse_text(valid.replace("EV_HIL_ONEWIRE_DS18B20_SCRATCHPAD_CRC name=ds18b20-read-irq-flood iteration=0 status=PASS", "EV_HIL_ONEWIRE_DS18B20_SCRATCHPAD_CRC name=ds18b20-read-irq-flood iteration=0 status=FAIL"))["status"] == "FAIL"
     assert "real-ssid" not in redact("wifi:connected with real-ssid, aid = 1")
     assert safe_read_log(Path("/path/onewire.log"))[0] == "ENVIRONMENT_BLOCKED"

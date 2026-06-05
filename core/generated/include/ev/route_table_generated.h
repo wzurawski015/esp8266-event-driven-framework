@@ -7,7 +7,7 @@
 
 #include "ev/route_table.h"
 
-#define EV_ROUTE_TABLE_GENERATED_COUNT 53U
+#define EV_ROUTE_TABLE_GENERATED_COUNT 54U
 
 enum {
     EV_ROUTE_UNIQUE__EV_BOOT_STARTED__ACT_DIAG = 1,
@@ -39,6 +39,7 @@ enum {
     EV_ROUTE_UNIQUE__EV_TICK_100MS__ACT_DIAG = 1,
     EV_ROUTE_UNIQUE__EV_TICK_100MS__ACT_PANEL = 1,
     EV_ROUTE_UNIQUE__EV_TICK_100MS__ACT_MCP23008 = 1,
+    EV_ROUTE_UNIQUE__EV_TICK_100MS__ACT_DS18B20 = 1,
     EV_ROUTE_UNIQUE__EV_GPIO_IRQ__ACT_DIAG = 1,
     EV_ROUTE_UNIQUE__EV_GPIO_IRQ__ACT_RTC = 1,
     EV_ROUTE_UNIQUE__EV_MCP23008_INPUT_CHANGED__ACT_PANEL = 1,
@@ -96,6 +97,7 @@ static const ev_route_t k_ev_route_table_generated[] = {
     { EV_TICK_100MS, ACT_DIAG, EV_ROUTE_QOS_CRITICAL, (uint8_t)(0U), (uint32_t)(0U) },
     { EV_TICK_100MS, ACT_PANEL, EV_ROUTE_QOS_CRITICAL, (uint8_t)(0U), (uint32_t)(0U) },
     { EV_TICK_100MS, ACT_MCP23008, EV_ROUTE_QOS_CRITICAL, (uint8_t)(0U), (uint32_t)(0U) },
+    { EV_TICK_100MS, ACT_DS18B20, EV_ROUTE_QOS_CRITICAL, (uint8_t)(0U), (uint32_t)(0U) },
     { EV_GPIO_IRQ, ACT_DIAG, EV_ROUTE_QOS_CRITICAL, (uint8_t)(0U), (uint32_t)(0U) },
     { EV_GPIO_IRQ, ACT_RTC, EV_ROUTE_QOS_CRITICAL, (uint8_t)(0U), (uint32_t)(0U) },
     { EV_MCP23008_INPUT_CHANGED, ACT_PANEL, EV_ROUTE_QOS_CRITICAL, (uint8_t)(0U), (uint32_t)(0U) },
@@ -133,25 +135,25 @@ static const ev_route_span_t k_ev_route_spans_generated[EV_EVENT_COUNT] = {
     [EV_OLED_COMMIT_FRAME] = { 21U, 1U },
     [EV_TIME_UPDATED] = { 22U, 2U },
     [EV_TEMP_UPDATED] = { 24U, 2U },
-    [EV_TICK_100MS] = { 26U, 3U },
-    [EV_GPIO_IRQ] = { 29U, 2U },
-    [EV_MCP23008_INPUT_CHANGED] = { 31U, 2U },
-    [EV_BUTTON_EVENT] = { 33U, 1U },
-    [EV_PANEL_LED_SET_CMD] = { 34U, 1U },
-    [EV_MCP23008_READY] = { 35U, 3U },
-    [EV_RTC_READY] = { 38U, 1U },
-    [EV_OLED_READY] = { 39U, 1U },
-    [EV_DS18B20_READY] = { 40U, 1U },
-    [EV_SYSTEM_READY] = { 41U, 1U },
-    [EV_SYS_GOTO_SLEEP_CMD] = { 42U, 1U },
-    [EV_NET_WIFI_UP] = { 43U, 1U },
-    [EV_NET_WIFI_DOWN] = { 44U, 1U },
-    [EV_NET_MQTT_UP] = { 45U, 1U },
-    [EV_NET_MQTT_DOWN] = { 46U, 1U },
-    [EV_NET_MQTT_MSG_RX] = { 47U, 2U },
-    [EV_NET_MQTT_MSG_RX_LEASE] = { 49U, 2U },
-    [EV_NET_TX_CMD] = { 51U, 1U },
-    [EV_FAULT_REPORTED] = { 52U, 1U },
+    [EV_TICK_100MS] = { 26U, 4U },
+    [EV_GPIO_IRQ] = { 30U, 2U },
+    [EV_MCP23008_INPUT_CHANGED] = { 32U, 2U },
+    [EV_BUTTON_EVENT] = { 34U, 1U },
+    [EV_PANEL_LED_SET_CMD] = { 35U, 1U },
+    [EV_MCP23008_READY] = { 36U, 3U },
+    [EV_RTC_READY] = { 39U, 1U },
+    [EV_OLED_READY] = { 40U, 1U },
+    [EV_DS18B20_READY] = { 41U, 1U },
+    [EV_SYSTEM_READY] = { 42U, 1U },
+    [EV_SYS_GOTO_SLEEP_CMD] = { 43U, 1U },
+    [EV_NET_WIFI_UP] = { 44U, 1U },
+    [EV_NET_WIFI_DOWN] = { 45U, 1U },
+    [EV_NET_MQTT_UP] = { 46U, 1U },
+    [EV_NET_MQTT_DOWN] = { 47U, 1U },
+    [EV_NET_MQTT_MSG_RX] = { 48U, 2U },
+    [EV_NET_MQTT_MSG_RX_LEASE] = { 50U, 2U },
+    [EV_NET_TX_CMD] = { 52U, 1U },
+    [EV_FAULT_REPORTED] = { 53U, 1U },
 };
 
 #endif /* EV_ROUTE_TABLE_GENERATED_H */

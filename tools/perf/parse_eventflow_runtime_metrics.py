@@ -32,9 +32,11 @@ def parse_metrics(text: str) -> dict[str, int]:
     return metrics
 
 
-def evaluate(metrics: dict[str, int], budgets: dict[str, int] | None = None) -> list[str]:
+def evaluate(metrics: dict[str, int], budgets: dict[str, int] | None = None, require_real_sample: bool = False) -> list[str]:
     budgets = DEFAULT_BUDGETS if budgets is None else budgets
     failures: list[str] = []
+    if require_real_sample and metrics.get("max_actor_handler_us", 0) <= 0:
+        failures.append("real budget gate requires max_actor_handler_us > 0")
     for key, limit in budgets.items():
         if key not in metrics:
             failures.append(f"missing metric {key}")
@@ -52,6 +54,9 @@ def self_test() -> None:
     invalid = valid.replace("max_actor_handler_us=900", "max_actor_handler_us=9999")
     assert any("max_actor_handler_us" in item for item in evaluate(parse_metrics(invalid)))
     assert any("missing metric" in item for item in evaluate({}))
+    synthetic_zero = valid.replace("max_actor_handler_us=900", "max_actor_handler_us=0")
+    assert evaluate(parse_metrics(synthetic_zero)) == []
+    assert any("real budget gate" in item for item in evaluate(parse_metrics(synthetic_zero), require_real_sample=True))
     print("EVENTFLOW_RUNTIME_METRICS_SELF_TEST PASS")
 
 
@@ -60,6 +65,7 @@ def main() -> int:
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--log", type=Path)
     parser.add_argument("--json", type=Path)
+    parser.add_argument("--require-real-sample", action="store_true", help="reject synthetic zero-duration markers in gating mode")
     args = parser.parse_args()
     if args.self_test:
         self_test()
@@ -73,7 +79,7 @@ def main() -> int:
         print(f"eventflow-runtime-budget ENVIRONMENT_BLOCKED: {exc}")
         return 77
     metrics = parse_metrics(text)
-    failures = evaluate(metrics)
+    failures = evaluate(metrics, require_real_sample=args.require_real_sample)
     if args.json is not None:
         args.json.write_text(json.dumps({"metrics": metrics, "failures": failures}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if failures:

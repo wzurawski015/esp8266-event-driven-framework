@@ -35,10 +35,23 @@
 #ifndef EV_ESP8266_I2C_TARGET_SPEED_HZ
 #define EV_ESP8266_I2C_TARGET_SPEED_HZ EV_ESP8266_I2C_SPEED_SAFE_HZ
 #endif
+#if EV_ESP8266_I2C_TARGET_SPEED_HZ == 0U
+#error "ESP8266 I2C target speed must be non-zero"
+#endif
 #if (EV_ESP8266_I2C_TARGET_SPEED_HZ > EV_ESP8266_I2C_SPEED_SAFE_HZ) && !defined(EV_ESP8266_I2C_FAST_MODE_LOGIC_ANALYZER_EVIDENCE)
 #error "ESP8266 I2C >100 kHz requires explicit logic-analyzer evidence acknowledgement"
 #endif
-#define EV_ESP8266_I2C_HALF_PERIOD_US 5U
+#if (EV_ESP8266_I2C_TARGET_SPEED_HZ > EV_ESP8266_I2C_SPEED_FAST_HZ) && !defined(EV_ESP8266_I2C_TURBO_LAB_ONLY)
+#error "ESP8266 I2C >400 kHz is lab-only and requires explicit turbo acknowledgement"
+#endif
+#define EV_ESP8266_I2C_TARGET_HALF_PERIOD_US (500000U / EV_ESP8266_I2C_TARGET_SPEED_HZ)
+#define EV_ESP8266_I2C_HALF_PERIOD_US ((EV_ESP8266_I2C_TARGET_HALF_PERIOD_US > 0U) ? EV_ESP8266_I2C_TARGET_HALF_PERIOD_US : 1U)
+#if (EV_ESP8266_I2C_TARGET_SPEED_HZ == EV_ESP8266_I2C_SPEED_SAFE_HZ) && (EV_ESP8266_I2C_HALF_PERIOD_US != 5U)
+#error "ESP8266 I2C 100 kHz safe profile must use a 5 us half-period"
+#endif
+#if (EV_ESP8266_I2C_TARGET_SPEED_HZ == EV_ESP8266_I2C_SPEED_FAST_HZ) && (EV_ESP8266_I2C_HALF_PERIOD_US != 1U)
+#error "ESP8266 I2C 400 kHz evidence-gated profile must use a 1 us nominal half-period"
+#endif
 #define EV_ESP8266_I2C_CLOCK_STRETCH_TIMEOUT_US 300U
 #define EV_ESP8266_I2C_RECOVERY_PULSES 9U
 #define EV_ESP8266_I2C_MAX_PAYLOAD_BYTES 64U
@@ -669,15 +682,32 @@ static ev_i2c_status_t ev_esp8266_i2c_begin_locked(ev_esp8266_i2c_adapter_ctx_t 
     return status;
 }
 
+static bool ev_esp8266_i2c_status_needs_recovery(ev_i2c_status_t transfer_status, ev_i2c_status_t stop_status)
+{
+    if (stop_status != EV_I2C_OK) {
+        return true;
+    }
+    return (transfer_status == EV_I2C_ERR_TIMEOUT) || (transfer_status == EV_I2C_ERR_BUS_LOCKED);
+}
+
 static ev_i2c_status_t ev_esp8266_i2c_finish_locked(ev_esp8266_i2c_adapter_ctx_t *adapter,
                                                     bool started,
                                                     int64_t started_us,
                                                     ev_i2c_status_t status)
 {
+    ev_i2c_status_t stop_status = EV_I2C_OK;
+
     if (started) {
-        const ev_i2c_status_t stop_status = ev_esp8266_i2c_stop_condition(adapter, started_us);
+        stop_status = ev_esp8266_i2c_stop_condition(adapter, started_us);
         if (status == EV_I2C_OK) {
             status = stop_status;
+        }
+    }
+
+    if (ev_esp8266_i2c_status_needs_recovery(status, stop_status)) {
+        const ev_i2c_status_t recovery_status = ev_esp8266_i2c_recover_bus(adapter, started_us);
+        if ((status == EV_I2C_OK) && (recovery_status != EV_I2C_OK)) {
+            status = recovery_status;
         }
     }
 

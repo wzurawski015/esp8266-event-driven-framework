@@ -21,6 +21,7 @@ REQUIRED_PREARCHIVE_DEPS = (
     "host-strict-test",
     "host-sanitize-test",
     "route-registry-integration-gate",
+    "release-archive-self-clean-gate",
 )
 
 
@@ -40,6 +41,10 @@ def check(root: Path = ROOT) -> list[str]:
         failures.append("release_archive() does not run release-prearchive-gate")
     if "git -C \"$ROOT_DIR\" archive" not in release_fn:
         failures.append("release_archive() does not own git archive invocation")
+    if "verify_archive_self_clean.py" not in release_fn:
+        failures.append("release_archive() does not verify the generated archive is self-clean")
+    if "rm -f \"$archive_path\"" not in release_fn:
+        failures.append("release_archive() does not remove a failed self-clean archive")
     if "git diff" in release_fn:
         failures.append("release_archive() must not print raw git diff output")
     prearchive_line = ""
@@ -53,6 +58,8 @@ def check(root: Path = ROOT) -> list[str]:
         for dep in REQUIRED_PREARCHIVE_DEPS:
             if dep not in prearchive_line.split():
                 failures.append(f"release-prearchive-gate missing required host-quality dependency {dep}")
+    if "release-archive-self-clean-gate:" not in makefile:
+        failures.append("Makefile missing release-archive-self-clean-gate target")
     if "./tools/fw release-archive" not in doc:
         failures.append("operator documentation does not name ./tools/fw release-archive")
     if "release-prearchive-gate" not in doc:
@@ -62,6 +69,8 @@ def check(root: Path = ROOT) -> list[str]:
     for dep in REQUIRED_PREARCHIVE_DEPS:
         if dep not in doc:
             failures.append(f"operator documentation does not describe {dep} as a prearchive requirement")
+    if "self-clean" not in doc or "release-archive-self-clean-gate" not in doc:
+        failures.append("operator documentation does not describe archive self-clean verification")
     return failures
 
 
@@ -71,20 +80,24 @@ def self_test() -> None:
         (root / "tools").mkdir()
         (root / "docs" / "release").mkdir(parents=True)
         (root / "Makefile").write_text(
-            "release-prearchive-gate: evidence-redaction-check host-test property-test host-strict-test host-sanitize-test route-registry-integration-gate\n",
+            "release-prearchive-gate: evidence-redaction-check host-test property-test host-strict-test host-sanitize-test route-registry-integration-gate release-archive-self-clean-gate\n"
+            "release-archive-self-clean-gate:\n\tpython3 tools/release/verify_archive_self_clean.py --self-test\n",
             encoding="utf-8",
         )
         (root / "tools" / "fw").write_text(
             'release_archive() {\n'
             '  make -C "$ROOT_DIR" release-prearchive-gate\n'
-            '  git -C "$ROOT_DIR" archive --format=tar.gz -o out.tgz HEAD\n'
+            '  archive_path="$ROOT_DIR/out.tgz"\n'
+            '  git -C "$ROOT_DIR" archive --format=tar.gz -o "$archive_path" HEAD\n'
+            '  python3 "$ROOT_DIR/tools/release/verify_archive_self_clean.py" "$archive_path" || { rm -f "$archive_path"; return 1; }\n'
             '}\n'
             'sdk_check() { :; }\n',
             encoding="utf-8",
         )
         (root / "docs" / "release" / "release-archive-discipline.md").write_text(
             "Use ./tools/fw release-archive after release-prearchive-gate. Do not use a raw `git archive ... HEAD` as the normal release path. "
-            "The prearchive gate requires host-test, property-test, host-strict-test, host-sanitize-test and route-registry-integration-gate.\n",
+            "The prearchive gate requires host-test, property-test, host-strict-test, host-sanitize-test, route-registry-integration-gate and release-archive-self-clean-gate. "
+            "Archive self-clean verification is enforced by release-archive-self-clean-gate.\n",
             encoding="utf-8",
         )
         assert check(root) == []

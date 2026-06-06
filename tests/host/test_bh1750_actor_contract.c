@@ -105,9 +105,35 @@ int main(void)
     for (i = 0U; i < 2U; ++i) {
         send_event(&actor, EV_TICK_100MS);
     }
-    assert(actor.no_device_failures >= 1U);
+    assert(actor.no_device_failures == 1U);
+    assert(actor.retry_backoff_ms == 1000U);
+    assert(actor.retry_deadline_ms == actor.actor_now_ms + 1000U);
+    assert(actor.optional_retry_backoffs == 1U);
+    assert(!actor.measurement_pending);
     assert(capture.light_count == 2U);
     assert(actor.light_valid);
+
+    {
+        const uint32_t write_calls_before_backoff = fake.write_stream_calls;
+        const uint32_t read_calls_before_backoff = fake.read_stream_calls;
+        const uint32_t deadline = actor.retry_deadline_ms;
+        while ((int32_t)(actor.actor_now_ms - deadline) < 0) {
+            send_event(&actor, EV_TICK_100MS);
+        }
+        assert(actor.optional_retry_skips > 0U);
+        assert(fake.read_stream_calls == read_calls_before_backoff);
+        assert(fake.write_stream_calls == (write_calls_before_backoff + 1U));
+        assert(actor.no_device_failures == 2U);
+        assert(actor.retry_backoff_ms == 2000U);
+        assert(!actor.measurement_pending);
+    }
+
+    fake_i2c_port_set_status(&fake, EV_BH1750_ADDR_LOW_7BIT, EV_I2C_OK);
+    while (!actor.measurement_pending) {
+        send_event(&actor, EV_TICK_100MS);
+    }
+    assert(actor.retry_backoff_ms == 0U);
+    assert(actor.retry_deadline_ms == 0U);
 
     return 0;
 }

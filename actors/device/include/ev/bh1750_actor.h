@@ -35,6 +35,8 @@ typedef struct {
     uint16_t measurement_wait_ms;
     uint32_t actor_now_ms;
     uint32_t measurement_deadline_ms;
+    uint32_t retry_deadline_ms;
+    uint32_t retry_backoff_ms;
     bool measurement_pending;
     bool sensor_present;
     bool ready_published;
@@ -46,6 +48,8 @@ typedef struct {
     uint32_t measurements_ok;
     uint32_t no_device_failures;
     uint32_t io_failures;
+    uint32_t optional_retry_backoffs;
+    uint32_t optional_retry_skips;
     uint32_t deadline_skips;
     uint32_t noncanonical_ticks_ignored;
 } ev_bh1750_actor_ctx_t;

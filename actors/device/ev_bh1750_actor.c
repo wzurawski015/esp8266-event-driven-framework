@@ -10,6 +10,8 @@
 #include "ev/publish.h"
 
 #define EV_BH1750_TICK_100MS_DELTA_MS 100U
+#define EV_BH1750_OPTIONAL_RETRY_INITIAL_MS 1000U
+#define EV_BH1750_OPTIONAL_RETRY_MAX_MS 10000U
 
 static bool ev_bh1750_actor_deadline_due(uint32_t now_ms, uint32_t deadline_ms)
 {
@@ -66,6 +68,45 @@ static ev_result_t ev_bh1750_actor_publish_light(ev_bh1750_actor_ctx_t *ctx,
     return rc;
 }
 
+static void ev_bh1750_actor_clear_optional_backoff(ev_bh1750_actor_ctx_t *ctx)
+{
+    if (ctx == NULL) {
+        return;
+    }
+    ctx->retry_backoff_ms = 0U;
+    ctx->retry_deadline_ms = 0U;
+}
+
+static void ev_bh1750_actor_schedule_optional_retry(ev_bh1750_actor_ctx_t *ctx)
+{
+    uint32_t next_backoff;
+
+    if (ctx == NULL) {
+        return;
+    }
+
+    next_backoff = ctx->retry_backoff_ms;
+    if (next_backoff == 0U) {
+        next_backoff = EV_BH1750_OPTIONAL_RETRY_INITIAL_MS;
+    } else if (next_backoff < (EV_BH1750_OPTIONAL_RETRY_MAX_MS / 2U)) {
+        next_backoff *= 2U;
+    } else {
+        next_backoff = EV_BH1750_OPTIONAL_RETRY_MAX_MS;
+    }
+
+    ctx->retry_backoff_ms = next_backoff;
+    ctx->retry_deadline_ms = ctx->actor_now_ms + next_backoff;
+    ++ctx->optional_retry_backoffs;
+}
+
+static bool ev_bh1750_actor_optional_retry_due(const ev_bh1750_actor_ctx_t *ctx)
+{
+    if ((ctx == NULL) || (ctx->retry_backoff_ms == 0U)) {
+        return true;
+    }
+    return ev_bh1750_actor_deadline_due(ctx->actor_now_ms, ctx->retry_deadline_ms);
+}
+
 static void ev_bh1750_actor_record_start(ev_bh1750_actor_ctx_t *ctx, ev_result_t status)
 {
     if (ctx == NULL) {
@@ -75,14 +116,17 @@ static void ev_bh1750_actor_record_start(ev_bh1750_actor_ctx_t *ctx, ev_result_t
         ctx->sensor_present = true;
         ctx->measurement_pending = true;
         ctx->measurement_deadline_ms = ctx->actor_now_ms + (uint32_t)ctx->measurement_wait_ms;
+        ev_bh1750_actor_clear_optional_backoff(ctx);
         ++ctx->measurements_started;
     } else {
         ctx->measurement_pending = false;
         if (status == EV_ERR_NOT_FOUND) {
             ctx->sensor_present = false;
             ++ctx->no_device_failures;
+            ev_bh1750_actor_schedule_optional_retry(ctx);
         } else {
             ++ctx->io_failures;
+            ev_bh1750_actor_schedule_optional_retry(ctx);
         }
     }
 }
@@ -159,9 +203,10 @@ static ev_result_t ev_bh1750_actor_try_read(ev_bh1750_actor_ctx_t *ctx)
         } else {
             ++ctx->io_failures;
         }
+        ev_bh1750_actor_schedule_optional_retry(ctx);
     }
 
-    if (publish_rc == EV_OK) {
+    if ((publish_rc == EV_OK) && (rc == EV_OK)) {
         return ev_bh1750_actor_start_measurement(ctx);
     }
     return publish_rc;
@@ -174,6 +219,13 @@ static ev_result_t ev_bh1750_actor_tick(ev_bh1750_actor_ctx_t *ctx, uint32_t ela
     }
     ctx->actor_now_ms += elapsed_ms;
     if (!ctx->measurement_pending) {
+        if (!ev_bh1750_actor_optional_retry_due(ctx)) {
+            ++ctx->optional_retry_skips;
+            return EV_OK;
+        }
+        if (!ctx->sensor_present) {
+            return ev_bh1750_actor_boot(ctx);
+        }
         return ev_bh1750_actor_start_measurement(ctx);
     }
     return ev_bh1750_actor_try_read(ctx);

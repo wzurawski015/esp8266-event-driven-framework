@@ -53,3 +53,30 @@ as `EV_BOOT_COMPLETED -> ACT_BH1750` must update the full host/demo registry and
 its diagnostics before an archive can be created.  Optional hardware presence is
 a device policy; it does not make a software actor binding optional when that
 actor is present in the route table.
+
+## Archive self-clean verification
+
+`./tools/fw release-archive` verifies the tarball it just created before
+reporting success.  The verifier extracts the archive into a temporary directory
+and runs the same sanitized-evidence and private-repo secret-containment checks
+against the archive contents.  If `serial.redacted.log`,
+`serial.normalized.log` or any other public/sanitized artifact requires
+redaction after extraction, the archive command fails and removes the invalid
+archive.
+
+The verification is intentionally secret-safe.  It reports status, paths,
+privacy classes and counters only; it must not print diff hunks, raw log lines or
+literal secret values.  `./tools/fw release-archive --dry-run` validates the
+prearchive workflow and calculates the future archive name, but it does not claim
+that a tarball has been self-clean verified.
+
+For an existing archive produced in a private worktree, operators can run:
+
+```sh
+EV_RELEASE_ARCHIVE=esp8266-event-driven-framework_<timestamp>_<sha>.tar.gz \
+  make release-archive-self-clean-gate
+```
+
+A failure means the archive is not a release-quality artifact.  Repair the
+working tree with `make repair-evidence-redaction`, review and commit sanitized
+evidence locally, then regenerate the archive with `./tools/fw release-archive`.

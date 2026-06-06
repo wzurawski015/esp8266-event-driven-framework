@@ -996,17 +996,23 @@ release_archive() {
   archive_name="esp8266-event-driven-framework_${timestamp}_${short_sha}.tar.gz"
 
   if [ "$dry_run" -eq 1 ]; then
-    echo "release-archive dry-run archive=$archive_name sha256=SKIPPED"
+    echo "release-archive dry-run archive=$archive_name sha256=SKIPPED archive_self_clean=SKIPPED"
     return 0
   fi
 
-  git -C "$ROOT_DIR" archive --format=tar.gz -o "$ROOT_DIR/$archive_name" HEAD
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha=$(sha256sum "$ROOT_DIR/$archive_name" | awk '{print $1}')
-  else
-    sha=$(shasum -a 256 "$ROOT_DIR/$archive_name" | awk '{print $1}')
+  archive_path="$ROOT_DIR/$archive_name"
+  git -C "$ROOT_DIR" archive --format=tar.gz -o "$archive_path" HEAD
+  if ! python3 "$ROOT_DIR/tools/release/verify_archive_self_clean.py" --mode "${EV_REPO_MODE:-PRIVATE_REPO}" "$archive_path"; then
+    rm -f "$archive_path"
+    echo "release-archive failed archive=$archive_name reason=self-clean-verification" >&2
+    return 1
   fi
-  echo "release-archive passed archive=$archive_name sha256=$sha"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha=$(sha256sum "$archive_path" | awk '{print $1}')
+  else
+    sha=$(shasum -a 256 "$archive_path" | awk '{print $1}')
+  fi
+  echo "release-archive passed archive=$archive_name sha256=$sha archive_self_clean=PASS"
 }
 
 sdk_check() {

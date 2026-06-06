@@ -68,6 +68,11 @@ def _target_for_block(block: str) -> str:
     return match.group("target") if match else ""
 
 
+def _status_for_block(block: str) -> str:
+    match = SDK_STATUS_RE.search(block)
+    return match.group("status") if match else "UNKNOWN"
+
+
 def extract_build_blocks(text: str) -> list[str]:
     """Return complete EV_SDK_BUILD_BEGIN..END blocks, including target preamble."""
     lines = text.splitlines(keepends=True)
@@ -162,15 +167,26 @@ def evaluate_log(text: str,
             "warnings": [],
             "warning_count": 0,
             "target": target or "",
+            "build_status": "UNKNOWN",
         }
     warnings = project_warnings(selected.text)
+    build_status = _status_for_block(selected.text) if selected.mode == "EV_SDK_BUILD_BLOCK" else "UNKNOWN"
+    status = "PASS"
+    reason = selected.reason
+    if build_status == "FAIL":
+        status = "FAIL"
+        reason = "EV_SDK_BUILD_STATUS=FAIL"
+    elif warnings:
+        status = "FAIL"
+        reason = reason or "project warnings present"
     return {
-        "status": "PASS" if not warnings else "FAIL",
+        "status": status,
         "session_mode": selected.mode,
-        "reason": selected.reason,
+        "reason": reason,
         "warnings": warnings,
         "warning_count": len(warnings),
         "target": target or selected.target,
+        "build_status": build_status,
     }
 
 
@@ -208,9 +224,29 @@ def self_test() -> None:
     _assert_status(evaluate_log(latest_good + "\n" + older_bad, latest=True, strict=True), "FAIL")
     _assert_status(evaluate_log(older_bad.replace("EV_SDK_BUILD_END", ""), latest=True, strict=True), "ENVIRONMENT_BLOCKED")
     _assert_status(evaluate_log(older_bad + "\n" + latest_good, latest=True, target="wemos_esp_wroom_02_18650", strict=True), "FAIL")
+    other_bad = "\n".join([
+        "EV_SDK_BUILD_TARGET=other_target",
+        "EV_SDK_BUILD_BEGIN",
+        project,
+        "EV_SDK_BUILD_STATUS=PASS",
+        "EV_SDK_BUILD_RC=0",
+        "EV_SDK_BUILD_END",
+    ])
+    wanted_good = "\n".join([
+        "EV_SDK_BUILD_TARGET=wanted_target",
+        "EV_SDK_BUILD_BEGIN",
+        sdk_noise,
+        "EV_SDK_BUILD_STATUS=PASS",
+        "EV_SDK_BUILD_RC=0",
+        "EV_SDK_BUILD_END",
+    ])
+    _assert_status(evaluate_log(other_bad + "\n" + wanted_good, latest=True, target="wanted_target", strict=True), "PASS")
+    build_fail = wanted_good.replace("EV_SDK_BUILD_STATUS=PASS", "EV_SDK_BUILD_STATUS=FAIL").replace("EV_SDK_BUILD_RC=0", "EV_SDK_BUILD_RC=2")
+    _assert_status(evaluate_log(build_fail, latest=True, target="wanted_target", strict=True), "FAIL")
     legacy = "make: Entering directory '/work/adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650'\n" + project
     _assert_status(evaluate_log(legacy, latest=True, strict=False), "FAIL")
     _assert_status(evaluate_log(legacy, latest=True, strict=True), "ENVIRONMENT_BLOCKED")
+    _assert_status(evaluate_log("no markers here", latest=True, strict=True), "ENVIRONMENT_BLOCKED")
     print("SDK_PROJECT_WARNING_POLICY_SELF_TEST PASS")
 
 
@@ -251,16 +287,19 @@ def main() -> int:
         print(f"sdk-project-warning-policy ENVIRONMENT_BLOCKED: {result['reason']}")
         return 77
     warnings = list(result.get("warnings", []))
-    if warnings:
+    if result["status"] == "FAIL":
         for warning in warnings:
             print(f"PROJECT_WARNING {warning}")
         print(
             f"sdk-project-warning-policy failed warnings={len(warnings)} "
+            f"build_status={result.get('build_status', 'UNKNOWN')} "
+            f"reason={result.get('reason', '')} "
             f"session_mode={result['session_mode']} target={result.get('target', '')}"
         )
         return 1
     print(
         f"sdk-project-warning-policy passed warnings=0 "
+        f"build_status={result.get('build_status', 'UNKNOWN')} "
         f"session_mode={result['session_mode']} target={result.get('target', '')}"
     )
     return 0

@@ -248,6 +248,12 @@ def self_test() -> None:
         w.write_text(warn_log, encoding="utf-8")
         assert _warning_summary_from_log(p, "t1")[:2] == ("PASS", 0)
         assert _warning_summary_from_log(w, "t1")[:2] == ("FAIL", 1)
+    fail_log = pass_log.replace("EV_SDK_BUILD_STATUS=PASS", "EV_SDK_BUILD_STATUS=FAIL").replace("EV_SDK_BUILD_RC=0", "EV_SDK_BUILD_RC=2")
+    with TemporaryDirectory() as td:
+        root = Path(td)
+        f = root / "fail.log"
+        f.write_text(fail_log, encoding="utf-8")
+        assert _warning_summary_from_log(f, "t1")[0] == "FAIL"
     assert _matrix_status("PASS", "PASS") == "PASS"
     assert _matrix_status("PASS", "FAIL") == "FAIL"
     assert _matrix_status("FAIL", "PASS") == "FAIL"

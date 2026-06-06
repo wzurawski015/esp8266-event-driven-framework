@@ -75,19 +75,12 @@ def inside_git_worktree(root: Path) -> bool:
 
 
 def run_git_diff_check(root: Path) -> int:
+    # Phase 7: never run `git diff --check` here because Git may print line
+    # contents. The explicit scanner below reports only path:line:reason and
+    # excludes historical release evidence.
     if not inside_git_worktree(root):
         print("patch-hygiene-gate git-diff-check NO_GIT_WORKTREE")
-        return 0
-    return subprocess.run([
-        "git",
-        "diff",
-        "--check",
-        "--",
-        ".",
-        ":(exclude)build/**",
-        ":(exclude)docs/generated/**",
-        ":(exclude)docs/release/**",
-    ], cwd=root).returncode
+    return 0
 
 
 def self_test() -> None:
@@ -120,9 +113,6 @@ def main() -> int:
             print(f"PATCH_HYGIENE_TRAILING_WHITESPACE {issue.rel}:{issue.line} {issue.kind}")
         print(f"patch-hygiene-gate failed trailing_whitespace={len(issues)}")
         return 1
-    if git_rc != 0:
-        print("patch-hygiene-gate failed git_diff_check=FAIL")
-        return git_rc
     print("patch-hygiene-gate passed")
     return 0
 

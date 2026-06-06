@@ -83,6 +83,7 @@ Usage:
   ./tools/fw docgen
   ./tools/fw docs
   ./tools/fw release-gate
+  ./tools/fw release-archive [--dry-run]
   ./tools/fw release-report
   ./tools/fw production-release-report
   ./tools/fw clean
@@ -971,6 +972,43 @@ release_report() {
   python3 "$ROOT_DIR/tools/release_report.py"
 }
 
+release_archive() {
+  dry_run=0
+  from_make=0
+  for arg in "$@"; do
+    case "$arg" in
+      --dry-run) dry_run=1 ;;
+      --from-make) from_make=1 ;;
+      *) echo "error: unknown release-archive argument: $arg" >&2; exit 2 ;;
+    esac
+  done
+
+  if [ "$from_make" -ne 1 ]; then
+    make -C "$ROOT_DIR" release-prearchive-gate
+  fi
+
+  if ! git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "release-archive ENVIRONMENT_BLOCKED: not inside a git worktree"
+    exit 77
+  fi
+  short_sha=$(git -C "$ROOT_DIR" rev-parse --short HEAD)
+  timestamp=$(date -u +%Y%m%d_%H%M%S)
+  archive_name="esp8266-event-driven-framework_${timestamp}_${short_sha}.tar.gz"
+
+  if [ "$dry_run" -eq 1 ]; then
+    echo "release-archive dry-run archive=$archive_name sha256=SKIPPED"
+    return 0
+  fi
+
+  git -C "$ROOT_DIR" archive --format=tar.gz -o "$ROOT_DIR/$archive_name" HEAD
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha=$(sha256sum "$ROOT_DIR/$archive_name" | awk '{print $1}')
+  else
+    sha=$(shasum -a 256 "$ROOT_DIR/$archive_name" | awk '{print $1}')
+  fi
+  echo "release-archive passed archive=$archive_name sha256=$sha"
+}
+
 sdk_check() {
   build_sdk_image
   run_in_image \
@@ -1396,7 +1434,12 @@ case "$cmd" in
     build_docs_image
     run_in_image "$HOST_IMAGE" make quality-gate
     run_in_image "$DOCS_IMAGE" make docgen docs
+    run_in_image "$HOST_IMAGE" make secret-safe-working-tree-clean-gate
     echo "release-gate passed"
+    ;;
+  release-archive)
+    shift
+    release_archive "$@"
     ;;
   release-report)
     release_report

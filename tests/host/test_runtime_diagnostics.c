@@ -6,6 +6,8 @@
 #include "ev/publish.h"
 #include "ev/send.h"
 
+#include "route_test_utils.h"
+
 static ev_result_t ok_handler(void *actor_context, const ev_msg_t *msg)
 {
     size_t *calls = (size_t *)actor_context;
@@ -29,6 +31,7 @@ int main(void)
     ev_msg_t mcp_storage[8] = {{0}};
     ev_msg_t rtc_storage[8] = {{0}};
     ev_msg_t ds18b20_storage[8] = {{0}};
+    ev_msg_t bh1750_storage[8] = {{0}};
     ev_msg_t oled_storage[8] = {{0}};
     ev_msg_t supervisor_storage[8] = {{0}};
     ev_msg_t diag_storage_partial[8] = {{0}};
@@ -38,6 +41,7 @@ int main(void)
     ev_mailbox_t mcp_mailbox;
     ev_mailbox_t rtc_mailbox;
     ev_mailbox_t ds18b20_mailbox;
+    ev_mailbox_t bh1750_mailbox;
     ev_mailbox_t oled_mailbox;
     ev_mailbox_t supervisor_mailbox;
     ev_mailbox_t diag_mailbox_partial;
@@ -47,6 +51,7 @@ int main(void)
     ev_actor_runtime_t mcp_runtime;
     ev_actor_runtime_t rtc_runtime;
     ev_actor_runtime_t ds18b20_runtime;
+    ev_actor_runtime_t bh1750_runtime;
     ev_actor_runtime_t oled_runtime;
     ev_actor_runtime_t supervisor_runtime;
     ev_actor_runtime_t diag_runtime_partial;
@@ -65,16 +70,20 @@ int main(void)
     size_t mcp_calls = 0U;
     size_t rtc_calls = 0U;
     size_t ds18b20_calls = 0U;
+    size_t bh1750_calls = 0U;
     size_t oled_calls = 0U;
     size_t supervisor_calls = 0U;
     size_t fail_calls = 0U;
     size_t i;
+    const size_t boot_routes = ev_test_route_count_for_event(EV_BOOT_COMPLETED);
+    const ev_actor_id_t boot_last_target = ev_test_last_route_target_for_event(EV_BOOT_COMPLETED);
 
     assert(ev_mailbox_init(&diag_mailbox, EV_MAILBOX_FIFO_8, diag_storage, 8U) == EV_OK);
     assert(ev_mailbox_init(&app_mailbox, EV_MAILBOX_FIFO_8, app_storage, 8U) == EV_OK);
     assert(ev_mailbox_init(&mcp_mailbox, EV_MAILBOX_FIFO_8, mcp_storage, 8U) == EV_OK);
     assert(ev_mailbox_init(&rtc_mailbox, EV_MAILBOX_FIFO_8, rtc_storage, 8U) == EV_OK);
     assert(ev_mailbox_init(&ds18b20_mailbox, EV_MAILBOX_FIFO_8, ds18b20_storage, 8U) == EV_OK);
+    assert(ev_mailbox_init(&bh1750_mailbox, EV_MAILBOX_FIFO_8, bh1750_storage, 8U) == EV_OK);
     assert(ev_mailbox_init(&oled_mailbox, EV_MAILBOX_FIFO_8, oled_storage, 8U) == EV_OK);
     assert(ev_mailbox_init(&supervisor_mailbox, EV_MAILBOX_FIFO_8, supervisor_storage, 8U) == EV_OK);
     assert(ev_mailbox_init(&diag_mailbox_partial, EV_MAILBOX_FIFO_8, diag_storage_partial, 8U) == EV_OK);
@@ -85,6 +94,7 @@ int main(void)
     assert(ev_actor_runtime_init(&mcp_runtime, ACT_MCP23008, &mcp_mailbox, ok_handler, &mcp_calls) == EV_OK);
     assert(ev_actor_runtime_init(&rtc_runtime, ACT_RTC, &rtc_mailbox, ok_handler, &rtc_calls) == EV_OK);
     assert(ev_actor_runtime_init(&ds18b20_runtime, ACT_DS18B20, &ds18b20_mailbox, ok_handler, &ds18b20_calls) == EV_OK);
+    assert(ev_actor_runtime_init(&bh1750_runtime, ACT_BH1750, &bh1750_mailbox, ok_handler, &bh1750_calls) == EV_OK);
     assert(ev_actor_runtime_init(&oled_runtime, ACT_OLED, &oled_mailbox, ok_handler, &oled_calls) == EV_OK);
     assert(ev_actor_runtime_init(&supervisor_runtime, ACT_SUPERVISOR, &supervisor_mailbox, ok_handler, &supervisor_calls) == EV_OK);
     assert(ev_actor_runtime_init(&diag_runtime_partial, ACT_DIAG, &diag_mailbox_partial, ok_handler, &diag_calls) == EV_OK);
@@ -96,6 +106,7 @@ int main(void)
     assert(ev_actor_registry_bind(&registry, &mcp_runtime) == EV_OK);
     assert(ev_actor_registry_bind(&registry, &rtc_runtime) == EV_OK);
     assert(ev_actor_registry_bind(&registry, &ds18b20_runtime) == EV_OK);
+    assert(ev_actor_registry_bind(&registry, &bh1750_runtime) == EV_OK);
     assert(ev_actor_registry_bind(&registry, &oled_runtime) == EV_OK);
     assert(ev_actor_registry_bind(&registry, &supervisor_runtime) == EV_OK);
 
@@ -120,11 +131,11 @@ int main(void)
     assert(ev_publish(&msg, ev_actor_registry_delivery, &registry, NULL) == EV_OK);
 
     registry_stats = ev_actor_registry_stats(&registry);
-    assert(registry_stats->delivery_attempted == 7U);
-    assert(registry_stats->delivery_succeeded == 7U);
+    assert(registry_stats->delivery_attempted == boot_routes);
+    assert(registry_stats->delivery_succeeded == boot_routes);
     assert(registry_stats->delivery_failed == 0U);
     assert(registry_stats->delivery_target_missing == 0U);
-    assert(registry_stats->last_target_actor == ACT_SUPERVISOR);
+    assert(registry_stats->last_target_actor == boot_last_target);
     assert(registry_stats->last_result == EV_OK);
 
     diag_stats = ev_actor_runtime_stats(&diag_runtime);
@@ -137,6 +148,7 @@ int main(void)
     assert(ev_actor_runtime_stats(&mcp_runtime)->enqueued == 1U);
     assert(ev_actor_runtime_stats(&rtc_runtime)->enqueued == 1U);
     assert(ev_actor_runtime_stats(&ds18b20_runtime)->enqueued == 1U);
+    assert(ev_actor_runtime_stats(&bh1750_runtime)->enqueued == 1U);
     assert(ev_actor_runtime_stats(&oled_runtime)->enqueued == 1U);
     assert(ev_actor_runtime_stats(&supervisor_runtime)->enqueued == 1U);
 
@@ -145,6 +157,7 @@ int main(void)
     assert(ev_actor_runtime_step(&mcp_runtime) == EV_OK);
     assert(ev_actor_runtime_step(&rtc_runtime) == EV_OK);
     assert(ev_actor_runtime_step(&ds18b20_runtime) == EV_OK);
+    assert(ev_actor_runtime_step(&bh1750_runtime) == EV_OK);
     assert(ev_actor_runtime_step(&oled_runtime) == EV_OK);
     assert(ev_actor_runtime_step(&supervisor_runtime) == EV_OK);
     assert(ev_actor_runtime_step(&app_runtime) == EV_ERR_EMPTY);
@@ -153,6 +166,7 @@ int main(void)
     assert(mcp_calls == 1U);
     assert(rtc_calls == 1U);
     assert(ds18b20_calls == 1U);
+    assert(bh1750_calls == 1U);
     assert(oled_calls == 1U);
     assert(supervisor_calls == 1U);
 
@@ -177,18 +191,18 @@ int main(void)
     ev_publish_report_reset(&report);
     assert(ev_msg_init_publish(&msg, EV_BOOT_COMPLETED, ACT_BOOT) == EV_OK);
     assert(ev_publish_ex(&msg, ev_actor_registry_delivery, &partial_registry, EV_PUBLISH_BEST_EFFORT, &report) == EV_ERR_PARTIAL);
-    assert(report.matched_routes == 7U);
+    assert(report.matched_routes == boot_routes);
     assert(report.delivered_count == 1U);
-    assert(report.failed_count == 6U);
+    assert(report.failed_count == boot_routes - 1U);
     assert(report.first_failed_actor == ACT_APP);
     assert(report.first_error == EV_ERR_NOT_FOUND);
 
     registry_stats = ev_actor_registry_stats(&partial_registry);
-    assert(registry_stats->delivery_attempted == 7U);
+    assert(registry_stats->delivery_attempted == boot_routes);
     assert(registry_stats->delivery_succeeded == 1U);
-    assert(registry_stats->delivery_failed == 6U);
-    assert(registry_stats->delivery_target_missing == 6U);
-    assert(registry_stats->last_target_actor == ACT_SUPERVISOR);
+    assert(registry_stats->delivery_failed == boot_routes - 1U);
+    assert(registry_stats->delivery_target_missing == boot_routes - 1U);
+    assert(registry_stats->last_target_actor == boot_last_target);
     assert(registry_stats->last_result == EV_ERR_NOT_FOUND);
 
     partial_stats = ev_actor_runtime_stats(&diag_runtime_partial);

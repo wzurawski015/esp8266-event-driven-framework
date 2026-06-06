@@ -5,9 +5,11 @@
 #include "ev/publish.h"
 #include "ev/send.h"
 
+#include "route_test_utils.h"
+
 typedef struct {
     size_t call_count;
-    ev_actor_id_t call_targets[8];
+    ev_actor_id_t call_targets[EV_ACTOR_COUNT];
     ev_event_id_t last_event;
     ev_actor_id_t fail_target;
     ev_result_t fail_result;
@@ -36,6 +38,8 @@ int main(void)
     trace_t trace = {0};
     ev_publish_report_t report;
     size_t delivered = 0U;
+    const size_t boot_routes = ev_test_route_count_for_event(EV_BOOT_COMPLETED);
+    assert(boot_routes >= 2U);
 
     assert(ev_msg_init_publish(&msg, EV_BOOT_STARTED, ACT_BOOT) == EV_OK);
     assert(ev_publish(&msg, trace_delivery, &trace, &delivered) == EV_OK);
@@ -65,7 +69,7 @@ int main(void)
     ev_publish_report_reset(&report);
     assert(ev_msg_init_publish(&msg, EV_BOOT_COMPLETED, ACT_BOOT) == EV_OK);
     assert(ev_publish_ex(&msg, trace_delivery, &trace, EV_PUBLISH_FAIL_FAST, &report) == EV_ERR_FULL);
-    assert(report.matched_routes == 7U);
+    assert(report.matched_routes == boot_routes);
     assert(report.attempted_deliveries == 2U);
     assert(report.delivered_count == 1U);
     assert(report.failed_count == 1U);
@@ -80,20 +84,20 @@ int main(void)
     trace.fail_result = EV_ERR_FULL;
     ev_publish_report_reset(&report);
     assert(ev_publish_ex(&msg, trace_delivery, &trace, EV_PUBLISH_BEST_EFFORT, &report) == EV_ERR_PARTIAL);
-    assert(report.matched_routes == 7U);
-    assert(report.attempted_deliveries == 7U);
-    assert(report.delivered_count == 6U);
+    assert(report.matched_routes == boot_routes);
+    assert(report.attempted_deliveries == boot_routes);
+    assert(report.delivered_count == boot_routes - 1U);
     assert(report.failed_count == 1U);
     assert(report.first_failed_actor == ACT_APP);
     assert(report.first_error == EV_ERR_FULL);
-    assert(trace.call_count == 7U);
+    assert(trace.call_count == boot_routes);
 
     trace = (trace_t){0};
     trace.fail_target = ACT_DIAG;
     trace.fail_result = EV_ERR_NOT_FOUND;
     ev_publish_report_reset(&report);
     assert(ev_publish_ex(&msg, trace_delivery, &trace, EV_PUBLISH_FAIL_FAST, &report) == EV_ERR_NOT_FOUND);
-    assert(report.matched_routes == 7U);
+    assert(report.matched_routes == boot_routes);
     assert(report.attempted_deliveries == 1U);
     assert(report.delivered_count == 0U);
     assert(report.failed_count == 1U);

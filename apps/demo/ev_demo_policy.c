@@ -117,6 +117,7 @@ ev_result_t ev_demo_app_actor_handle(void *actor_context, const ev_msg_t *msg)
         state->screensaver_paused = false;
         state->panel_led_mask = 0U;
         state->system_ready = false;
+        state->light_valid = false;
         state->active_hardware_mask = 0U;
         return EV_OK;
 
@@ -134,6 +135,7 @@ ev_result_t ev_demo_app_actor_handle(void *actor_context, const ev_msg_t *msg)
             state->system_ready = true;
             state->active_hardware_mask = ready_payload->active_hardware_mask;
             state->temp_valid = (state->temp_valid && ((state->active_hardware_mask & EV_SUPERVISOR_HW_DS18B20) != 0U));
+            state->light_valid = (state->light_valid && ((state->active_hardware_mask & EV_SUPERVISOR_HW_BH1750) != 0U));
             ev_demo_app_logf(app, EV_LOG_INFO, "app actor: system ready hw_mask=0x%08lx", (unsigned long)state->active_hardware_mask);
 
             if (first_system_ready) {
@@ -169,6 +171,19 @@ ev_result_t ev_demo_app_actor_handle(void *actor_context, const ev_msg_t *msg)
 
             state->last_temp = *temp_payload;
             state->temp_valid = true;
+            return EV_OK;
+        }
+
+    case EV_LIGHT_UPDATED:
+        {
+            const ev_light_payload_t *light_payload = (const ev_light_payload_t *)ev_msg_payload_data(msg);
+
+            if ((light_payload == NULL) || (ev_msg_payload_size(msg) != sizeof(*light_payload))) {
+                return EV_ERR_CONTRACT;
+            }
+
+            state->last_light = *light_payload;
+            state->light_valid = true;
             return EV_OK;
         }
 

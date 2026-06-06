@@ -169,6 +169,9 @@ ev_result_t ev_supervisor_actor_handle(void *actor_context, const ev_msg_t *msg)
     case EV_DS18B20_READY:
         return ev_supervisor_actor_handle_ready(ctx, EV_SUPERVISOR_HW_DS18B20);
 
+    case EV_BH1750_READY:
+        return ev_supervisor_actor_handle_ready(ctx, EV_SUPERVISOR_HW_BH1750);
+
     case EV_TICK_1S:
         if (ctx->boot_observed && !ctx->system_ready_published) {
             ++ctx->ticks_waited;

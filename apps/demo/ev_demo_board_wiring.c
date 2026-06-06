@@ -23,6 +23,7 @@ static const ev_demo_app_board_profile_t k_ev_demo_app_default_board_profile = {
     .mcp23008_addr_7bit = 0U,
     .rtc_addr_7bit = 0U,
     .oled_addr_7bit = 0U,
+    .bh1750_addr_7bit = 0U,
     .oled_controller = EV_OLED_CONTROLLER_SSD1306,
     .watchdog_timeout_ms = 0U,
     .remote_command_token = "",
@@ -61,7 +62,8 @@ static bool ev_demo_app_profile_is_valid(const ev_demo_app_board_profile_t *prof
     }
     if ((profile->hardware_present_mask & (EV_SUPERVISOR_HW_MCP23008 |
                                            EV_SUPERVISOR_HW_RTC |
-                                           EV_SUPERVISOR_HW_OLED)) != 0U) {
+                                           EV_SUPERVISOR_HW_OLED |
+                                           EV_SUPERVISOR_HW_BH1750)) != 0U) {
         if ((profile->capabilities_mask & EV_DEMO_APP_BOARD_CAP_I2C0) == 0U) {
             return false;
         }
@@ -86,6 +88,10 @@ static bool ev_demo_app_profile_is_valid(const ev_demo_app_board_profile_t *prof
     }
     if (((profile->hardware_present_mask & EV_SUPERVISOR_HW_OLED) != 0U) &&
         ((profile->oled_addr_7bit == 0U) || (profile->oled_addr_7bit > 0x7FU))) {
+        return false;
+    }
+    if (((profile->hardware_present_mask & EV_SUPERVISOR_HW_BH1750) != 0U) &&
+        ((profile->bh1750_addr_7bit == 0U) || (profile->bh1750_addr_7bit > 0x7FU))) {
         return false;
     }
     if ((profile->capabilities_mask & EV_DEMO_APP_BOARD_CAP_WDT) != 0U) {
@@ -190,7 +196,7 @@ bool ev_demo_app_config_is_valid(const ev_demo_app_config_t *cfg)
     }
 
     hw_mask = profile->hardware_present_mask;
-    if ((hw_mask & (EV_SUPERVISOR_HW_MCP23008 | EV_SUPERVISOR_HW_RTC | EV_SUPERVISOR_HW_OLED)) != 0U) {
+    if ((hw_mask & (EV_SUPERVISOR_HW_MCP23008 | EV_SUPERVISOR_HW_RTC | EV_SUPERVISOR_HW_OLED | EV_SUPERVISOR_HW_BH1750)) != 0U) {
         if (!ev_demo_app_i2c_port_valid(cfg->i2c_port)) {
             return false;
         }
@@ -237,6 +243,7 @@ static ev_capability_mask_t ev_demo_app_runtime_board_capabilities(const ev_demo
     if (ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_RTC)) caps |= EV_CAP_RTC;
     if (ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_OLED)) caps |= EV_CAP_OLED;
     if (ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_DS18B20)) caps |= EV_CAP_DS18B20;
+    if (ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_BH1750)) caps |= EV_CAP_BH1750;
     if (ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_MCP23008)) caps |= EV_CAP_MCP23008;
     return caps;
 }
@@ -289,7 +296,7 @@ ev_result_t ev_demo_app_configure_runtime(ev_demo_app_t *app, const ev_demo_app_
     }
 
     active_i2c = ((app->board_profile.hardware_present_mask &
-                   (EV_SUPERVISOR_HW_MCP23008 | EV_SUPERVISOR_HW_RTC | EV_SUPERVISOR_HW_OLED)) != 0U)
+                   (EV_SUPERVISOR_HW_MCP23008 | EV_SUPERVISOR_HW_RTC | EV_SUPERVISOR_HW_OLED | EV_SUPERVISOR_HW_BH1750)) != 0U)
                      ? cfg->i2c_port
                      : NULL;
     active_onewire = ((app->board_profile.hardware_present_mask & EV_SUPERVISOR_HW_DS18B20) != 0U)
@@ -338,6 +345,10 @@ ev_result_t ev_demo_app_configure_runtime(ev_demo_app_t *app, const ev_demo_app_
     }
     if (ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_DS18B20)) {
         rc = ev_ds18b20_actor_init(&app->ds18b20_ctx, active_onewire, ev_actor_publish_port_delivery_adapter, &app->publish_ports[ACT_DS18B20]);
+        if (rc != EV_OK) return rc;
+    }
+    if (ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_BH1750)) {
+        rc = ev_bh1750_actor_init(&app->bh1750_ctx, active_i2c, app->board_profile.i2c_port_num, app->board_profile.bh1750_addr_7bit, ev_actor_publish_port_delivery_adapter, &app->publish_ports[ACT_BH1750]);
         if (rc != EV_OK) return rc;
     }
     if (ev_demo_app_profile_has_hardware(app, EV_SUPERVISOR_HW_OLED)) {

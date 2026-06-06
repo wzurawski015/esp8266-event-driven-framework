@@ -23,6 +23,7 @@ ev_result_t ev_demo_runtime_actor_handle(void *actor_context, const ev_msg_t *ms
 
 ev_result_t ev_demo_oled_quiescence(void *actor_context, ev_quiescence_report_t *report);
 ev_result_t ev_demo_ds18b20_quiescence(void *actor_context, ev_quiescence_report_t *report);
+ev_result_t ev_demo_bh1750_quiescence(void *actor_context, ev_quiescence_report_t *report);
 
 #ifdef __cplusplus
 }

@@ -92,7 +92,7 @@ int main(void)
     ev_event_id_t event_id;
     ev_route_span_t span;
 
-    assert(ev_route_count() == 53U);
+    assert(ev_route_count() == 58U);
 
     for (event_id = (ev_event_id_t)0; event_id < EV_EVENT_COUNT; event_id = (ev_event_id_t)(event_id + 1)) {
         assert_span_routes_match_event(event_id);

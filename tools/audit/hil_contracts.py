@@ -30,6 +30,12 @@ def i2c_logic_analyzer_self_test(root: Path = ROOT) -> list[str]:
         "missing-address NACK",
         "SDA stuck-low recovery",
         "EV_HIL_I2C_SCAN_NACK_POLICY",
+        "EV_HIL_BOARD_PIN_MAP",
+        "EV_HIL_I2C_STOP_RELEASE",
+        "EV_HIL_I2C_BUS_IDLE_AFTER_FAULT",
+        "EV_HIL_I2C_RECOVERY_EVIDENCE",
+        "measured_hz",
+        "ENVIRONMENT_BLOCKED",
     ), "i2c-logic-analyzer-contract")
 
 
@@ -41,6 +47,9 @@ def onewire_timing_self_test(root: Path = ROOT) -> list[str]:
         "wifi=off",
         "ENVIRONMENT_BLOCKED",
         "scratchpad CRC",
+        "EV_HIL_ONEWIRE_RELEASE_EVIDENCE",
+        "EV_HIL_RESULT PASS",
+        "PARSER_SELF_TEST_PASS",
     ), "onewire-timing-contract")
 
 

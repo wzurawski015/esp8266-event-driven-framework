@@ -62,6 +62,7 @@ typedef struct ev_network_actor_stats {
     uint32_t telemetry_temp_seen;
     uint32_t telemetry_time_seen;
     uint32_t telemetry_inputs_seen;
+    uint32_t telemetry_light_seen;
 } ev_network_actor_stats_t;
 
 typedef struct ev_network_actor_ctx {
@@ -72,6 +73,7 @@ typedef struct ev_network_actor_ctx {
     uint32_t last_temp_telemetry_tick;
     uint32_t last_time_telemetry_tick;
     uint32_t last_inputs_telemetry_tick;
+    uint32_t last_light_telemetry_tick;
 } ev_network_actor_ctx_t;
 
 EV_STATIC_ASSERT(sizeof(ev_net_mqtt_inline_payload_t) <= EV_MSG_INLINE_CAPACITY,

@@ -44,7 +44,7 @@
 [0;32mI (7162) wifi:state: 0 -> 2 (b0)
 [0m[0;32mI (7169) wifi:state: 2 -> 3 (0)
 [0m[0;32mI (7172) wifi:state: 3 -> 5 (10)
-[0m[0;32mI (7223) wifi:connected with watwzwp, aid = 23, channel 4, HT20, bssid = 1c:9d:72:a7:96:c8
+[0m[0;32mI (7223) wifi:connected with <REDACTED>, aid = 23, channel 4, HT20, bssid = 1c:9d:72:a7:96:c8
 [0m[0;32mI (7269) ev_wroom02: app actor: system ready hw_mask=0x00000000[0m
 [0;32mI (7274) ev_wroom02: diag actor: tick=1 mono_now_ms=7273[0m
 [0;32mI (7279) ev_wroom02: app actor: snapshot seq=1 diag_ticks=1 last_tick_ms=7273[0m

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -27,10 +28,31 @@ def _rel(path: Path, root: Path) -> str:
 
 def _is_ignored(path: Path, root: Path) -> bool:
     rel = _rel(path, root) if path.is_relative_to(root) else path.as_posix()
-    parts = set(rel.split("/"))
-    if parts & {".git", "__pycache__", ".pytest_cache"}:
+    parts = rel.split("/")
+    if set(parts) & {".git", "__pycache__", ".pytest_cache"}:
         return True
-    return rel.startswith("build/") or rel.startswith("docs/generated/") or rel.startswith("docs/release/")
+    if rel.startswith("build/") or rel.startswith("docs/generated/") or rel.startswith("docs/release/"):
+        return True
+    # ESP8266 RTOS SDK target builds are generated artefacts. They may contain
+    # vendor-generated Make fragments with trailing whitespace; patch hygiene
+    # must check project sources, not generated SDK build trees.
+    if (
+        len(parts) >= 5
+        and parts[0] == "adapters"
+        and parts[1] == "esp8266_rtos_sdk"
+        and parts[2] == "targets"
+        and "build" in parts[4:]
+    ):
+        return True
+    if (
+        len(parts) == 5
+        and parts[0] == "adapters"
+        and parts[1] == "esp8266_rtos_sdk"
+        and parts[2] == "targets"
+        and parts[4] == "sdkconfig"
+    ):
+        return True
+    return False
 
 
 def _looks_text(path: Path) -> bool:
@@ -69,16 +91,24 @@ def find_trailing_whitespace(root: Path = ROOT) -> list[WhitespaceIssue]:
     return issues
 
 
-def inside_git_worktree(root: Path) -> bool:
-    proc = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=root, text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+def inside_git_worktree(root: Path) -> bool | None:
+    git = shutil.which("git")
+    if git is None:
+        return None
+    proc = subprocess.run([git, "rev-parse", "--is-inside-work-tree"], cwd=root, text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     return proc.returncode == 0 and proc.stdout.strip() == "true"
 
 
 def run_git_diff_check(root: Path) -> int:
     # Phase 7: never run `git diff --check` here because Git may print line
     # contents. The explicit scanner below reports only path:line:reason and
-    # excludes historical release evidence.
-    if not inside_git_worktree(root):
+    # excludes historical release evidence. Missing Git must not produce a
+    # Python traceback; the host validation image still installs Git because
+    # worktree gates need it.
+    worktree = inside_git_worktree(root)
+    if worktree is None:
+        print("patch-hygiene-gate git-diff-check NO_GIT_BINARY")
+    elif not worktree:
         print("patch-hygiene-gate git-diff-check NO_GIT_WORKTREE")
     return 0
 
@@ -91,9 +121,13 @@ def self_test() -> None:
         (root / "tools" / "good.py").write_text("print('ok')\n", encoding="utf-8")
         (root / "tools" / "bad.py").write_text("print('bad')  \n", encoding="utf-8")
         (root / "docs" / "release" / "legacy.log").write_text("legacy evidence  \n", encoding="utf-8")
+        generated = root / "adapters" / "esp8266_rtos_sdk" / "targets" / "wemos_esp_wroom_02_18650" / "build" / "esp_common"
+        generated.mkdir(parents=True)
+        (generated / "component_project_vars.mk").write_text("generated := yes  \n", encoding="utf-8")
         issues = find_trailing_whitespace(root)
         assert any(issue.rel == "tools/bad.py" for issue in issues)
         assert not any(issue.rel.startswith("docs/release/") for issue in issues)
+        assert not any("/build/" in f"/{issue.rel}/" for issue in issues)
     print("PATCH_HYGIENE_SELF_TEST PASS")
 
 

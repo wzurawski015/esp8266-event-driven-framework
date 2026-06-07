@@ -9,6 +9,7 @@ otherwise leak removed secret values into CI logs.
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -19,8 +20,15 @@ ROOT = Path(__file__).resolve().parents[2]
 FORBIDDEN_OUTPUT_TOKENS = ("@@", "diff --git", "+secret", "-secret")
 
 
+def _git_binary() -> str | None:
+    return shutil.which("git")
+
+
 def _run_git(root: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(["git", *args], cwd=root, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    git = _git_binary()
+    if git is None:
+        return subprocess.CompletedProcess(["git", *args], 127, "", "git binary not found")
+    return subprocess.run([git, *args], cwd=root, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
 def _is_worktree(root: Path) -> bool:
@@ -46,6 +54,10 @@ def _status_lines(root: Path) -> list[str]:
 
 def check_worktree(root: Path = ROOT, quiet: bool = False) -> int:
     root = root.resolve()
+    if _git_binary() is None:
+        if not quiet:
+            print("secret-safe-working-tree-clean-gate ENVIRONMENT_BLOCKED: git binary not installed")
+        return 77
     if not _is_worktree(root):
         if not quiet:
             print("secret-safe-working-tree-clean-gate NO_GIT_WORKTREE: not inside a git worktree")

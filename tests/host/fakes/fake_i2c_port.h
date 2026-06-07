@@ -20,6 +20,8 @@ typedef struct {
     bool present[128];
     uint8_t regs[128][256];
     uint8_t read_stream_data[128][FAKE_I2C_STREAM_CAPACITY];
+    uint8_t last_write_stream_data[FAKE_I2C_STREAM_CAPACITY];
+    size_t last_write_stream_len;
     uint32_t write_stream_calls;
     uint32_t read_stream_calls;
     uint32_t write_regs_calls;

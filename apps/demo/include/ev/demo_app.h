@@ -18,6 +18,7 @@
 #include "ev/port_irq.h"
 #include "ev/port_onewire.h"
 #include "ev/ds18b20_actor.h"
+#include "ev/bh1750_actor.h"
 #include "ev/mcp23008_actor.h"
 #include "ev/network_actor.h"
 #include "ev/command_actor.h"
@@ -45,6 +46,7 @@ extern "C" {
 #define EV_DEMO_APP_BOARD_CAP_WDT 0x00000010UL
 #define EV_DEMO_APP_BOARD_CAP_NET 0x00000020UL
 #define EV_DEMO_APP_BOARD_CAP_REMOTE_COMMANDS 0x00000040UL
+#define EV_DEMO_APP_BOARD_CAP_BH1750 0x00000080UL
 
 /**
  * @brief Board-owned hardware profile consumed by the portable runtime.
@@ -62,6 +64,7 @@ typedef struct {
     uint8_t mcp23008_addr_7bit;
     uint8_t rtc_addr_7bit;
     uint8_t oled_addr_7bit;
+    uint8_t bh1750_addr_7bit;
     ev_oled_controller_t oled_controller;
     uint32_t watchdog_timeout_ms;
     const char *remote_command_token;
@@ -137,8 +140,10 @@ typedef struct {
     uint32_t last_diag_ticks_seen;
     ev_time_payload_t last_time;
     ev_temp_payload_t last_temp;
+    ev_light_payload_t last_light;
     bool time_valid;
     bool temp_valid;
+    bool light_valid;
     bool oled_frame_visible;
     bool system_ready;
     uint32_t active_hardware_mask;
@@ -199,7 +204,8 @@ struct ev_demo_app {
     ev_panel_actor_ctx_t panel_ctx; /* Stan logicznego Aktora Panelu */
     ev_rtc_actor_ctx_t rtc_ctx; /* Fizyczny stan i konfiguracja Aktora RTC */
     ev_mcp23008_actor_ctx_t mcp23008_ctx; /* Fizyczny stan i konfiguracja Aktora MCP23008 */
-    ev_ds18b20_actor_ctx_t ds18b20_ctx; /* Fizyczny stan i konfiguracja Aktora DS18B20 */
+    ev_ds18b20_actor_ctx_t ds18b20_ctx;
+    ev_bh1750_actor_ctx_t bh1750_ctx; /* Fizyczny stan i konfiguracja Aktora BH1750 */
     ev_oled_actor_ctx_t oled_ctx; /* Fizyczny stan i bufor ekranu OLED */
     ev_supervisor_actor_ctx_t supervisor_ctx; /* Stan Supervisora platformy */
     ev_power_actor_ctx_t power_ctx; /* Stan Aktora Power */

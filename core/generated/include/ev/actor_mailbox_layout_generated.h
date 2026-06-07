@@ -10,8 +10,8 @@
 #include "ev/actor_id.h"
 #include "ev/mailbox_kind.h"
 
-#define EV_ACTOR_MAILBOX_LAYOUT_GENERATED_COUNT 17U
-#define EV_RUNTIME_MAILBOX_TOTAL_CAPACITY 144U
+#define EV_ACTOR_MAILBOX_LAYOUT_GENERATED_COUNT 18U
+#define EV_RUNTIME_MAILBOX_TOTAL_CAPACITY 152U
 
 typedef struct {
     ev_actor_id_t actor_id;
@@ -51,32 +51,35 @@ static inline int ev_actor_mailbox_layout_lookup(ev_actor_id_t actor_id, ev_acto
     case ACT_DS18B20:
         *out_layout = (ev_actor_mailbox_layout_entry_t){ ACT_DS18B20, EV_MAILBOX_FIFO_8, 64U, 8U };
         return 1;
+    case ACT_BH1750:
+        *out_layout = (ev_actor_mailbox_layout_entry_t){ ACT_BH1750, EV_MAILBOX_FIFO_8, 72U, 8U };
+        return 1;
     case ACT_PANEL:
-        *out_layout = (ev_actor_mailbox_layout_entry_t){ ACT_PANEL, EV_MAILBOX_FIFO_8, 72U, 8U };
+        *out_layout = (ev_actor_mailbox_layout_entry_t){ ACT_PANEL, EV_MAILBOX_FIFO_8, 80U, 8U };
         return 1;
     case ACT_MCP23008:
-        *out_layout = (ev_actor_mailbox_layout_entry_t){ ACT_MCP23008, EV_MAILBOX_FIFO_8, 80U, 8U };
+        *out_layout = (ev_actor_mailbox_layout_entry_t){ ACT_MCP23008, EV_MAILBOX_FIFO_8, 88U, 8U };
         return 1;
     case ACT_SUPERVISOR:
-        *out_layout = (ev_actor_mailbox_layout_entry_t){ ACT_SUPERVISOR, EV_MAILBOX_FIFO_8, 88U, 8U };
+        *out_layout = (ev_actor_mailbox_layout_entry_t){ ACT_SUPERVISOR, EV_MAILBOX_FIFO_8, 96U, 8U };
         return 1;
     case ACT_POWER:
-        *out_layout = (ev_actor_mailbox_layout_entry_t){ ACT_POWER, EV_MAILBOX_FIFO_8, 96U, 8U };
+        *out_layout = (ev_actor_mailbox_layout_entry_t){ ACT_POWER, EV_MAILBOX_FIFO_8, 104U, 8U };
         return 1;
     case ACT_WATCHDOG:
-        *out_layout = (ev_actor_mailbox_layout_entry_t){ ACT_WATCHDOG, EV_MAILBOX_FIFO_8, 104U, 8U };
+        *out_layout = (ev_actor_mailbox_layout_entry_t){ ACT_WATCHDOG, EV_MAILBOX_FIFO_8, 112U, 8U };
         return 1;
     case ACT_NETWORK:
-        *out_layout = (ev_actor_mailbox_layout_entry_t){ ACT_NETWORK, EV_MAILBOX_FIFO_8, 112U, 8U };
+        *out_layout = (ev_actor_mailbox_layout_entry_t){ ACT_NETWORK, EV_MAILBOX_FIFO_8, 120U, 8U };
         return 1;
     case ACT_COMMAND:
-        *out_layout = (ev_actor_mailbox_layout_entry_t){ ACT_COMMAND, EV_MAILBOX_FIFO_8, 120U, 8U };
+        *out_layout = (ev_actor_mailbox_layout_entry_t){ ACT_COMMAND, EV_MAILBOX_FIFO_8, 128U, 8U };
         return 1;
     case ACT_FAULT:
-        *out_layout = (ev_actor_mailbox_layout_entry_t){ ACT_FAULT, EV_MAILBOX_FIFO_8, 128U, 8U };
+        *out_layout = (ev_actor_mailbox_layout_entry_t){ ACT_FAULT, EV_MAILBOX_FIFO_8, 136U, 8U };
         return 1;
     case ACT_METRICS:
-        *out_layout = (ev_actor_mailbox_layout_entry_t){ ACT_METRICS, EV_MAILBOX_FIFO_8, 136U, 8U };
+        *out_layout = (ev_actor_mailbox_layout_entry_t){ ACT_METRICS, EV_MAILBOX_FIFO_8, 144U, 8U };
         return 1;
     default:
         return 0;

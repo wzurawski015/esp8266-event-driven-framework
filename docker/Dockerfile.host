@@ -21,6 +21,7 @@ RUN set -eux; \
       apt-get install -y --no-install-recommends \
         build-essential \
         ca-certificates \
+        git \
         make \
         python3 \
         valgrind && \
@@ -30,6 +31,7 @@ RUN set -eux; \
     done; \
     rm -rf /var/lib/apt/lists/*; \
     cc --version; \
+    git --version; \
     python3 --version; \
     make --version | head -n 1; \
     valgrind --version

@@ -1,141 +1,25 @@
 #include "ev/ds18b20_actor.h"
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 
 #include "ev/dispose.h"
+#include "ev/ds18b20_driver.h"
 #include "ev/msg.h"
 #include "ev/publish.h"
 
-#define EV_DS18B20_CMD_SKIP_ROM 0xCCU
-#define EV_DS18B20_CMD_CONVERT_T 0x44U
-#define EV_DS18B20_CMD_READ_SCRATCHPAD 0xBEU
-#define EV_DS18B20_SCRATCHPAD_BYTES 9U
-#define EV_DS18B20_CFG_RESOLUTION_MASK 0x60U
-#define EV_DS18B20_CFG_9BIT 0x00U
-#define EV_DS18B20_CFG_10BIT 0x20U
-#define EV_DS18B20_CFG_11BIT 0x40U
-#define EV_DS18B20_CFG_12BIT 0x60U
-#define EV_DS18B20_CRC_POLY 0x8CU
+#define EV_DS18B20_TICK_100MS_DELTA_MS 100U
 
-static uint8_t ev_ds18b20_actor_crc8(const uint8_t *data, size_t data_len)
+static bool ev_ds18b20_actor_deadline_due(uint32_t now_ms, uint32_t deadline_ms)
 {
-    uint8_t crc = 0U;
-    size_t i;
-
-    if (data == NULL) {
-        return 0U;
-    }
-
-    for (i = 0U; i < data_len; ++i) {
-        uint8_t current = data[i];
-        uint8_t bit;
-
-        for (bit = 0U; bit < 8U; ++bit) {
-            const uint8_t mix = (uint8_t)((crc ^ current) & 0x01U);
-            crc = (uint8_t)(crc >> 1U);
-            if (mix != 0U) {
-                crc ^= EV_DS18B20_CRC_POLY;
-            }
-            current = (uint8_t)(current >> 1U);
-        }
-    }
-
-    return crc;
+    return ((int32_t)(now_ms - deadline_ms) >= 0) ? true : false;
 }
 
-static ev_onewire_status_t ev_ds18b20_actor_start_conversion(ev_ds18b20_actor_ctx_t *ctx)
+static bool ev_ds18b20_actor_resolution_is_valid(uint8_t resolution_bits)
 {
-    ev_onewire_status_t status;
-
-    if ((ctx == NULL) || (ctx->onewire_port == NULL) || (ctx->onewire_port->reset == NULL) ||
-        (ctx->onewire_port->write_byte == NULL)) {
-        return EV_ONEWIRE_ERR_BUS;
-    }
-
-    status = ctx->onewire_port->reset(ctx->onewire_port->ctx);
-    if (status != EV_ONEWIRE_OK) {
-        return status;
-    }
-    status = ctx->onewire_port->write_byte(ctx->onewire_port->ctx, EV_DS18B20_CMD_SKIP_ROM);
-    if (status != EV_ONEWIRE_OK) {
-        return status;
-    }
-    status = ctx->onewire_port->write_byte(ctx->onewire_port->ctx, EV_DS18B20_CMD_CONVERT_T);
-    if (status != EV_ONEWIRE_OK) {
-        return status;
-    }
-
-    return EV_ONEWIRE_OK;
-}
-
-static ev_result_t ev_ds18b20_actor_read_scratchpad(ev_ds18b20_actor_ctx_t *ctx,
-                                                    uint8_t scratchpad[EV_DS18B20_SCRATCHPAD_BYTES])
-{
-    ev_onewire_status_t status;
-    size_t i;
-
-    if ((ctx == NULL) || (scratchpad == NULL) || (ctx->onewire_port == NULL) || (ctx->onewire_port->reset == NULL) ||
-        (ctx->onewire_port->write_byte == NULL) || (ctx->onewire_port->read_byte == NULL)) {
-        return EV_ERR_INVALID_ARG;
-    }
-
-    status = ctx->onewire_port->reset(ctx->onewire_port->ctx);
-    if (status == EV_ONEWIRE_ERR_NO_DEVICE) {
-        return EV_ERR_NOT_FOUND;
-    }
-    if (status != EV_ONEWIRE_OK) {
-        return EV_ERR_STATE;
-    }
-    if (ctx->onewire_port->write_byte(ctx->onewire_port->ctx, EV_DS18B20_CMD_SKIP_ROM) != EV_ONEWIRE_OK) {
-        return EV_ERR_STATE;
-    }
-    if (ctx->onewire_port->write_byte(ctx->onewire_port->ctx, EV_DS18B20_CMD_READ_SCRATCHPAD) != EV_ONEWIRE_OK) {
-        return EV_ERR_STATE;
-    }
-
-    for (i = 0U; i < EV_DS18B20_SCRATCHPAD_BYTES; ++i) {
-        if (ctx->onewire_port->read_byte(ctx->onewire_port->ctx, &scratchpad[i]) != EV_ONEWIRE_OK) {
-            return EV_ERR_STATE;
-        }
-    }
-
-    if (ev_ds18b20_actor_crc8(scratchpad, EV_DS18B20_SCRATCHPAD_BYTES - 1U) != scratchpad[EV_DS18B20_SCRATCHPAD_BYTES - 1U]) {
-        return EV_ERR_CONTRACT;
-    }
-
-    return EV_OK;
-}
-
-static int16_t ev_ds18b20_actor_decode_centi_celsius(const uint8_t scratchpad[EV_DS18B20_SCRATCHPAD_BYTES])
-{
-    int16_t raw = (int16_t)(((uint16_t)scratchpad[1] << 8U) | (uint16_t)scratchpad[0]);
-    int32_t scaled;
-
-    switch (scratchpad[4] & EV_DS18B20_CFG_RESOLUTION_MASK) {
-    case EV_DS18B20_CFG_9BIT:
-        raw = (int16_t)(raw & (int16_t)(~0x0007));
-        break;
-    case EV_DS18B20_CFG_10BIT:
-        raw = (int16_t)(raw & (int16_t)(~0x0003));
-        break;
-    case EV_DS18B20_CFG_11BIT:
-        raw = (int16_t)(raw & (int16_t)(~0x0001));
-        break;
-    case EV_DS18B20_CFG_12BIT:
-    default:
-        break;
-    }
-
-    scaled = (int32_t)raw * 25;
-    if (scaled >= 0) {
-        scaled = (scaled + 2) / 4;
-    } else {
-        scaled = (scaled - 2) / 4;
-    }
-
-    return (int16_t)scaled;
+    return (resolution_bits >= 9U) && (resolution_bits <= 12U);
 }
 
 static ev_result_t ev_ds18b20_actor_publish_ready(ev_ds18b20_actor_ctx_t *ctx)
@@ -190,82 +74,113 @@ static ev_result_t ev_ds18b20_actor_publish_temperature(ev_ds18b20_actor_ctx_t *
     return rc;
 }
 
-static void ev_ds18b20_actor_record_start_result(ev_ds18b20_actor_ctx_t *ctx, ev_onewire_status_t status)
+static void ev_ds18b20_actor_record_start_result(ev_ds18b20_actor_ctx_t *ctx, ev_result_t status)
 {
     if (ctx == NULL) {
         return;
     }
 
-    if (status == EV_ONEWIRE_OK) {
+    if (status == EV_OK) {
         ctx->sensor_present = true;
         ctx->conversion_pending = true;
+        ctx->conversion_started_at_ms = ctx->actor_now_ms;
+        ctx->conversion_deadline_ms = ctx->actor_now_ms + (uint32_t)ctx->conversion_wait_ms;
         ++ctx->conversions_started;
         return;
     }
 
     ctx->sensor_present = false;
     ctx->conversion_pending = false;
-    if (status == EV_ONEWIRE_ERR_NO_DEVICE) {
+    if (status == EV_ERR_NOT_FOUND) {
         ++ctx->no_device_failures;
     } else {
         ++ctx->io_failures;
     }
 }
 
-static ev_result_t ev_ds18b20_actor_handle_boot(ev_ds18b20_actor_ctx_t *ctx)
+static ev_result_t ev_ds18b20_actor_start_conversion(ev_ds18b20_actor_ctx_t *ctx)
 {
+    ev_result_t rc;
+
     if (ctx == NULL) {
         return EV_ERR_INVALID_ARG;
     }
 
-    ev_ds18b20_actor_record_start_result(ctx, ev_ds18b20_actor_start_conversion(ctx));
+    rc = ev_ds18b20_start_conversion_skip_rom(ctx->onewire_port);
+    ev_ds18b20_actor_record_start_result(ctx, rc);
     return EV_OK;
 }
 
-static ev_result_t ev_ds18b20_actor_handle_tick(ev_ds18b20_actor_ctx_t *ctx)
+static ev_result_t ev_ds18b20_actor_try_read(ev_ds18b20_actor_ctx_t *ctx)
 {
     uint8_t scratchpad[EV_DS18B20_SCRATCHPAD_BYTES] = {0};
     ev_result_t publish_rc = EV_OK;
+    int16_t centi_celsius = 0;
+    ev_result_t rc;
 
     if (ctx == NULL) {
         return EV_ERR_INVALID_ARG;
     }
 
-    if (ctx->conversion_pending) {
-        ev_result_t rc = ev_ds18b20_actor_read_scratchpad(ctx, scratchpad);
+    if (!ctx->conversion_pending) {
+        return EV_OK;
+    }
+    if (!ev_ds18b20_actor_deadline_due(ctx->actor_now_ms, ctx->conversion_deadline_ms)) {
+        ++ctx->conversion_deadline_skips;
+        return EV_OK;
+    }
 
-        if (rc == EV_OK) {
-            const int16_t centi_celsius = ev_ds18b20_actor_decode_centi_celsius(scratchpad);
-            const bool was_valid = ctx->temp_valid;
+    ctx->conversion_pending = false;
+    rc = ev_ds18b20_read_scratchpad_skip_rom(ctx->onewire_port, scratchpad);
+    if (rc == EV_OK) {
+        rc = ev_ds18b20_decode_centi_celsius(scratchpad, &centi_celsius);
+    }
+    if (rc == EV_OK) {
+        const bool was_valid = ctx->temp_valid;
 
-            ctx->sensor_present = true;
-            ctx->last_read_ok = true;
-            ctx->temp_valid = true;
-            ctx->last_centi_celsius = centi_celsius;
-            ++ctx->scratchpad_reads_ok;
-            if (!was_valid) {
-                publish_rc = ev_ds18b20_actor_publish_ready(ctx);
-                if (publish_rc != EV_OK) {
-                    ev_ds18b20_actor_record_start_result(ctx, ev_ds18b20_actor_start_conversion(ctx));
-                    return publish_rc;
-                }
+        ctx->sensor_present = true;
+        ctx->last_read_ok = true;
+        ctx->temp_valid = true;
+        ctx->last_centi_celsius = centi_celsius;
+        ++ctx->scratchpad_reads_ok;
+        if (!was_valid) {
+            publish_rc = ev_ds18b20_actor_publish_ready(ctx);
+            if (publish_rc != EV_OK) {
+                return publish_rc;
             }
-            publish_rc = ev_ds18b20_actor_publish_temperature(ctx, centi_celsius);
-        } else {
-            ctx->last_read_ok = false;
-            if (rc == EV_ERR_CONTRACT) {
-                ++ctx->crc_failures;
-            } else if (rc == EV_ERR_NOT_FOUND) {
-                ctx->sensor_present = false;
-                ++ctx->no_device_failures;
-            } else if (rc == EV_ERR_STATE) {
-                ++ctx->io_failures;
-            }
+        }
+        publish_rc = ev_ds18b20_actor_publish_temperature(ctx, centi_celsius);
+    } else {
+        ctx->last_read_ok = false;
+        if (rc == EV_ERR_CONTRACT) {
+            ++ctx->crc_failures;
+        } else if (rc == EV_ERR_NOT_FOUND) {
+            ctx->sensor_present = false;
+            ++ctx->no_device_failures;
+        } else if (rc == EV_ERR_STATE) {
+            ++ctx->io_failures;
         }
     }
 
-    ev_ds18b20_actor_record_start_result(ctx, ev_ds18b20_actor_start_conversion(ctx));
+    if (publish_rc == EV_OK) {
+        ev_ds18b20_actor_record_start_result(ctx, ev_ds18b20_start_conversion_skip_rom(ctx->onewire_port));
+    }
     return publish_rc;
+}
+
+static ev_result_t ev_ds18b20_actor_handle_boot(ev_ds18b20_actor_ctx_t *ctx)
+{
+    return ev_ds18b20_actor_start_conversion(ctx);
+}
+
+static ev_result_t ev_ds18b20_actor_handle_tick(ev_ds18b20_actor_ctx_t *ctx, uint32_t elapsed_ms)
+{
+    if (ctx == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+
+    ctx->actor_now_ms += elapsed_ms;
+    return ev_ds18b20_actor_try_read(ctx);
 }
 
 ev_result_t ev_ds18b20_actor_init(ev_ds18b20_actor_ctx_t *ctx,
@@ -283,6 +198,24 @@ ev_result_t ev_ds18b20_actor_init(ev_ds18b20_actor_ctx_t *ctx,
     ctx->onewire_port = onewire_port;
     ctx->deliver = deliver;
     ctx->deliver_context = deliver_context;
+    ctx->resolution_bits = EV_DS18B20_DEFAULT_RESOLUTION_BITS;
+    ctx->conversion_wait_ms = ev_ds18b20_conversion_time_ms(ctx->resolution_bits);
+    return EV_OK;
+}
+
+ev_result_t ev_ds18b20_actor_configure_resolution(ev_ds18b20_actor_ctx_t *ctx, uint8_t resolution_bits)
+{
+    if (ctx == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if (!ev_ds18b20_actor_resolution_is_valid(resolution_bits)) {
+        return EV_ERR_OUT_OF_RANGE;
+    }
+    if (ctx->conversion_pending) {
+        return EV_ERR_STATE;
+    }
+    ctx->resolution_bits = resolution_bits;
+    ctx->conversion_wait_ms = ev_ds18b20_conversion_time_ms(resolution_bits);
     return EV_OK;
 }
 
@@ -298,8 +231,12 @@ ev_result_t ev_ds18b20_actor_handle(void *actor_context, const ev_msg_t *msg)
     case EV_BOOT_COMPLETED:
         return ev_ds18b20_actor_handle_boot(ctx);
 
+    case EV_TICK_100MS:
+        return ev_ds18b20_actor_handle_tick(ctx, EV_DS18B20_TICK_100MS_DELTA_MS);
+
     case EV_TICK_1S:
-        return ev_ds18b20_actor_handle_tick(ctx);
+        ++ctx->noncanonical_ticks_ignored;
+        return ev_ds18b20_actor_try_read(ctx);
 
     default:
         return EV_ERR_CONTRACT;

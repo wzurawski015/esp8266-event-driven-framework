@@ -57,6 +57,7 @@ static const ev_esp8266_net_config_t k_board_net_cfg = {
 
 static const ev_demo_app_board_profile_t k_board_runtime_profile = {
     .capabilities_mask = (EV_BOARD_HAS_I2C0 ? EV_DEMO_APP_BOARD_CAP_I2C0 : 0U) |
+                         (EV_BOARD_HAS_BH1750 ? EV_DEMO_APP_BOARD_CAP_BH1750 : 0U) |
                          (EV_BOARD_HAS_ONEWIRE0 ? EV_DEMO_APP_BOARD_CAP_ONEWIRE0 : 0U) |
                          (EV_BOARD_HAS_GPIO_IRQ ? EV_DEMO_APP_BOARD_CAP_GPIO_IRQ : 0U) |
                          (EV_BOARD_HAS_DEEP_SLEEP_WAKE_GPIO16 ? EV_DEMO_APP_BOARD_CAP_DEEP_SLEEP_WAKE_GPIO16 : 0U) |
@@ -70,6 +71,7 @@ static const ev_demo_app_board_profile_t k_board_runtime_profile = {
     .mcp23008_addr_7bit = EV_BOARD_MCP23008_ADDR_7BIT,
     .rtc_addr_7bit = EV_BOARD_RTC_ADDR_7BIT,
     .oled_addr_7bit = EV_BOARD_OLED_ADDR_7BIT,
+    .bh1750_addr_7bit = EV_BOARD_BH1750_ADDR_7BIT,
     .oled_controller = EV_BOARD_OLED_CONTROLLER,
     .watchdog_timeout_ms = EV_BOARD_WDT_TIMEOUT_MS,
     .remote_command_token = EV_BOARD_NET_COMMAND_TOKEN,

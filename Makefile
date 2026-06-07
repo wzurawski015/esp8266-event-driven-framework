@@ -41,6 +41,7 @@ CORE_SRCS := \
 ACTOR_DEVICE_SRCS := \
     actors/device/ev_rtc_actor.c \
     actors/device/ev_ds18b20_actor.c \
+    actors/device/ev_bh1750_actor.c \
     actors/device/ev_mcp23008_actor.c \
     actors/device/ev_panel_actor.c \
     actors/device/ev_oled_actor.c
@@ -78,7 +79,9 @@ MODULE_SRCS := \
     modules/src/ev_module_layer.c
 
 DRIVER_SRCS := \
-    drivers/src/ev_driver_layer.c
+    drivers/src/ev_driver_layer.c \
+    drivers/src/ev_ds18b20_driver.c \
+    drivers/src/ev_bh1750_driver.c
 
 APP_SRCS := \
     apps/demo/ev_demo_app.c \
@@ -110,12 +113,17 @@ HOST_TESTS := \
     test_qos_contract_table \
     test_qos_route_module_compatibility \
     test_qos_mailbox_algorithms \
+    test_route_registry_integration \
     test_dispatch_contract \
     test_mailbox_contract \
     test_actor_runtime \
     test_lease_pool_contract \
     test_zero_copy_payload_contract \
     test_i2c_port_contract \
+    test_ds18b20_driver_contract \
+    test_ds18b20_actor_deadline \
+    test_bh1750_driver_contract \
+    test_bh1750_actor_contract \
     test_runtime_diagnostics \
     test_actor_pump_contract \
     test_domain_pump_contract \
@@ -190,7 +198,7 @@ BENCH_BINS := $(addprefix $(BENCH_BUILD_DIR)/,$(BENCH_TESTS))
 BENCH_RESULTS := $(BENCH_BUILD_DIR)/results.txt
 PERF_BUDGETS ?= config/perf_budgets.json
 
-.PHONY: all host-test property-test privacy-classification-self-test redaction-self-test evidence-redaction-check evidence-redaction-scrub architecture-layer-gate sdk-project-warning-gate runtime-eventflow-budget-gate hil-atnel-onewire-evidence hil-atnel-onewire-gate host-strict-test host-sanitize-cc-check host-sanitize-test host-sanitize-i2c-test host-sanitize-drivers-test host-tsan-cc-check host-tsan-test clang-tidy-gate host-gcc-analyzer-gate host-static-analysis-gate static-analysis-gate host-coverage-test coverage-report coverage-gate fuzz-smoke-gate fuzz-sanitize-gate ub-hardening-gate safety-gate i2c-sdk-bug-avoidance-gate hotpath-zero-alloc-gate bench perf-report perf-budget-gate perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts release-report-consistency-gate qos-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-memory-matrix sdk-memory-release-gate sdk-build-evidence sdk-map-stack-evidence sdk-evidence-gate sdk-import-evidence sdk-import-evidence-gate sdk-import-flash-evidence sdk-flash-evidence-gate sdk-canonical-evidence-gate sdk-full-evidence-gate evidence-importer-hardening-gate hil-atnel-i2c-flash hil-atnel-i2c-monitor hil-atnel-i2c-evidence hil-atnel-i2c-gate hil-import-atnel-i2c-evidence hil-import-wemos-smoke-evidence hil-import-wemos-smoke-late-attach-evidence hil-import-wemos-deepsleep-evidence hil-import-all-evidence hil-wemos-smoke-late-attach-self-test hil-real-evidence-gate hil-wemos-smoke-flash hil-wemos-smoke-monitor hil-wemos-smoke-evidence hil-wemos-smoke-gate hil-wemos-deepsleep-wake-gate eventflow-hardware-evidence-report eventflow-hardware-evidence-gate eventflow-evidence-explain eventflow-release-gate operator-transcript-split-self-test operator-transcript-stage-evidence operator-transcript-evidence-gate operator-monitor-exit-classification-self-test wemos-one-shot-evidence-preflight wemos-one-shot-evidence-capture wemos-one-shot-evidence-gate wemos-one-shot-evidence-explain wemos-one-shot-evidence-report wemos-one-shot-evidence-self-test wemos-one-shot-sdk-import wemos-one-shot-sdk-import-gate wemos-one-shot-flash-import-gate wemos-one-shot-deepsleep-evidence-capture wemos-one-shot-deepsleep-evidence-gate wemos-one-shot-deepsleep-evidence-explain eventflow-one-shot-evidence-gate esp8266-target-timing-self-test esp8266-target-timing-report esp8266-target-timing-gate wemos-one-shot-target-timing-gate production-release-gate quality-gate release-gate docgen docs clean
+.PHONY: all host-test property-test privacy-classification-self-test redaction-self-test evidence-redaction-check evidence-redaction-scrub repair-evidence-redaction patch-hygiene-gate secret-safe-working-tree-clean-gate-self-test secret-safe-working-tree-clean-gate working-tree-clean-gate board-wiring-truth-gate board-wiring-contract-gate no-direct-sdk-i2c-gate i2c-speed-policy-gate i2c-logic-analyzer-contract-self-test onewire-timing-contract-self-test architecture-layer-gate sdk-project-warning-self-test sdk-project-warning-gate sdk-project-warning-gate-real runtime-eventflow-budget-self-test runtime-eventflow-budget-gate hil-atnel-onewire-evidence hil-atnel-onewire-gate hil-logic-analyzer-readiness-gate ds18b20-driver-test bh1750-driver-test host-sanitize-ds18b20-test host-sanitize-bh1750-test host-strict-test host-sanitize-cc-check host-sanitize-core-test host-sanitize-runtime-test host-sanitize-actors-test host-sanitize-test host-sanitize-i2c-test host-sanitize-drivers-test host-sanitize-bh1750-actor-test host-tsan-cc-check host-tsan-test clang-tidy-gate host-gcc-analyzer-gate host-static-analysis-gate static-analysis-gate host-coverage-test coverage-report coverage-gate fuzz-smoke-gate fuzz-sanitize-gate ub-hardening-gate safety-gate i2c-sdk-bug-avoidance-gate hotpath-zero-alloc-gate bench perf-report perf-budget-gate perf-gate routegen mailbox-layoutgen routegen-check mailbox-layoutgen-check static-contracts actor-module-consistency descriptor-contracts route-registry-integration-gate private-repo-secrets-policy release-evidence-contracts release-report-consistency-gate qos-contracts public-release-safety-gate memory-budget sdk-matrix-check sdk-matrix-warning-policy-self-test sdk-build-workflow-contract-gate sdk-memory-matrix sdk-memory-release-gate sdk-build-evidence sdk-map-stack-evidence sdk-evidence-gate sdk-import-evidence sdk-import-evidence-gate sdk-import-flash-evidence sdk-flash-evidence-gate sdk-canonical-evidence-gate sdk-full-evidence-gate evidence-importer-hardening-gate hil-atnel-i2c-flash hil-atnel-i2c-monitor hil-atnel-i2c-evidence hil-atnel-i2c-gate hil-import-atnel-i2c-evidence hil-import-wemos-smoke-evidence hil-import-wemos-smoke-late-attach-evidence hil-import-wemos-deepsleep-evidence hil-import-all-evidence hil-wemos-smoke-late-attach-self-test hil-real-evidence-gate hil-wemos-smoke-flash hil-wemos-smoke-monitor hil-wemos-smoke-evidence hil-wemos-smoke-gate hil-wemos-deepsleep-wake-gate eventflow-hardware-evidence-report eventflow-hardware-evidence-gate eventflow-evidence-explain eventflow-release-gate operator-transcript-split-self-test operator-transcript-stage-evidence operator-transcript-evidence-gate operator-monitor-exit-classification-self-test wemos-one-shot-evidence-preflight wemos-one-shot-evidence-capture wemos-one-shot-evidence-gate wemos-one-shot-evidence-explain wemos-one-shot-evidence-report wemos-one-shot-evidence-self-test wemos-one-shot-sdk-import wemos-one-shot-sdk-import-gate wemos-one-shot-flash-import-gate wemos-one-shot-deepsleep-evidence-capture wemos-one-shot-deepsleep-evidence-gate wemos-one-shot-deepsleep-evidence-explain eventflow-one-shot-evidence-gate esp8266-target-timing-self-test esp8266-target-timing-report esp8266-target-timing-gate wemos-one-shot-target-timing-gate production-release-gate release-prearchive-gate release-archive release-archive-workflow-contract-gate release-archive-content-scope-gate release-archive-self-clean-gate runtime-soak-contract-self-test wemos-runtime-soak-gate sdk-memory-stack-regression-self-test sdk-memory-stack-regression-gate bh1750-actor-test quality-gate release-gate docgen docs clean
 .SECONDARY: $(COMMON_OBJS) $(BENCH_COMMON_OBJS)
 
 all: host-test
@@ -241,9 +249,26 @@ host-sanitize-cc-check:
 		exit 77; \
 	fi
 
-host-sanitize-test: host-sanitize-cc-check
-	@echo "host-sanitize-test: AddressSanitizer + UndefinedBehaviorSanitizer host build"
-	@$(MAKE) --no-print-directory BUILD_DIR=build/host-sanitize CFLAGS="$(HOST_SANITIZE_CFLAGS)" LDFLAGS="$(HOST_SANITIZE_LDFLAGS) $(LDFLAGS)" host-test
+host-sanitize-core-test: host-sanitize-cc-check
+	@echo "host-sanitize-core-test: core message contract under ASAN/UBSAN"
+	@mkdir -p build/host-sanitize-core
+	$(CC) $(HOST_SANITIZE_CFLAGS) core/src/ev_event_catalog.c core/src/ev_actor_catalog.c core/src/ev_msg.c core/src/ev_dispose.c tests/host/test_msg_contract.c $(HOST_SANITIZE_LDFLAGS) $(LDFLAGS) -o build/host-sanitize-core/test_msg_contract
+	./build/host-sanitize-core/test_msg_contract
+
+host-sanitize-runtime-test: host-sanitize-cc-check
+	@echo "host-sanitize-runtime-test: runtime state-machine contract under ASAN/UBSAN"
+	@mkdir -p build/host-sanitize-runtime
+	$(CC) $(HOST_SANITIZE_CFLAGS) runtime/src/ev_power_state_machine.c tests/host/test_power_state_machine.c $(HOST_SANITIZE_LDFLAGS) $(LDFLAGS) -o build/host-sanitize-runtime/test_power_state_machine
+	./build/host-sanitize-runtime/test_power_state_machine
+
+host-sanitize-actors-test: host-sanitize-cc-check
+	@echo "host-sanitize-actors-test: DS18B20 actor deadline contract under ASAN/UBSAN"
+	@mkdir -p build/host-sanitize-actors
+	$(CC) $(HOST_SANITIZE_CFLAGS) core/src/ev_event_catalog.c core/src/ev_actor_catalog.c core/src/ev_msg.c core/src/ev_dispose.c core/src/ev_publish.c core/src/ev_route_table.c drivers/src/ev_ds18b20_driver.c actors/device/ev_ds18b20_actor.c tests/host/fakes/fake_onewire_port.c tests/host/test_ds18b20_actor_deadline.c $(HOST_SANITIZE_LDFLAGS) $(LDFLAGS) -o build/host-sanitize-actors/test_ds18b20_actor_deadline
+	./build/host-sanitize-actors/test_ds18b20_actor_deadline
+
+host-sanitize-test: host-sanitize-core-test host-sanitize-runtime-test host-sanitize-actors-test host-sanitize-i2c-test host-sanitize-drivers-test
+	@echo "host-sanitize-test passed (deterministic ASAN/UBSAN shards)"
 
 host-sanitize-i2c-test: host-sanitize-cc-check
 	@echo "host-sanitize-i2c-test: targeted I2C contract under ASAN/UBSAN"
@@ -251,9 +276,32 @@ host-sanitize-i2c-test: host-sanitize-cc-check
 	$(CC) $(HOST_SANITIZE_CFLAGS) tests/host/fakes/fake_i2c_port.c tests/host/test_i2c_port_contract.c $(HOST_SANITIZE_LDFLAGS) $(LDFLAGS) -o build/host-sanitize-i2c/test_i2c_port_contract
 	./build/host-sanitize-i2c/test_i2c_port_contract
 
-host-sanitize-drivers-test: host-sanitize-cc-check
-	@echo "host-sanitize-drivers-test: no standalone driver tests in this snapshot; driver layer covered by host-sanitize-test"
-	@true
+host-sanitize-ds18b20-test: host-sanitize-cc-check
+	@echo "host-sanitize-ds18b20-test: pure DS18B20 driver contract under ASAN/UBSAN"
+	@mkdir -p build/host-sanitize-drivers
+	$(CC) $(HOST_SANITIZE_CFLAGS) drivers/src/ev_ds18b20_driver.c tests/host/fakes/fake_onewire_port.c tests/host/test_ds18b20_driver_contract.c $(HOST_SANITIZE_LDFLAGS) $(LDFLAGS) -o build/host-sanitize-drivers/test_ds18b20_driver_contract
+	./build/host-sanitize-drivers/test_ds18b20_driver_contract
+
+host-sanitize-bh1750-test: host-sanitize-cc-check
+	@echo "host-sanitize-bh1750-test: BH1750 driver and actor contracts under ASAN/UBSAN"
+	@mkdir -p build/host-sanitize-drivers
+	$(CC) $(HOST_SANITIZE_CFLAGS) drivers/src/ev_bh1750_driver.c tests/host/fakes/fake_i2c_port.c tests/host/test_bh1750_driver_contract.c $(HOST_SANITIZE_LDFLAGS) $(LDFLAGS) -o build/host-sanitize-drivers/test_bh1750_driver_contract
+	./build/host-sanitize-drivers/test_bh1750_driver_contract
+	$(CC) $(HOST_SANITIZE_CFLAGS) core/src/ev_event_catalog.c core/src/ev_actor_catalog.c core/src/ev_msg.c core/src/ev_dispose.c core/src/ev_publish.c core/src/ev_route_table.c drivers/src/ev_bh1750_driver.c actors/device/ev_bh1750_actor.c tests/host/fakes/fake_i2c_port.c tests/host/test_bh1750_actor_contract.c $(HOST_SANITIZE_LDFLAGS) $(LDFLAGS) -o build/host-sanitize-drivers/test_bh1750_actor_contract
+	./build/host-sanitize-drivers/test_bh1750_actor_contract
+
+host-sanitize-bh1750-actor-test: host-sanitize-cc-check
+	@echo "host-sanitize-bh1750-actor-test: BH1750 actor contract under ASAN/UBSAN"
+	@mkdir -p build/host-sanitize-actors
+	$(CC) $(HOST_SANITIZE_CFLAGS) core/src/ev_event_catalog.c core/src/ev_actor_catalog.c core/src/ev_msg.c core/src/ev_dispose.c core/src/ev_publish.c core/src/ev_route_table.c drivers/src/ev_bh1750_driver.c actors/device/ev_bh1750_actor.c tests/host/fakes/fake_i2c_port.c tests/host/test_bh1750_actor_contract.c $(HOST_SANITIZE_LDFLAGS) $(LDFLAGS) -o build/host-sanitize-actors/test_bh1750_actor_contract
+	./build/host-sanitize-actors/test_bh1750_actor_contract
+
+host-sanitize-drivers-test: host-sanitize-cc-check host-sanitize-ds18b20-test host-sanitize-bh1750-test host-sanitize-bh1750-actor-test
+	@echo "host-sanitize-drivers-test: driver contracts under ASAN/UBSAN"
+	@mkdir -p build/host-sanitize-drivers
+	$(CC) $(HOST_SANITIZE_CFLAGS) drivers/src/ev_driver_layer.c tests/host/test_driver_layer_contract.c $(HOST_SANITIZE_LDFLAGS) $(LDFLAGS) -o build/host-sanitize-drivers/test_driver_layer_contract
+	./build/host-sanitize-drivers/test_driver_layer_contract
+	@echo "host-sanitize-drivers-test passed"
 
 host-tsan-cc-check:
 	@mkdir -p build/host-tsan
@@ -325,6 +373,27 @@ i2c-sdk-bug-avoidance-gate:
 	$(PYTHON) tools/audit/i2c_sdk_bug_avoidance_check.py --self-test
 	$(PYTHON) tools/audit/i2c_sdk_bug_avoidance_check.py
 
+no-direct-sdk-i2c-gate: i2c-sdk-bug-avoidance-gate
+	@echo "no-direct-sdk-i2c-gate passed"
+
+board-wiring-truth-gate:
+	$(PYTHON) tools/audit/board_wiring_truth.py --self-test
+	$(PYTHON) tools/audit/board_wiring_truth.py
+
+# Compatibility alias retained for Phase 4/5 operator scripts.
+board-wiring-contract-gate: board-wiring-truth-gate
+	@echo "board-wiring-contract-gate passed via board-wiring-truth-gate"
+
+i2c-speed-policy-gate:
+	$(PYTHON) tools/audit/i2c_speed_policy.py --self-test
+	$(PYTHON) tools/audit/i2c_speed_policy.py
+
+i2c-logic-analyzer-contract-self-test:
+	$(PYTHON) tools/audit/hil_contracts.py --i2c-logic-analyzer-self-test
+
+onewire-timing-contract-self-test:
+	$(PYTHON) tools/audit/hil_contracts.py --onewire-timing-self-test
+
 hotpath-zero-alloc-gate: routegen $(BUILD_DIR)/test_zero_copy_payload_contract
 	$(PYTHON) tools/audit/hotpath_zero_alloc_contract.py
 	./$(BUILD_DIR)/test_zero_copy_payload_contract
@@ -369,6 +438,20 @@ actor-module-consistency: routegen
 descriptor-contracts: actor-module-consistency
 	@echo "descriptor-contracts passed"
 
+route-registry-integration-gate: $(BUILD_DIR)/test_route_registry_integration
+	./$(BUILD_DIR)/test_route_registry_integration
+	@echo "route-registry-integration-gate passed"
+
+# Compatibility aliases for pure driver contracts.
+ds18b20-driver-test: $(BUILD_DIR)/test_ds18b20_driver_contract
+	./$(BUILD_DIR)/test_ds18b20_driver_contract
+
+bh1750-driver-test: $(BUILD_DIR)/test_bh1750_driver_contract
+	./$(BUILD_DIR)/test_bh1750_driver_contract
+
+bh1750-actor-test: $(BUILD_DIR)/test_bh1750_actor_contract
+	./$(BUILD_DIR)/test_bh1750_actor_contract
+
 privacy-classification-self-test:
 	$(PYTHON) tools/lib/ev_privacy_classification.py --self-test
 
@@ -390,13 +473,27 @@ architecture-layer-gate:
 	$(PYTHON) tools/audit/layer_boundary_policy.py --self-test
 	$(PYTHON) tools/audit/layer_boundary_policy.py
 
-sdk-project-warning-gate:
+sdk-project-warning-self-test:
 	$(PYTHON) tools/audit/sdk_warning_policy.py --self-test
-	@if [ -n "$${EV_SDK_BUILD_LOG:-}" ]; then $(PYTHON) tools/audit/sdk_warning_policy.py "$${EV_SDK_BUILD_LOG}"; else echo "sdk-project-warning-gate NO_LOG: set EV_SDK_BUILD_LOG to check a real SDK transcript"; fi
 
-runtime-eventflow-budget-gate:
+sdk-project-warning-gate: sdk-project-warning-self-test
+	@if [ -n "$${EV_SDK_BUILD_LOG:-}" ]; then \
+		$(PYTHON) tools/audit/sdk_warning_policy.py --project-only --latest-build-session --session-kind build --strict-build-session "$${EV_SDK_BUILD_LOG}"; \
+	else \
+		echo "sdk-project-warning-gate ENVIRONMENT_BLOCKED: EV_SDK_BUILD_LOG not set; SDK jobs must pass a fresh build log"; \
+		exit 77; \
+	fi
+
+sdk-project-warning-gate-real: sdk-project-warning-gate
+	@echo "sdk-project-warning-gate-real passed"
+
+runtime-eventflow-budget-self-test:
 	$(PYTHON) tools/perf/parse_eventflow_runtime_metrics.py --self-test
-	@if [ -n "$${EV_EVENTFLOW_METRICS_LOG:-}" ]; then $(PYTHON) tools/perf/parse_eventflow_runtime_metrics.py --log "$${EV_EVENTFLOW_METRICS_LOG}"; else echo "runtime-eventflow-budget-gate ENVIRONMENT_BLOCKED: EV_EVENTFLOW_METRICS_LOG not set"; exit 77; fi
+
+runtime-eventflow-budget-gate: runtime-eventflow-budget-self-test $(BUILD_DIR)/test_runtime_eventflow_metrics_marker
+	@mkdir -p build
+	./$(BUILD_DIR)/test_runtime_eventflow_metrics_marker | tee build/runtime-eventflow-metrics.log
+	$(PYTHON) tools/perf/parse_eventflow_runtime_metrics.py --log build/runtime-eventflow-metrics.log --json build/runtime-eventflow-metrics.json --require-real-sample
 
 public-release-safety-gate:
 	$(PYTHON) tools/audit/private_repo_secrets_policy.py --mode PUBLIC_RELEASE
@@ -407,6 +504,14 @@ memory-budget: routegen
 sdk-matrix-check:
 	$(PYTHON) tools/audit/sdk_matrix_check.py
 	$(PYTHON) tools/audit/sdk_target_defaults_check.py
+
+sdk-matrix-warning-policy-self-test:
+	$(PYTHON) tools/sdk_matrix.py self-test
+	$(PYTHON) tools/audit/sdk_warning_policy.py --self-test
+
+sdk-build-workflow-contract-gate:
+	$(PYTHON) tools/audit/sdk_build_workflow_contract.py --self-test
+	$(PYTHON) tools/audit/sdk_build_workflow_contract.py
 
 sdk-memory-matrix:
 	$(PYTHON) tools/sdk_memory_report.py --self-test
@@ -461,6 +566,22 @@ evidence-redaction-check:
 evidence-redaction-scrub:
 	$(PYTHON) tools/release/redact_existing_evidence.py --mode "$${EV_REPO_MODE:-PRIVATE_REPO}" --apply
 
+repair-evidence-redaction: evidence-redaction-scrub
+	@echo "repair-evidence-redaction completed; review and commit sanitized evidence before running release gates"
+
+patch-hygiene-gate:
+	$(PYTHON) tools/audit/patch_hygiene.py --self-test
+	$(PYTHON) tools/audit/patch_hygiene.py
+
+secret-safe-working-tree-clean-gate-self-test:
+	$(PYTHON) tools/audit/secret_safe_worktree.py --self-test
+
+secret-safe-working-tree-clean-gate:
+	$(PYTHON) tools/audit/secret_safe_worktree.py
+
+working-tree-clean-gate: secret-safe-working-tree-clean-gate
+	@echo "working-tree-clean-gate passed (secret-safe)"
+
 evidence-importer-hardening-gate: redaction-self-test
 	$(PYTHON) tools/release/capture_sdk_evidence.py --self-test
 	$(PYTHON) tools/release/import_sdk_evidence.py --self-test
@@ -491,14 +612,18 @@ hil-atnel-i2c-evidence:
 	fi
 
 hil-atnel-i2c-gate:
-	@if [ -n "$${EV_HIL_ATNEL_I2C_SERIAL_LOG:-}" ]; then $(PYTHON) tools/hil/parse_atnel_i2c_hil_log.py --log "$${EV_HIL_ATNEL_I2C_SERIAL_LOG}"; else $(PYTHON) tools/hil/parse_atnel_i2c_hil_log.py --environment-blocked; fi
+	@if [ -n "$${EV_HIL_ATNEL_I2C_SERIAL_LOG:-}" ]; then $(PYTHON) tools/hil/parse_atnel_i2c_hil_log.py --check-only --log "$${EV_HIL_ATNEL_I2C_SERIAL_LOG}"; else $(PYTHON) tools/hil/parse_atnel_i2c_hil_log.py --check-only --environment-blocked; fi
 
 hil-atnel-onewire-evidence:
 	$(PYTHON) tools/hil/parse_atnel_onewire_hil_log.py --self-test
 	@if [ -n "$${EV_HIL_ATNEL_ONEWIRE_SERIAL_LOG:-}" ]; then $(PYTHON) tools/hil/parse_atnel_onewire_hil_log.py --log "$${EV_HIL_ATNEL_ONEWIRE_SERIAL_LOG}"; else $(PYTHON) tools/hil/parse_atnel_onewire_hil_log.py --environment-blocked || true; fi
 
 hil-atnel-onewire-gate:
-	@if [ -n "$${EV_HIL_ATNEL_ONEWIRE_SERIAL_LOG:-}" ]; then $(PYTHON) tools/hil/parse_atnel_onewire_hil_log.py --log "$${EV_HIL_ATNEL_ONEWIRE_SERIAL_LOG}"; else $(PYTHON) tools/hil/parse_atnel_onewire_hil_log.py --environment-blocked; fi
+	@if [ -n "$${EV_HIL_ATNEL_ONEWIRE_SERIAL_LOG:-}" ]; then $(PYTHON) tools/hil/parse_atnel_onewire_hil_log.py --check-only --log "$${EV_HIL_ATNEL_ONEWIRE_SERIAL_LOG}"; else $(PYTHON) tools/hil/parse_atnel_onewire_hil_log.py --check-only --environment-blocked; fi
+
+hil-logic-analyzer-readiness-gate:
+	$(PYTHON) tools/hil/logic_analyzer_readiness.py --self-test
+	@if [ -n "$${EV_HIL_LOGIC_ANALYZER_MANIFEST:-}" ]; then $(PYTHON) tools/hil/logic_analyzer_readiness.py --manifest "$${EV_HIL_LOGIC_ANALYZER_MANIFEST}"; else $(PYTHON) tools/hil/logic_analyzer_readiness.py; fi
 
 hil-wemos-smoke-flash:
 	@if [ "$${EV_HIL_ALLOW_FLASH:-}" = "1" ]; then ./tools/fw wemos-smoke-flash; else echo "hil-wemos-smoke-flash ENVIRONMENT_BLOCKED: set EV_HIL_ALLOW_FLASH=1 and attach Wemos target"; exit 77; fi
@@ -648,14 +773,50 @@ sdk-memory-release-gate:
 	$(PYTHON) tools/sdk_memory_matrix.py --self-test
 	EV_SDK_MEMORY_REQUIRE_PASS=1 $(PYTHON) tools/sdk_memory_matrix.py
 
+release-archive-workflow-contract-gate:
+	$(PYTHON) tools/audit/release_archive_workflow_contract.py --self-test
+	$(PYTHON) tools/audit/release_archive_workflow_contract.py
+
+release-archive-content-scope-gate:
+	$(PYTHON) tools/audit/release_archive_content_scope.py --self-test
+	$(PYTHON) tools/audit/release_archive_content_scope.py
+
+release-archive-self-clean-gate:
+	$(PYTHON) tools/release/verify_archive_self_clean.py --self-test
+	@if [ -n "$${EV_RELEASE_ARCHIVE:-}" ]; then \
+		$(PYTHON) tools/release/verify_archive_self_clean.py --mode "$${EV_REPO_MODE:-PRIVATE_REPO}" "$${EV_RELEASE_ARCHIVE}"; \
+	elif [ -n "$${EV_RELEASE_ARCHIVE_PATH:-}" ]; then \
+		$(PYTHON) tools/release/verify_archive_self_clean.py --mode "$${EV_REPO_MODE:-PRIVATE_REPO}" "$${EV_RELEASE_ARCHIVE_PATH}"; \
+	else \
+		echo "release-archive-self-clean-gate SELF_TEST_PASS: set EV_RELEASE_ARCHIVE_PATH to verify a real archive"; \
+	fi
+
+runtime-soak-contract-self-test:
+	$(PYTHON) tools/perf/parse_runtime_soak_log.py --self-test
+
+wemos-runtime-soak-gate: runtime-soak-contract-self-test
+	@if [ -n "$${EV_RUNTIME_SOAK_LOG:-}" ]; then $(PYTHON) tools/perf/parse_runtime_soak_log.py --log "$${EV_RUNTIME_SOAK_LOG}"; else echo "wemos-runtime-soak-gate ENVIRONMENT_BLOCKED: EV_RUNTIME_SOAK_LOG not set; provide WiFi-on runtime soak transcript"; exit 77; fi
+
+sdk-memory-stack-regression-self-test:
+	$(PYTHON) tools/audit/sdk_memory_stack_regression.py --self-test
+
+sdk-memory-stack-regression-gate: sdk-memory-stack-regression-self-test
+	$(PYTHON) tools/audit/sdk_memory_stack_regression.py
+
 .NOTPARALLEL: quality-gate
-quality-gate: clean redaction-self-test evidence-redaction-scrub evidence-redaction-check routegen-check static-contracts architecture-layer-gate sdk-project-warning-gate i2c-sdk-bug-avoidance-gate hotpath-zero-alloc-gate actor-module-consistency descriptor-contracts private-repo-secrets-policy release-evidence-contracts release-report-consistency-gate qos-contracts memory-budget host-test property-test
+quality-gate: clean redaction-self-test evidence-redaction-check routegen-check static-contracts board-wiring-truth-gate board-wiring-contract-gate i2c-speed-policy-gate i2c-logic-analyzer-contract-self-test onewire-timing-contract-self-test architecture-layer-gate sdk-project-warning-self-test sdk-build-workflow-contract-gate patch-hygiene-gate secret-safe-working-tree-clean-gate-self-test runtime-eventflow-budget-gate i2c-sdk-bug-avoidance-gate hotpath-zero-alloc-gate actor-module-consistency descriptor-contracts route-registry-integration-gate private-repo-secrets-policy release-evidence-contracts release-report-consistency-gate qos-contracts memory-budget ds18b20-driver-test bh1750-driver-test bh1750-actor-test runtime-soak-contract-self-test sdk-memory-stack-regression-self-test release-archive-workflow-contract-gate release-archive-content-scope-gate release-archive-self-clean-gate host-sanitize-drivers-test host-test property-test
 	@echo "quality-gate passed"
 
-release-gate: quality-gate docgen docs
+release-gate: quality-gate docgen docs secret-safe-working-tree-clean-gate
 	@echo "release-gate passed"
 
-production-release-gate: release-gate sdk-matrix-check sdk-memory-matrix
+release-prearchive-gate: evidence-redaction-check private-repo-secrets-policy release-evidence-contracts release-report-consistency-gate routegen-check static-contracts actor-module-consistency descriptor-contracts route-registry-integration-gate patch-hygiene-gate host-test property-test host-strict-test host-sanitize-test release-archive-workflow-contract-gate release-archive-content-scope-gate release-archive-self-clean-gate secret-safe-working-tree-clean-gate
+	@echo "release-prearchive-gate passed"
+
+release-archive: release-prearchive-gate
+	./tools/fw release-archive --from-make
+
+production-release-gate: release-gate sdk-matrix-check sdk-matrix-warning-policy-self-test sdk-build-workflow-contract-gate sdk-memory-matrix sdk-memory-stack-regression-self-test
 	$(PYTHON) tools/release_report.py
 	@echo "production-release-gate host/docs/matrix checks passed; HIL remains opt-in unless EV_REQUIRE_HIL=1 is handled by external runner"
 

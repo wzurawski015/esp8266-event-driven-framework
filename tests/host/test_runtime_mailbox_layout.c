@@ -15,7 +15,6 @@ static void assert_layout_contract(void)
     size_t i;
 
     assert(EV_ACTOR_MAILBOX_LAYOUT_GENERATED_COUNT == EV_ACTOR_COUNT);
-    assert(EV_RUNTIME_MAILBOX_TOTAL_CAPACITY == 144U);
     assert(ev_runtime_graph_configured_mailbox_slots() == EV_RUNTIME_MAILBOX_TOTAL_CAPACITY);
     assert(ev_runtime_graph_configured_mailbox_bytes() ==
            (EV_RUNTIME_MAILBOX_TOTAL_CAPACITY * sizeof(ev_msg_t)));

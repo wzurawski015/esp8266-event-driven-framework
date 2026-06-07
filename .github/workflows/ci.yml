@@ -24,10 +24,13 @@ jobs:
         run: ./tools/fw docgen
 
       - name: Verify generated artifacts are checked in
-        run: git diff --exit-code
+        run: make secret-safe-working-tree-clean-gate
 
       - name: Run host release gate
         run: ./tools/fw release-gate
+
+      - name: Verify release gate left the tree clean
+        run: make secret-safe-working-tree-clean-gate
 
   sdk-target-smoke:
     runs-on: ubuntu-latest
@@ -44,7 +47,11 @@ jobs:
         run: ./tools/fw sdk-defconfig
 
       - name: Build generic ESP8266 golden-reference target
-        run: ./tools/fw sdk-build
+        run: |
+          set -o pipefail
+          mkdir -p build
+          ./tools/fw sdk-build-one esp8266_generic_dev 2>&1 | tee build/sdk-current.log
+          python3 tools/audit/sdk_warning_policy.py --project-only --latest-build-session --session-kind build --strict-build-session --target esp8266_generic_dev build/sdk-current.log
 
       - name: Clean generic target build outputs
         run: ./tools/fw sdk-clean-target
@@ -53,7 +60,11 @@ jobs:
         run: ./tools/fw sdk-distclean
 
       - name: Rebuild generic target after distclean
-        run: ./tools/fw sdk-build
+        run: |
+          set -o pipefail
+          mkdir -p build
+          ./tools/fw sdk-build-one esp8266_generic_dev 2>&1 | tee build/sdk-current-rebuild.log
+          python3 tools/audit/sdk_warning_policy.py --project-only --latest-build-session --session-kind build --strict-build-session --target esp8266_generic_dev build/sdk-current-rebuild.log
 
   sdk-atnel-target-smoke:
     runs-on: ubuntu-latest
@@ -71,7 +82,11 @@ jobs:
       - name: Build ATNEL target
         env:
           FW_SDK_PROJECT_DIR: adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard
-        run: ./tools/fw sdk-build
+        run: |
+          set -o pipefail
+          mkdir -p build
+          ./tools/fw sdk-build-one atnel_air_esp_motherboard 2>&1 | tee build/sdk-atnel-current.log
+          python3 tools/audit/sdk_warning_policy.py --project-only --latest-build-session --session-kind build --strict-build-session --target atnel_air_esp_motherboard build/sdk-atnel-current.log
 
       - name: Clean ATNEL target build outputs
         env:
@@ -86,4 +101,8 @@ jobs:
       - name: Rebuild ATNEL target after distclean
         env:
           FW_SDK_PROJECT_DIR: adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard
-        run: ./tools/fw sdk-build
+        run: |
+          set -o pipefail
+          mkdir -p build
+          ./tools/fw sdk-build-one atnel_air_esp_motherboard 2>&1 | tee build/sdk-atnel-current-rebuild.log
+          python3 tools/audit/sdk_warning_policy.py --project-only --latest-build-session --session-kind build --strict-build-session --target atnel_air_esp_motherboard build/sdk-atnel-current-rebuild.log

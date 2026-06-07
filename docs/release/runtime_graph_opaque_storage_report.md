@@ -32,11 +32,11 @@ or capability snapshots.
 
 ## RAM impact
 
-The internal implementation remains 23336 bytes on the host probe. The public opaque wrapper is
-23344 bytes because the alignment union rounds the object to conservative host alignment. The
-implementation payload therefore remains unchanged, with 8 bytes of host alignment padding.
+After adding the optional BH1750 actor, the internal implementation is 24280 bytes on
+the host probe. The public opaque wrapper is 24304 bytes, leaving 24 bytes of
+conservative alignment/padding headroom without exposing runtime internals.
 
-Mailbox storage remains exact-layout based: 144 message slots and 10368 bytes.
+Mailbox storage remains exact-layout based: 152 message slots and 10944 bytes.
 
 ## Hot path impact
 

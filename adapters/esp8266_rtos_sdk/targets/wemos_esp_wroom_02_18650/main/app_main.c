@@ -37,6 +37,7 @@ static const ev_demo_app_board_profile_t k_wemos_minimal_runtime_profile = {
     .mcp23008_addr_7bit = EV_BOARD_MCP23008_ADDR_7BIT,
     .rtc_addr_7bit = EV_BOARD_RTC_ADDR_7BIT,
     .oled_addr_7bit = EV_BOARD_OLED_ADDR_7BIT,
+    .bh1750_addr_7bit = EV_BOARD_BH1750_ADDR_7BIT,
     .oled_controller = EV_BOARD_OLED_CONTROLLER,
     .watchdog_timeout_ms = 0U,
     .remote_command_token = EV_BOARD_NET_COMMAND_TOKEN,

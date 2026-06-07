@@ -21,6 +21,7 @@ typedef struct ev_esp8266_onewire_hil_config {
     uint32_t ds18b20_read_iterations;
     uint32_t max_reset_critical_section_us;
     uint32_t max_bit_critical_section_us;
+    int dq_gpio;
     int irq_flood_output_gpio;
     ev_irq_line_id_t irq_flood_line_id;
 } ev_esp8266_onewire_hil_config_t;

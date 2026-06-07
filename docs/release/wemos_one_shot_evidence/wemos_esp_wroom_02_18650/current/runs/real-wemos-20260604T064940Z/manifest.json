@@ -27,6 +27,16 @@
     "operator_acknowledged_private_repo_secrets": true,
     "target": "wemos_esp_wroom_02_18650"
   },
+  "privacy_classes": {
+    "excerpt.md": "PUBLIC_SANITIZED",
+    "parsed.json": "PUBLIC_SANITIZED",
+    "serial.log": "PRIVATE_LAB_RAW_EVIDENCE",
+    "serial.normalized.log": "PUBLIC_SANITIZED",
+    "serial.raw.log": "PRIVATE_LAB_RAW_EVIDENCE",
+    "serial.redacted.log": "PUBLIC_SANITIZED",
+    "target_timing.json": "PUBLIC_SANITIZED",
+    "target_timing_report.md": "PUBLIC_SANITIZED"
+  },
   "reason": "one or more workflow stages failed",
   "run_dir": "docs/release/wemos_one_shot_evidence/wemos_esp_wroom_02_18650/current/runs/real-wemos-20260604T064940Z",
   "run_id": "real-wemos-20260604T064940Z",
@@ -117,6 +127,8 @@
       "exit_code": 0,
       "log": "serial.raw.log",
       "name": "SERIAL_MONITOR",
+      "privacy_class": "PRIVATE_LAB_RAW_EVIDENCE",
+      "public_export": false,
       "reason": "command completed",
       "sha256": "13eec975f84c4d1d0ec442df2fe3e70b0c5d1999a1883fb28fe0d7523294e9b3",
       "started_utc": "2026-06-04T06:50:30Z",
@@ -140,7 +152,7 @@
       "log": "parsed.json",
       "name": "PARSE_SMOKE",
       "reason": "parse_wemos_smoke_log.py",
-      "sha256": "4a1ad1902b6f534707380e9060f36aeb26b4e816fb60ec6e34de03c9608295a0",
+      "sha256": "a52e56883a262d2ecb87ac7563027aee8476c6f422c4c2175df2189e2a6802c2",
       "started_utc": "2026-06-04T06:50:37Z",
       "status": "FAIL"
     },
@@ -151,7 +163,7 @@
       "log": "target_timing.json",
       "name": "PARSE_TARGET_TIMING",
       "reason": "parse_esp8266_target_timing.py",
-      "sha256": "71cbb72949d0c8f497ea45cb6477a84b5c7b593be8bc19de6256fa66040a7a0b",
+      "sha256": "a52e56883a262d2ecb87ac7563027aee8476c6f422c4c2175df2189e2a6802c2",
       "started_utc": "2026-06-04T06:50:37Z",
       "status": "ENVIRONMENT_BLOCKED"
     }
@@ -163,7 +175,7 @@
     "p99_ms": null,
     "path": "target_timing.json",
     "samples": 0,
-    "sha256": "71cbb72949d0c8f497ea45cb6477a84b5c7b593be8bc19de6256fa66040a7a0b",
+    "sha256": "a52e56883a262d2ecb87ac7563027aee8476c6f422c4c2175df2189e2a6802c2",
     "status": "INSUFFICIENT_SAMPLES"
   },
   "updated_utc": "2026-06-04T06:50:37Z",
@@ -189,7 +201,7 @@
     "runtime_ready_marker_seen": false,
     "serial_log": "docs/release/wemos_one_shot_evidence/wemos_esp_wroom_02_18650/current/runs/real-wemos-20260604T064940Z/serial.log",
     "serial_normalized_log": "docs/release/wemos_one_shot_evidence/wemos_esp_wroom_02_18650/current/runs/real-wemos-20260604T064940Z/serial.normalized.log",
-    "serial_normalized_sha256": "13eec975f84c4d1d0ec442df2fe3e70b0c5d1999a1883fb28fe0d7523294e9b3",
+    "serial_normalized_sha256": "eaa1489a7a4eb905d040783d794b69b335f0143fc94edb74227f45b4b29c7629",
     "serial_raw_log": "docs/release/wemos_one_shot_evidence/wemos_esp_wroom_02_18650/current/runs/real-wemos-20260604T064940Z/serial.raw.log",
     "serial_raw_sha256": "13eec975f84c4d1d0ec442df2fe3e70b0c5d1999a1883fb28fe0d7523294e9b3",
     "serial_sha256": "13eec975f84c4d1d0ec442df2fe3e70b0c5d1999a1883fb28fe0d7523294e9b3",

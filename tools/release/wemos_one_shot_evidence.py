@@ -166,6 +166,28 @@ def run_command(name: str, argv: list[str], run_dir: Path, log_name: str, env: d
     return st
 
 
+def sdk_build_command(target: str) -> list[str]:
+    return ["./tools/fw", "sdk-build-one", target]
+
+
+def sdk_warning_policy_command(target: str, build_log: Path, output_json: Path) -> list[str]:
+    return [
+        sys.executable,
+        "tools/audit/sdk_warning_policy.py",
+        "--project-only",
+        "--latest-build-session",
+        "--session-kind",
+        "build",
+        "--strict-build-session",
+        "--target",
+        target,
+        "--json",
+        str(output_json),
+        str(build_log),
+    ]
+
+
+
 def stage_dict(st: Stage) -> dict[str, Any]:
     return {
         "name": st.name,
@@ -274,6 +296,48 @@ def run_parser(argv: list[str]) -> tuple[str, dict[str, Any]]:
     return status, {"argv": argv, "returncode": proc.returncode, "stdout_tail": proc.stdout[-2000:], "stderr_tail": proc.stderr[-2000:]}
 
 
+def parse_sdk_build_log(log_path: Path, target: str) -> dict[str, Any]:
+    text = log_path.read_text(encoding="utf-8", errors="ignore") if log_path.is_file() else ""
+    match = CANONICAL_SDK_RE.search(text)
+    if match is None:
+        return {
+            "status": "ENVIRONMENT_BLOCKED",
+            "build_status": "UNKNOWN",
+            "warning_policy_status": "NOT_RUN",
+            "warning_count": 0,
+            "log_path": log_path.name,
+            "reason": "no complete EV_SDK_BUILD_BEGIN/END block found",
+            "target": target,
+        }
+    build_status = match.group("status")
+    rc = int(match.group("rc"))
+    return {
+        "status": "PASS" if build_status == "PASS" and rc == 0 else "FAIL",
+        "build_status": build_status,
+        "build_rc": rc,
+        "warning_policy_status": "NOT_RUN",
+        "warning_count": 0,
+        "log_path": log_path.name,
+        "target": match.group("target"),
+        "reason": "markerized sdk-build-one evidence parsed",
+    }
+
+
+def update_sdk_warning_policy(run_dir: Path, target: str, sdk: dict[str, Any]) -> Stage:
+    warning_log = "sdk-warning-policy.log"
+    result_path = run_dir / "sdk_warning_policy.json"
+    stage = run_command("SDK_WARNING_POLICY", sdk_warning_policy_command(target, run_dir / "build.log", result_path), run_dir, warning_log)
+    result = parse_json(result_path) or {}
+    sdk["warning_policy_status"] = stage.status
+    sdk["warning_count"] = int(result.get("warning_count", 0) or 0)
+    sdk["warning_policy_json_path"] = "sdk_warning_policy.json" if result_path.is_file() else ""
+    sdk["session_mode"] = result.get("session_mode", "")
+    sdk["status"] = "PASS" if sdk.get("build_status") == "PASS" and stage.status == "PASS" else ("ENVIRONMENT_BLOCKED" if "ENVIRONMENT_BLOCKED" in {sdk.get("status"), stage.status} else "FAIL")
+    if stage.status != "PASS":
+        sdk["reason"] = stage.reason
+    return stage
+
+
 def capture(args: argparse.Namespace, *, deepsleep: bool = False) -> int:
     target = args.target
     run_id = make_run_id(target)
@@ -309,14 +373,17 @@ def capture(args: argparse.Namespace, *, deepsleep: bool = False) -> int:
     secrets = run_command("SECRETS_STATUS", ["./tools/fw", "wifi-secrets-status"], run_dir, "secrets-status.log")
     add_stage(secrets)
 
-    # Build path: safe to try. If SDK/docker is missing, mark blocked/fail honestly.
+    # Build path: safe to try. Markerized sdk-build-one gives EV_SDK_BUILD_BEGIN/END evidence; if SDK/docker is missing, mark blocked/fail honestly.
     if os.environ.get("EV_WEMOS_ONE_SHOT_DISTCLEAN", "1") == "1":
         add_stage(run_command("DISTCLEAN", ["./tools/fw", "sdk-distclean"], run_dir, "distclean.log"))
     else:
         add_stage(Stage(name="DISTCLEAN", status="NOT_RUN", started_utc=utc_now(), ended_utc=utc_now(), reason="EV_WEMOS_ONE_SHOT_DISTCLEAN=0"))
-    add_stage(run_command("DEFCONFIG", ["./tools/fw", "sdk-defconfig"], run_dir, "defconfig.log"))
-    add_stage(run_command("BUILD", ["./tools/fw", "sdk-build"], run_dir, "build.log"))
-    add_stage(run_command("SIZE_MAP_STACK", ["./tools/fw", "sdk-memory-report"], run_dir, "size.log"))
+    add_stage(Stage(name="DEFCONFIG", status="NOT_RUN", started_utc=utc_now(), ended_utc=utc_now(), reason="covered by markerized sdk-build-one", log="defconfig.log"))
+    build_stage = run_command("BUILD", sdk_build_command(target), run_dir, "build.log")
+    add_stage(build_stage)
+    manifest["sdk"] = parse_sdk_build_log(run_dir / "build.log", target)
+    add_stage(update_sdk_warning_policy(run_dir, target, manifest["sdk"]))
+    add_stage(Stage(name="SIZE_MAP_STACK", status="NOT_RUN", started_utc=utc_now(), ended_utc=utc_now(), reason="sdk-build-one runs sdk-memory-report inside build.log", log="size.log"))
     # Placeholders reserved for stack/map summaries. They are not PASS by themselves.
     if not (run_dir / "map_summary.txt").exists():
         write_text(run_dir / "map_summary.txt", "MAP_SUMMARY_NOT_CAPTURED reason=use SDK importer/capture on real build artifacts\n")
@@ -453,6 +520,10 @@ def self_test() -> int:
         ensure_new_run_dir(run)
         intent = {"flash_requested": True, "monitor_requested": True, "operator_acknowledged_private_repo_secrets": True, "operator_acknowledged_no_false_pass": True}
         write_text(run / "operator_intent.json", json.dumps(intent))
+        assert sdk_build_command(TARGET_DEFAULT) == ["./tools/fw", "sdk-build-one", TARGET_DEFAULT]
+        warning_cmd = sdk_warning_policy_command(TARGET_DEFAULT, run / "build.log", run / "sdk_warning_policy.json")
+        assert "--strict-build-session" in warning_cmd
+        assert TARGET_DEFAULT in warning_cmd
         flash = """esptool.py v3.3\nChip is ESP8266EX\nWriting at 0x00000000... (100 %)\nHash of data verified.\nLeaving...\nHard resetting via RTS pin...\n"""
         serial = """EV_WEMOS_SMOKE_TICK seq=1\nEV_WEMOS_SMOKE_SNAPSHOT seq=1\nEV_WEMOS_SMOKE_TICK seq=2\nEV_WEMOS_SMOKE_SNAPSHOT seq=2\nEV_WEMOS_SMOKE_TICK seq=3\nEV_WEMOS_SMOKE_SNAPSHOT seq=3\n^C\n--- exit ---\n[process exited with code 130 (0x00000082)]\n"""
         write_text(run / "flash.log", flash)
@@ -463,7 +534,21 @@ def self_test() -> int:
         assert status == "PASS"
         flash_json = parse_json(run / "flash_evidence.json") or {}
         smoke_json = parse_json(run / "parsed.json") or {}
-        manifest = {"target": TARGET_DEFAULT, "run_id": "test-run", "operator_intent": intent, "stages": [], "sdk": {"status": "PASS"}, "flash": flash_json, "wemos_smoke": smoke_json, "deep_sleep": {"status": "NOT_RUN"}, "target_timing": {"status": "PASS", "path": "target_timing.json", "samples": 10}}
+        build_log = "\n".join([
+            "EV_SDK_BUILD_TARGET=wemos_esp_wroom_02_18650",
+            "EV_SDK_BUILD_PROJECT=adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650",
+            "EV_SDK_BUILD_VARIANT=default",
+            "EV_SDK_BUILD_BEGIN",
+            "EV_SDK_BUILD_STATUS=PASS",
+            "EV_SDK_BUILD_RC=0",
+            "EV_SDK_BUILD_END",
+        ])
+        write_text(run / "build.log", build_log)
+        sdk_info = parse_sdk_build_log(run / "build.log", TARGET_DEFAULT)
+        assert sdk_info["build_status"] == "PASS"
+        bad_info = parse_sdk_build_log(run / "missing-markers.log", TARGET_DEFAULT)
+        assert bad_info["status"] == "ENVIRONMENT_BLOCKED"
+        manifest = {"target": TARGET_DEFAULT, "run_id": "test-run", "operator_intent": intent, "stages": [], "sdk": sdk_info, "flash": flash_json, "wemos_smoke": smoke_json, "deep_sleep": {"status": "NOT_RUN"}, "target_timing": {"status": "PASS", "path": "target_timing.json", "samples": 10}}
         write_manifest(run, manifest)
         assert (run / "manifest.json").is_file()
         assert "PASS" in (run / "manifest.json").read_text(encoding="utf-8")

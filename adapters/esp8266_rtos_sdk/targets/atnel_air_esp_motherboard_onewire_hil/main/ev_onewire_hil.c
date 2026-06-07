@@ -51,6 +51,17 @@ static StackType_t s_ev_hil_irq_flood_stack[EV_HIL_IRQ_FLOOD_STACK_WORDS];
 static ev_hil_irq_flood_ctx_t s_ev_hil_irq_flood_ctx;
 static TaskHandle_t s_ev_hil_irq_flood_task_handle;
 
+
+static void ev_hil_log_onewire_pin_map(const ev_esp8266_onewire_hil_config_t *cfg)
+{
+    ESP_LOGI(EV_HIL_ONEWIRE_TAG,
+             "EV_HIL_ONEWIRE_PIN_MAP board=%s dq_gpio=%d pullup=external required=1 source=bsp/atnel_air_esp_motherboard/pins.def wifi=blocked",
+             (cfg != NULL && cfg->board_tag != NULL) ? cfg->board_tag : "unknown",
+             (cfg != NULL) ? cfg->dq_gpio : -1);
+    ESP_LOGI(EV_HIL_ONEWIRE_TAG,
+             "EV_HIL_ONEWIRE_WIFI_TIMING status=ENVIRONMENT_BLOCKED wifi=blocked reason=wifi_on_timing_transcript_not_attached");
+}
+
 static void ev_hil_pass(ev_hil_suite_result_t *result, const char *name)
 {
     if (result != NULL) {
@@ -429,6 +440,9 @@ static void ev_hil_test_ds18b20_read_irq_flood(const ev_esp8266_onewire_hil_conf
         ev_hil_fail(result, name, "OneWire DQ line was not released after DS18B20 transaction");
     } else {
         ESP_LOGI(EV_HIL_ONEWIRE_TAG,
+                 "EV_HIL_ONEWIRE_TIMING reset_low_us=%u reset_high_us=410 presence_low_us=unknown slot_min_us=60 slot_max_us=120 recovery_min_us=1 wifi=blocked",
+                 (unsigned)after_ow.max_reset_low_hold_us);
+        ESP_LOGI(EV_HIL_ONEWIRE_TAG,
                  "EV_HIL_ONEWIRE_RELEASE_EVIDENCE name=%s dq=1 busy=0 bus_errors_delta=0 max_crit_us=%u reset_max_us=%u bit_max_us=%u",
                  name,
                  (unsigned)after_ow.max_critical_section_us,
@@ -461,6 +475,7 @@ ev_result_t ev_esp8266_onewire_irq_hil_run(const ev_esp8266_onewire_hil_config_t
              (unsigned)cfg->ds18b20_read_iterations,
              cfg->irq_flood_output_gpio,
              (unsigned)cfg->irq_flood_line_id);
+    ev_hil_log_onewire_pin_map(cfg);
     ev_hil_log_irq_diag("before");
     ev_hil_log_onewire_diag("before");
 

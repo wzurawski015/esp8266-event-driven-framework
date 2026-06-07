@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "ev/ds18b20_actor.h"
+#include "ev/bh1750_actor.h"
 #include "ev/mcp23008_actor.h"
 #include "ev/rtc_actor.h"
 
@@ -188,6 +189,31 @@ static ev_result_t ev_network_actor_handle_inputs_changed(ev_network_actor_ctx_t
     return ev_network_publish_telemetry(ctx, topic, body, strlen(body), &ctx->last_inputs_telemetry_tick);
 }
 
+static ev_result_t ev_network_actor_handle_light_updated(ev_network_actor_ctx_t *ctx, const ev_msg_t *msg)
+{
+    const ev_light_payload_t *payload;
+    char topic[EV_NETWORK_TELEMETRY_TOPIC_MAX_BYTES];
+    char body[EV_NETWORK_TELEMETRY_PAYLOAD_MAX_BYTES];
+
+    if (!ev_network_message_has_exact_payload(msg, sizeof(ev_light_payload_t))) {
+        ++ctx->stats.bad_payloads;
+        return EV_ERR_CONTRACT;
+    }
+    payload = (const ev_light_payload_t *)ev_msg_payload_data(msg);
+    ++ctx->stats.telemetry_light_seen;
+    if (!ev_network_copy_topic(topic, sizeof(topic), "telemetry/light", sizeof("telemetry/light") - 1U) ||
+        !ev_network_format_checked(body,
+                                   sizeof(body),
+                                   "{\"mLux\":%lu,\"raw\":%lu}",
+                                   payload->milli_lux,
+                                   payload->raw)) {
+        ++ctx->stats.telemetry_seen;
+        ++ctx->stats.telemetry_dropped_oversize;
+        return EV_OK;
+    }
+    return ev_network_publish_telemetry(ctx, topic, body, strlen(body), &ctx->last_light_telemetry_tick);
+}
+
 ev_result_t ev_network_actor_init(ev_network_actor_ctx_t *ctx, ev_net_port_t *net_port)
 {
     if (ctx == NULL) {
@@ -200,6 +226,7 @@ ev_result_t ev_network_actor_init(ev_network_actor_ctx_t *ctx, ev_net_port_t *ne
     ctx->last_temp_telemetry_tick = EV_NETWORK_TELEMETRY_TICK_NEVER;
     ctx->last_time_telemetry_tick = EV_NETWORK_TELEMETRY_TICK_NEVER;
     ctx->last_inputs_telemetry_tick = EV_NETWORK_TELEMETRY_TICK_NEVER;
+    ctx->last_light_telemetry_tick = EV_NETWORK_TELEMETRY_TICK_NEVER;
     return EV_OK;
 }
 
@@ -335,6 +362,8 @@ ev_result_t ev_network_actor_handle(void *actor_context, const ev_msg_t *msg)
         return ev_network_actor_handle_time_updated(ctx, msg);
     case EV_MCP23008_INPUT_CHANGED:
         return ev_network_actor_handle_inputs_changed(ctx, msg);
+    case EV_LIGHT_UPDATED:
+        return ev_network_actor_handle_light_updated(ctx, msg);
     default:
         ++ctx->stats.bad_events;
         return EV_ERR_CONTRACT;

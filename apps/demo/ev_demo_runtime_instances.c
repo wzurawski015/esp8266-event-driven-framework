@@ -22,6 +22,8 @@ static int ev_demo_runtime_actor_enabled(const ev_demo_app_t *app, ev_actor_id_t
         return ev_demo_runtime_has_hardware(app, EV_SUPERVISOR_HW_RTC);
     case ACT_DS18B20:
         return ev_demo_runtime_has_hardware(app, EV_SUPERVISOR_HW_DS18B20);
+    case ACT_BH1750:
+        return ev_demo_runtime_has_hardware(app, EV_SUPERVISOR_HW_BH1750);
     case ACT_OLED:
         return ev_demo_runtime_has_hardware(app, EV_SUPERVISOR_HW_OLED);
     case ACT_WATCHDOG:
@@ -53,6 +55,8 @@ static void *ev_demo_runtime_context_for(ev_demo_app_t *app, ev_actor_id_t actor
         return &app->mcp23008_ctx;
     case ACT_DS18B20:
         return &app->ds18b20_ctx;
+    case ACT_BH1750:
+        return &app->bh1750_ctx;
     case ACT_OLED:
         return &app->oled_ctx;
     case ACT_SUPERVISOR:
@@ -87,6 +91,8 @@ static size_t ev_demo_runtime_context_size_for(ev_actor_id_t actor_id)
         return sizeof(ev_mcp23008_actor_ctx_t);
     case ACT_DS18B20:
         return sizeof(ev_ds18b20_actor_ctx_t);
+    case ACT_BH1750:
+        return sizeof(ev_bh1750_actor_ctx_t);
     case ACT_OLED:
         return sizeof(ev_oled_actor_ctx_t);
     case ACT_SUPERVISOR:
@@ -121,6 +127,8 @@ static ev_actor_handler_fn_t ev_demo_runtime_handler_for(ev_actor_id_t actor_id)
         return ev_mcp23008_actor_handle;
     case ACT_DS18B20:
         return ev_ds18b20_actor_handle;
+    case ACT_BH1750:
+        return ev_bh1750_actor_handle;
     case ACT_OLED:
         return ev_oled_actor_handle;
     case ACT_SUPERVISOR:
@@ -145,6 +153,8 @@ static ev_actor_quiescence_fn_t ev_demo_runtime_quiescence_for(ev_actor_id_t act
         return ev_demo_oled_quiescence;
     case ACT_DS18B20:
         return ev_demo_ds18b20_quiescence;
+    case ACT_BH1750:
+        return ev_demo_bh1750_quiescence;
     default:
         return NULL;
     }
@@ -193,7 +203,7 @@ static ev_result_t ev_demo_runtime_add_instance(ev_demo_app_t *app,
 size_t ev_demo_runtime_instance_count(const ev_demo_app_t *app)
 {
     static const ev_actor_id_t actors[] = {
-        ACT_RUNTIME, ACT_APP, ACT_DIAG, ACT_PANEL, ACT_RTC, ACT_MCP23008, ACT_DS18B20,
+        ACT_RUNTIME, ACT_APP, ACT_DIAG, ACT_PANEL, ACT_RTC, ACT_MCP23008, ACT_DS18B20, ACT_BH1750,
         ACT_OLED, ACT_SUPERVISOR, ACT_POWER, ACT_WATCHDOG, ACT_NETWORK, ACT_COMMAND,
     };
     size_t i;
@@ -212,7 +222,7 @@ ev_result_t ev_demo_runtime_instances_init(ev_demo_app_t *app,
                                           size_t *out_count)
 {
     static const ev_actor_id_t actors[] = {
-        ACT_RUNTIME, ACT_APP, ACT_DIAG, ACT_PANEL, ACT_RTC, ACT_MCP23008, ACT_DS18B20,
+        ACT_RUNTIME, ACT_APP, ACT_DIAG, ACT_PANEL, ACT_RTC, ACT_MCP23008, ACT_DS18B20, ACT_BH1750,
         ACT_OLED, ACT_SUPERVISOR, ACT_POWER, ACT_WATCHDOG, ACT_NETWORK, ACT_COMMAND,
     };
     size_t i;
@@ -252,6 +262,18 @@ ev_result_t ev_demo_ds18b20_quiescence(void *actor_context, ev_quiescence_report
     }
     if (ctx->conversion_pending) {
         report->sleep_blocker_actor_mask |= (1UL << ACT_DS18B20);
+    }
+    return EV_OK;
+}
+
+ev_result_t ev_demo_bh1750_quiescence(void *actor_context, ev_quiescence_report_t *report)
+{
+    const ev_bh1750_actor_ctx_t *ctx = (const ev_bh1750_actor_ctx_t *)actor_context;
+    if ((ctx == NULL) || (report == NULL)) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if (ctx->measurement_pending) {
+        report->sleep_blocker_actor_mask |= (1UL << ACT_BH1750);
     }
     return EV_OK;
 }

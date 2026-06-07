@@ -28,6 +28,9 @@ jobs:
       - name: Validate pinned SDK toolchain contract
         run: ./tools/fw sdk-check
 
+      - name: Validate SDK build warning workflow contract
+        run: make sdk-build-workflow-contract-gate
+
       - name: Build SDK target matrix
         run: ./tools/fw sdk-build-matrix
 

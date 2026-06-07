@@ -12,14 +12,15 @@ int main(void)
     size_t j;
     ev_route_span_t span;
 
-    assert(ev_route_count() == 53U);
+    assert(ev_route_count() == 58U);
     assert(ev_route_count_for_event(EV_BOOT_STARTED) == 1U);
-    assert(ev_route_count_for_event(EV_BOOT_COMPLETED) == 7U);
-    assert(ev_route_count_for_event(EV_TICK_1S) == 9U);
-    assert(ev_route_count_for_event(EV_TICK_100MS) == 3U);
+    assert(ev_route_count_for_event(EV_BOOT_COMPLETED) == 8U);
+    assert(ev_route_count_for_event(EV_TICK_1S) == 8U);
+    assert(ev_route_count_for_event(EV_TICK_100MS) == 5U);
     assert(ev_route_count_for_event(EV_GPIO_IRQ) == 2U);
     assert(ev_route_count_for_event(EV_TIME_UPDATED) == 2U);
     assert(ev_route_count_for_event(EV_TEMP_UPDATED) == 2U);
+    assert(ev_route_count_for_event(EV_LIGHT_UPDATED) == 2U);
     assert(ev_route_count_for_event(EV_MCP23008_INPUT_CHANGED) == 2U);
     assert(ev_route_count_for_event(EV_BUTTON_EVENT) == 1U);
     assert(ev_route_count_for_event(EV_MCP23008_READY) == 3U);
@@ -32,6 +33,7 @@ int main(void)
     assert(ev_route_count_for_event(EV_RTC_READY) == 1U);
     assert(ev_route_count_for_event(EV_OLED_READY) == 1U);
     assert(ev_route_count_for_event(EV_DS18B20_READY) == 1U);
+    assert(ev_route_count_for_event(EV_BH1750_READY) == 1U);
     assert(ev_route_count_for_event(EV_SYSTEM_READY) == 1U);
     assert(ev_route_count_for_event(EV_SYS_GOTO_SLEEP_CMD) == 1U);
     assert(ev_route_count_for_event(EV_NET_WIFI_UP) == 1U);
@@ -44,7 +46,7 @@ int main(void)
     assert(ev_route_count_for_event(EV_FAULT_REPORTED) == 1U);
 
     span = ev_route_span_for_event(EV_BOOT_COMPLETED);
-    assert(span.count == 7U);
+    assert(span.count == 8U);
     assert(span.start_index < ev_route_count());
     for (i = 0U; i < span.count; ++i) {
         const ev_route_t *route = ev_route_at(span.start_index + i);
@@ -59,13 +61,14 @@ int main(void)
     assert(ev_route_exists(EV_BOOT_COMPLETED, ACT_APP));
     assert(ev_route_exists(EV_BOOT_COMPLETED, ACT_MCP23008));
     assert(ev_route_exists(EV_BOOT_COMPLETED, ACT_DS18B20));
+    assert(ev_route_exists(EV_BOOT_COMPLETED, ACT_BH1750));
     assert(ev_route_exists(EV_BOOT_COMPLETED, ACT_OLED));
     assert(ev_route_exists(EV_BOOT_COMPLETED, ACT_RTC));
     assert(ev_route_exists(EV_BOOT_COMPLETED, ACT_SUPERVISOR));
 
     assert(ev_route_exists(EV_TICK_1S, ACT_DIAG));
     assert(ev_route_exists(EV_TICK_1S, ACT_APP));
-    assert(ev_route_exists(EV_TICK_1S, ACT_DS18B20));
+    assert(!ev_route_exists(EV_TICK_1S, ACT_DS18B20));
     assert(ev_route_exists(EV_TICK_1S, ACT_OLED));
     assert(ev_route_exists(EV_TICK_1S, ACT_RTC));
     assert(ev_route_exists(EV_TICK_1S, ACT_SUPERVISOR));
@@ -76,6 +79,8 @@ int main(void)
     assert(ev_route_exists(EV_TICK_100MS, ACT_DIAG));
     assert(ev_route_exists(EV_TICK_100MS, ACT_PANEL));
     assert(ev_route_exists(EV_TICK_100MS, ACT_MCP23008));
+    assert(ev_route_exists(EV_TICK_100MS, ACT_DS18B20));
+    assert(ev_route_exists(EV_TICK_100MS, ACT_BH1750));
     assert(ev_route_exists(EV_GPIO_IRQ, ACT_DIAG));
     assert(ev_route_exists(EV_GPIO_IRQ, ACT_RTC));
     assert(ev_route_exists(EV_MCP23008_READY, ACT_DIAG));
@@ -84,6 +89,7 @@ int main(void)
     assert(ev_route_exists(EV_RTC_READY, ACT_SUPERVISOR));
     assert(ev_route_exists(EV_OLED_READY, ACT_SUPERVISOR));
     assert(ev_route_exists(EV_DS18B20_READY, ACT_SUPERVISOR));
+    assert(ev_route_exists(EV_BH1750_READY, ACT_SUPERVISOR));
     assert(ev_route_exists(EV_SYSTEM_READY, ACT_APP));
     assert(ev_route_exists(EV_SYS_GOTO_SLEEP_CMD, ACT_POWER));
     assert(ev_route_exists(EV_NET_WIFI_UP, ACT_NETWORK));
@@ -101,6 +107,8 @@ int main(void)
     assert(ev_route_exists(EV_TIME_UPDATED, ACT_NETWORK));
     assert(ev_route_exists(EV_TEMP_UPDATED, ACT_APP));
     assert(ev_route_exists(EV_TEMP_UPDATED, ACT_NETWORK));
+    assert(ev_route_exists(EV_LIGHT_UPDATED, ACT_APP));
+    assert(ev_route_exists(EV_LIGHT_UPDATED, ACT_NETWORK));
     assert(ev_route_exists(EV_MCP23008_INPUT_CHANGED, ACT_PANEL));
     assert(ev_route_exists(EV_MCP23008_INPUT_CHANGED, ACT_NETWORK));
     assert(ev_route_exists(EV_BUTTON_EVENT, ACT_APP));

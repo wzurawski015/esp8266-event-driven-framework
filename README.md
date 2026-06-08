@@ -18,25 +18,30 @@ To **nie jest klasyczny przykład Arduino/ESP8266** typu `setup()` / `loop()` i 
 
 ## Spis treści
 
-- [Najkrótsza ścieżka](#najkrótsza-ścieżka)
-- [Dlaczego architektura jest nietypowa dla IoT](#dlaczego-architektura-jest-nietypowa-dla-iot)
-- [Architektura warstwowa](#architektura-warstwowa)
-- [Przepływ zdarzeń runtime](#przepływ-zdarzeń-runtime)
-- [Evidence lifecycle](#evidence-lifecycle)
-- [Struktura repozytorium](#struktura-repozytorium)
-- [Obsługiwane boardy i targety](#obsługiwane-boardy-i-targety)
-- [Walidacja hostowa](#walidacja-hostowa)
-- [Release archive](#release-archive)
-- [Kompilacja SDK](#kompilacja-sdk)
-- [Flashowanie i monitor szeregowy](#flashowanie-i-monitor-szeregowy)
-- [Prywatne sekrety WiFi](#prywatne-sekrety-wifi)
-- [I2C](#i2c)
-- [1-Wire i DS18B20](#1-wire-i-ds18b20)
-- [BH1750](#bh1750)
-- [HIL i realne dowody sprzętowe](#hil-i-realne-dowody-sprzętowe)
-- [Typowe problemy i szybkie naprawy](#typowe-problemy-i-szybkie-naprawy)
-- [Kolejność operatorska](#kolejność-operatorska)
-- [Następne kroki jakościowe](#następne-kroki-jakościowe)
+Ten spis jest celowo zapisany jako zwykła lista, bez linków `#anchor`. GitHub potrafi
+renderować linki do nagłówków Markdown, ale Doxygen traktuje takie lokalne linki jako
+referencje Doxygen i generuje ostrzeżenia dla kotwic z polskimi znakami. Dokumentacja
+ma być warning-clean, dlatego w README używamy Doxygen-safe TOC.
+
+- Najkrótsza ścieżka
+- Dlaczego architektura jest nietypowa dla IoT
+- Architektura warstwowa
+- Przepływ zdarzeń runtime
+- Evidence lifecycle
+- Struktura repozytorium
+- Obsługiwane boardy i targety
+- Walidacja hostowa
+- Release archive
+- Kompilacja SDK
+- Flashowanie i monitor szeregowy
+- Prywatne sekrety WiFi
+- I2C
+- 1-Wire i DS18B20
+- BH1750
+- HIL i realne dowody sprzętowe
+- Typowe problemy i szybkie naprawy
+- Kolejność operatorska
+- Następne kroki jakościowe
 
 ---
 

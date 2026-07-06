@@ -12,6 +12,8 @@ PIN_MAP = re.compile(r"EV_ATB_THERMO_PIN_MAP\s+scl=5\s+sda=4\s+onewire=13\s+pwr=
 JP2 = re.compile(r"EV_ATB_THERMO_JP2_REQUIRED\s+position=2-3\s+mode=normal_pwr_ctrl")
 PWR = re.compile(r"EV_ATB_THERMO_PWR_CTRL\s+gpio=0\s+active_low=1\s+state=ON\s+result=OK")
 I2C = re.compile(r"EV_ATB_THERMO_I2C_READY\s+port=0\s+scl=5\s+sda=4\s+speed_hz=100000")
+OLED_SCAN = re.compile(r"EV_ATB_THERMO_I2C_SCAN\s+addr=0x3c\s+name=OLED\s+status=ACK\s+optional=1\s+deferred=0")
+OLED_FRAME = re.compile(r"EV_OLED_FRAME\s+line0='[^']+'\s+line1='[^']+'\s+line2='[^']+'")
 ONEWIRE = re.compile(r"EV_ATB_THERMO_ONEWIRE_READY\s+dq=13")
 TEMP = re.compile(r"EV_DS18B20_TEMP\s+cC=-?\d+\s+C=-?\d+\.\d{2}")
 LIGHT = re.compile(r"EV_BH1750_LIGHT\s+mLux=\d+\s+lux=\d+\.\d{3}")
@@ -23,6 +25,8 @@ REQUIRED = (
     ("jp2", JP2),
     ("pwr_ctrl", PWR),
     ("i2c_ready", I2C),
+    ("oled_scan", OLED_SCAN),
+    ("oled_frame", OLED_FRAME),
     ("onewire_ready", ONEWIRE),
     ("temperature", TEMP),
     ("light", LIGHT),
@@ -42,6 +46,8 @@ def self_test() -> None:
         "EV_ATB_THERMO_JP2_REQUIRED position=2-3 mode=normal_pwr_ctrl",
         "EV_ATB_THERMO_PWR_CTRL gpio=0 active_low=1 state=ON result=OK",
         "EV_ATB_THERMO_I2C_READY port=0 scl=5 sda=4 speed_hz=100000",
+        "EV_ATB_THERMO_I2C_SCAN addr=0x3c name=OLED status=ACK optional=1 deferred=0",
+        "EV_OLED_FRAME line0='ATB THERMO' line1='T 23.45 C' line2='L 12.345 lx'",
         "EV_ATB_THERMO_ONEWIRE_READY dq=13",
         "EV_DS18B20_TEMP cC=2345 C=23.45",
         "EV_BH1750_LIGHT mLux=12345 lux=12.345",

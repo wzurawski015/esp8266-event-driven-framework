@@ -22,7 +22,23 @@ boot strap pin and must never be treated as a generic free GPIO.
 
 ## Hardware policy
 
-DS18B20 and BH1750 are configured as optional supervised hardware. Missing or
-unpopulated sensors must not crash the runtime. BME280/BMP180 and OLED are
-scanned as optional/deferred I2C addresses but are not enabled as runtime actors
-in this phase.
+DS18B20, BH1750 and OLED are configured as optional supervised hardware.
+Missing or unpopulated sensors must not crash the runtime. BME280/BMP180 are
+still scanned as optional/deferred I2C addresses and are not enabled as runtime
+actors in this phase.
+
+The on-board OLED is treated as an SSD1306 128x64 display at I2C address 0x3C.
+The runtime presents a compact three-line scene:
+
+```text
+ATB THERMO
+T 26.06 C
+L 284.167 lx
+```
+
+If the serial monitor log contains early ROM boot garbage, use `grep -a` when
+filtering markers, for example:
+
+```sh
+grep -aE 'EV_ATB_THERMO|EV_OLED|EV_DS18B20|EV_BH1750|TEMP|LIGHT' build/atb-thermo-monitor.log
+```

@@ -18,6 +18,7 @@
 #define EV_OLED_DATA_CHUNK_BYTES 32U
 #define EV_OLED_SH1106_COLUMN_OFFSET 2U
 #define EV_OLED_SSD1306_72X40_COLUMN_OFFSET 28U
+#define EV_OLED_SSD1306_128X64_COLUMN_OFFSET 0U
 
 static const uint8_t k_ev_oled_font_5x7[][EV_OLED_GLYPH_WIDTH] = {
     {0x00, 0x00, 0x00, 0x00, 0x00}, /* space */
@@ -124,6 +125,26 @@ static const uint8_t k_ev_oled_ssd1306_init[] = {
     0xDB, 0x20, 0x2E, 0xAF
 };
 
+static const uint8_t k_ev_oled_ssd1306_128x64_init[] = {
+    0xAE,       /* display off */
+    0xD5, 0x80, /* clock divide */
+    0xA8, 0x3F, /* multiplex ratio: 64 rows */
+    0xD3, 0x00, /* display offset */
+    0x40,       /* start line */
+    0x8D, 0x14, /* charge pump on */
+    0x20, 0x00, /* horizontal addressing */
+    0xA1,       /* segment remap */
+    0xC8,       /* COM scan direction */
+    0xDA, 0x12, /* COM pins for 128x64 */
+    0x81, 0x7F, /* contrast */
+    0xD9, 0xF1, /* pre-charge */
+    0xDB, 0x40, /* VCOM detect */
+    0xA4,       /* resume RAM display */
+    0xA6,       /* normal display */
+    0x2E,       /* deactivate scroll */
+    0xAF        /* display on */
+};
+
 static const uint8_t k_ev_oled_sh1106_init[] = {
     0xAE, 0xA6, 0xD5, 0x80, 0xA8, 0x3F, 0xDA, 0x12,
     0xD3, 0x00, 0x40, 0x8D, 0x14, 0x20, 0x00, 0xA1,
@@ -155,6 +176,46 @@ static size_t ev_oled_actor_bounded_strlen(const char *text, size_t max_len)
     }
 
     return len;
+}
+
+static void ev_oled_actor_configure_geometry(ev_oled_actor_ctx_t *ctx)
+{
+    if (ctx == NULL) {
+        return;
+    }
+
+    switch (ctx->controller) {
+    case EV_OLED_CONTROLLER_SH1106:
+        ctx->panel_width = EV_OLED_MAX_WIDTH;
+        ctx->panel_page_count = EV_OLED_PAGE_COUNT;
+        ctx->column_offset = EV_OLED_SH1106_COLUMN_OFFSET;
+        break;
+
+    case EV_OLED_CONTROLLER_SSD1306_128X64:
+        ctx->panel_width = EV_OLED_MAX_WIDTH;
+        ctx->panel_page_count = EV_OLED_PAGE_COUNT;
+        ctx->column_offset = EV_OLED_SSD1306_128X64_COLUMN_OFFSET;
+        break;
+
+    case EV_OLED_CONTROLLER_SSD1306:
+    default:
+        ctx->panel_width = EV_OLED_LEGACY_SSD1306_WIDTH;
+        ctx->panel_page_count = (uint8_t)(EV_OLED_LEGACY_SSD1306_HEIGHT / 8U);
+        ctx->column_offset = EV_OLED_SSD1306_72X40_COLUMN_OFFSET;
+        break;
+    }
+}
+
+static uint8_t ev_oled_actor_panel_width(const ev_oled_actor_ctx_t *ctx)
+{
+    return ((ctx != NULL) && (ctx->panel_width != 0U)) ? ctx->panel_width : EV_OLED_LEGACY_SSD1306_WIDTH;
+}
+
+static uint8_t ev_oled_actor_panel_page_count(const ev_oled_actor_ctx_t *ctx)
+{
+    return ((ctx != NULL) && (ctx->panel_page_count != 0U)) ?
+               ctx->panel_page_count :
+               (uint8_t)(EV_OLED_LEGACY_SSD1306_HEIGHT / 8U);
 }
 
 static ev_result_t ev_oled_actor_publish_ready(ev_oled_actor_ctx_t *ctx)
@@ -266,7 +327,7 @@ static void ev_oled_actor_reset_dirty(ev_oled_actor_ctx_t *ctx)
 
     ctx->pending_flush = false;
     ctx->dirty_page_mask = 0U;
-    for (page = 0U; page < EV_OLED_PAGE_COUNT; ++page) {
+    for (page = 0U; page < ev_oled_actor_panel_page_count(ctx); ++page) {
         ctx->dirty_column_start[page] = EV_OLED_WIDTH;
         ctx->dirty_column_end[page] = 0U;
     }
@@ -274,7 +335,8 @@ static void ev_oled_actor_reset_dirty(ev_oled_actor_ctx_t *ctx)
 
 static void ev_oled_actor_mark_dirty(ev_oled_actor_ctx_t *ctx, uint8_t page, uint8_t start_column, uint8_t end_column)
 {
-    if ((ctx == NULL) || (page >= EV_OLED_PAGE_COUNT) || (start_column >= end_column) || (end_column > EV_OLED_WIDTH)) {
+    if ((ctx == NULL) || (page >= ev_oled_actor_panel_page_count(ctx)) || (start_column >= end_column) ||
+        (end_column > ev_oled_actor_panel_width(ctx))) {
         return;
     }
 
@@ -305,8 +367,8 @@ static ev_result_t ev_oled_actor_apply_address_window(ev_oled_actor_ctx_t *ctx,
                                                       uint8_t end_column,
                                                       const uint8_t *page_data)
 {
-    if ((ctx == NULL) || (page >= EV_OLED_PAGE_COUNT) || (start_column >= end_column) || (end_column > EV_OLED_WIDTH) ||
-        (page_data == NULL)) {
+    if ((ctx == NULL) || (page >= ev_oled_actor_panel_page_count(ctx)) || (start_column >= end_column) ||
+        (end_column > ev_oled_actor_panel_width(ctx)) || (page_data == NULL)) {
         return EV_ERR_INVALID_ARG;
     }
 
@@ -342,10 +404,12 @@ static ev_result_t ev_oled_actor_apply_address_window(ev_oled_actor_ctx_t *ctx,
     }
 
     {
+        const uint8_t physical_start = (uint8_t)(start_column + ctx->column_offset);
+        const uint8_t physical_end = (uint8_t)((end_column - 1U) + ctx->column_offset);
         const uint8_t commands[] = {
             0x21U,
-            (uint8_t)(start_column + EV_OLED_SSD1306_72X40_COLUMN_OFFSET),
-            (uint8_t)((end_column - 1U) + EV_OLED_SSD1306_72X40_COLUMN_OFFSET),
+            physical_start,
+            physical_end,
             0x22U,
             page,
             page
@@ -373,8 +437,12 @@ static ev_result_t ev_oled_actor_sync_full_framebuffer(ev_oled_actor_ctx_t *ctx)
     baseline_successes = ctx->stats.flush_successes;
     ++ctx->stats.flush_attempts;
 
-    for (page = 0U; page < EV_OLED_PAGE_COUNT; ++page) {
-        ev_result_t rc = ev_oled_actor_apply_address_window(ctx, page, 0U, EV_OLED_WIDTH, ctx->framebuffer[page]);
+    for (page = 0U; page < ev_oled_actor_panel_page_count(ctx); ++page) {
+        ev_result_t rc = ev_oled_actor_apply_address_window(ctx,
+                                                            page,
+                                                            0U,
+                                                            ev_oled_actor_panel_width(ctx),
+                                                            ctx->framebuffer[page]);
         if (rc != EV_OK) {
             ctx->stats.flush_attempts = baseline_attempts + 1U;
             ctx->stats.flush_successes = baseline_successes;
@@ -390,6 +458,8 @@ static ev_result_t ev_oled_actor_sync_full_framebuffer(ev_oled_actor_ctx_t *ctx)
 }
 
 static ev_result_t ev_oled_actor_render_text_into(uint8_t framebuffer[EV_OLED_PAGE_COUNT][EV_OLED_WIDTH],
+                                                  uint8_t panel_page_count,
+                                                  uint8_t panel_width,
                                                   const ev_oled_display_text_cmd_t *cmd)
 {
     size_t text_len;
@@ -400,13 +470,13 @@ static ev_result_t ev_oled_actor_render_text_into(uint8_t framebuffer[EV_OLED_PA
     if ((framebuffer == NULL) || (cmd == NULL)) {
         return EV_ERR_INVALID_ARG;
     }
-    if ((cmd->page >= EV_OLED_PAGE_COUNT) || (cmd->column >= EV_OLED_WIDTH)) {
+    if ((cmd->page >= panel_page_count) || (cmd->column >= panel_width)) {
         return EV_ERR_OUT_OF_RANGE;
     }
 
     page = cmd->page;
     column = cmd->column;
-    memset(&framebuffer[page][column], 0, EV_OLED_WIDTH - column);
+    memset(&framebuffer[page][column], 0, (size_t)(panel_width - column));
 
     text_len = ev_oled_actor_bounded_strlen(cmd->text, EV_OLED_TEXT_MAX_CHARS);
     for (idx = 0U; idx < text_len; ++idx) {
@@ -414,13 +484,13 @@ static ev_result_t ev_oled_actor_render_text_into(uint8_t framebuffer[EV_OLED_PA
         size_t glyph_col;
         uint8_t dst = (uint8_t)(column + (uint8_t)(idx * EV_OLED_CELL_ADVANCE));
 
-        if (dst >= EV_OLED_WIDTH) {
+        if (dst >= panel_width) {
             break;
         }
 
         for (glyph_col = 0U; glyph_col < EV_OLED_GLYPH_WIDTH; ++glyph_col) {
             uint8_t target = (uint8_t)(dst + (uint8_t)glyph_col);
-            if (target >= EV_OLED_WIDTH) {
+            if (target >= panel_width) {
                 break;
             }
             framebuffer[page][target] = glyph[glyph_col];
@@ -439,26 +509,26 @@ static ev_result_t ev_oled_actor_prepare_scene_commit(ev_oled_actor_ctx_t *ctx, 
     if ((ctx == NULL) || (scene == NULL)) {
         return EV_ERR_INVALID_ARG;
     }
-    if (scene->column_offset >= EV_OLED_WIDTH) {
-        return EV_ERR_OUT_OF_RANGE;
-    }
-
     memset(ctx->staging_framebuffer, 0, sizeof(ctx->staging_framebuffer));
 
-    if ((scene->flags & EV_OLED_SCENE_FLAG_VISIBLE) != 0U) {
+    if (((scene->flags & EV_OLED_SCENE_FLAG_VISIBLE) != 0U) &&
+        (scene->column_offset < ev_oled_actor_panel_width(ctx))) {
         for (line = 0U; line < EV_OLED_SCENE_LINE_COUNT; ++line) {
             ev_oled_display_text_cmd_t cmd = {0};
             ev_result_t rc;
 
             cmd.page = (uint8_t)(scene->page_offset + line);
             cmd.column = scene->column_offset;
-            if (cmd.page >= EV_OLED_PAGE_COUNT) {
+            if (cmd.page >= ev_oled_actor_panel_page_count(ctx)) {
                 continue;
             }
             memcpy(cmd.text, scene->lines[line], sizeof(cmd.text));
             cmd.text[EV_OLED_TEXT_MAX_CHARS - 1U] = '\0';
 
-            rc = ev_oled_actor_render_text_into(ctx->staging_framebuffer, &cmd);
+            rc = ev_oled_actor_render_text_into(ctx->staging_framebuffer,
+                                                ev_oled_actor_panel_page_count(ctx),
+                                                ev_oled_actor_panel_width(ctx),
+                                                &cmd);
             if (rc != EV_OK) {
                 return rc;
             }
@@ -466,8 +536,8 @@ static ev_result_t ev_oled_actor_prepare_scene_commit(ev_oled_actor_ctx_t *ctx, 
     }
 
     ev_oled_actor_reset_dirty(ctx);
-    for (page = 0U; page < EV_OLED_PAGE_COUNT; ++page) {
-        for (column = 0U; column < EV_OLED_WIDTH; ++column) {
+    for (page = 0U; page < ev_oled_actor_panel_page_count(ctx); ++page) {
+        for (column = 0U; column < ev_oled_actor_panel_width(ctx); ++column) {
             if (ctx->staging_framebuffer[page][column] != ctx->framebuffer[page][column]) {
                 ev_oled_actor_mark_dirty(ctx, page, column, (uint8_t)(column + 1U));
             }
@@ -489,7 +559,7 @@ static ev_result_t ev_oled_actor_flush_pending(ev_oled_actor_ctx_t *ctx)
     }
 
     ++ctx->stats.flush_attempts;
-    for (page = 0U; page < EV_OLED_PAGE_COUNT; ++page) {
+    for (page = 0U; page < ev_oled_actor_panel_page_count(ctx); ++page) {
         ev_result_t rc;
         uint8_t start_column;
         uint8_t end_column;
@@ -500,7 +570,7 @@ static ev_result_t ev_oled_actor_flush_pending(ev_oled_actor_ctx_t *ctx)
 
         start_column = ctx->dirty_column_start[page];
         end_column = ctx->dirty_column_end[page];
-        if ((start_column >= end_column) || (end_column > EV_OLED_WIDTH)) {
+        if ((start_column >= end_column) || (end_column > ev_oled_actor_panel_width(ctx))) {
             continue;
         }
 
@@ -537,6 +607,9 @@ static ev_result_t ev_oled_actor_try_initialize(ev_oled_actor_ctx_t *ctx)
     if (ctx->controller == EV_OLED_CONTROLLER_SH1106) {
         init_sequence = k_ev_oled_sh1106_init;
         init_length = EV_ARRAY_LEN(k_ev_oled_sh1106_init);
+    } else if (ctx->controller == EV_OLED_CONTROLLER_SSD1306_128X64) {
+        init_sequence = k_ev_oled_ssd1306_128x64_init;
+        init_length = EV_ARRAY_LEN(k_ev_oled_ssd1306_128x64_init);
     } else {
         init_sequence = k_ev_oled_ssd1306_init;
         init_length = EV_ARRAY_LEN(k_ev_oled_ssd1306_init);
@@ -592,10 +665,13 @@ static ev_result_t ev_oled_actor_handle_display_text(ev_oled_actor_ctx_t *ctx, c
     cmd.text[EV_OLED_TEXT_MAX_CHARS - 1U] = '\0';
 
     ++ctx->stats.display_commands_seen;
-    if (ev_oled_actor_render_text_into(ctx->staging_framebuffer, &cmd) != EV_OK) {
+    if (ev_oled_actor_render_text_into(ctx->staging_framebuffer,
+                                      ev_oled_actor_panel_page_count(ctx),
+                                      ev_oled_actor_panel_width(ctx),
+                                      &cmd) != EV_OK) {
         return EV_ERR_CONTRACT;
     }
-    ev_oled_actor_mark_dirty(ctx, cmd.page, cmd.column, EV_OLED_WIDTH);
+    ev_oled_actor_mark_dirty(ctx, cmd.page, cmd.column, ev_oled_actor_panel_width(ctx));
     return EV_OK;
 }
 
@@ -686,6 +762,7 @@ ev_result_t ev_oled_actor_init(ev_oled_actor_ctx_t *ctx,
     ctx->port_num = port_num;
     ctx->device_address_7bit = device_address_7bit;
     ctx->controller = controller;
+    ev_oled_actor_configure_geometry(ctx);
     ctx->state = EV_OLED_STATE_WAIT_BOOT;
     ctx->retry_delay_ticks = EV_OLED_RETRY_DELAY_TICKS;
     ctx->last_i2c_status = EV_I2C_OK;

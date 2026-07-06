@@ -34,7 +34,15 @@ export FW_MONITOR_BAUD=115200
 
 Expected bring-up markers include `EV_ATB_THERMO_PIN_MAP`,
 `EV_ATB_THERMO_I2C_READY`, `EV_ATB_THERMO_ONEWIRE_READY`,
-`EV_DS18B20_TEMP` and `EV_BH1750_LIGHT` when the sensors are present.
+`EV_OLED_FRAME`, `EV_DS18B20_TEMP` and `EV_BH1750_LIGHT` when the devices are
+present.
+
+The monitor log can look like a binary file because the ESP8266 ROM prints
+early boot bytes at a different baud rate. Use `grep -a` for marker extraction:
+
+```sh
+grep -aE 'EV_ATB_THERMO|EV_OLED|EV_DS18B20|EV_BH1750|TEMP|LIGHT|I2C|ONEWIRE' build/atb-thermo-monitor.log
+```
 
 Real HIL PASS is not emitted by this application. HIL requires physical serial
 logs and logic-analyzer captures following `docs/hil/atb-thermo-hardware-evidence-contract.md`.

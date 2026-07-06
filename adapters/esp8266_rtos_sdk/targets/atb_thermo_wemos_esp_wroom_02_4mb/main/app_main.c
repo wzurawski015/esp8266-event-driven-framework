@@ -66,7 +66,7 @@ typedef struct ev_atb_i2c_probe {
 static const ev_atb_i2c_probe_t k_atb_i2c_probes[] = {
     { EV_BOARD_BH1750_ADDR_7BIT, "BH1750", true, false },
     { EV_BOARD_BH1750_ALT_ADDR_7BIT, "BH1750_ALT", true, false },
-    { EV_BOARD_OLED_ADDR_7BIT, "OLED", true, true },
+    { EV_BOARD_OLED_ADDR_7BIT, "OLED", true, false },
     { EV_BOARD_BME280_BMP180_ADDR_7BIT, "BME280_BMP180", true, true },
     { EV_BOARD_BME280_BMP180_ALT_ADDR_7BIT, "BME280_BMP180_ALT", true, true },
 };

@@ -15,8 +15,12 @@
 extern "C" {
 #endif
 
-#define EV_OLED_WIDTH 72U
-#define EV_OLED_HEIGHT 40U
+#define EV_OLED_LEGACY_SSD1306_WIDTH 72U
+#define EV_OLED_LEGACY_SSD1306_HEIGHT 40U
+#define EV_OLED_MAX_WIDTH 128U
+#define EV_OLED_MAX_HEIGHT 64U
+#define EV_OLED_WIDTH EV_OLED_MAX_WIDTH
+#define EV_OLED_HEIGHT EV_OLED_MAX_HEIGHT
 #define EV_OLED_PAGE_COUNT (EV_OLED_HEIGHT / 8U)
 #define EV_OLED_DEFAULT_ADDR_7BIT 0x3CU
 #define EV_OLED_TEXT_MAX_CHARS 22U
@@ -29,7 +33,8 @@ extern "C" {
  */
 typedef enum ev_oled_controller {
     EV_OLED_CONTROLLER_SSD1306 = 0,
-    EV_OLED_CONTROLLER_SH1106 = 1
+    EV_OLED_CONTROLLER_SH1106 = 1,
+    EV_OLED_CONTROLLER_SSD1306_128X64 = 2
 } ev_oled_controller_t;
 
 /**
@@ -108,6 +113,9 @@ typedef struct {
     uint8_t device_address_7bit;
     ev_oled_controller_t controller;
     ev_oled_actor_state_t state;
+    uint8_t panel_width;
+    uint8_t panel_page_count;
+    uint8_t column_offset;
     ev_i2c_status_t last_i2c_status;
     uint32_t tick_counter;
     uint32_t retry_due_tick;

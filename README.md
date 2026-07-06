@@ -38,6 +38,7 @@ ma być warning-clean, dlatego w README używamy Doxygen-safe TOC.
 - I2C
 - 1-Wire i DS18B20
 - BH1750
+- ATB THERMO Wemos ESP-WROOM-02 4 MB
 - HIL i realne dowody sprzętowe
 - Typowe problemy i szybkie naprawy
 - Kolejność operatorska
@@ -371,6 +372,7 @@ tests/      Host tests, property tests i fakes.
 | Board / cel | Target SDK | Typ użycia | Uwagi |
 |---|---|---|---|
 | Wemos ESP-WROOM-02 18650 | `wemos_esp_wroom_02_18650` | główny smoke/build/flash | wymaga `bsp/wemos_esp_wroom_02_18650/board_secrets.local.h` dla WiFi |
+| ATB THERMO Wemos ESP-WROOM-02 4 MB | `atb_thermo_wemos_esp_wroom_02_4mb` | pełny target ATB THERMO | GPIO5/GPIO4 I2C, GPIO13 DS18B20, GPIO0 PWR_CTRL przez JP2/Q2 |
 | Generic ESP8266 dev | `esp8266_generic_dev` | neutralny target SDK | dobry do sanity build, nie mylić z Wemos flash |
 | Wemos D1 mini | `wemos_d1_mini` | wariant płytki ESP8266 | używać po sprawdzeniu BSP i pinów |
 | Adafruit Feather HUZZAH | `adafruit_feather_huzzah_esp8266` | wariant płytki ESP8266 | używać po sprawdzeniu BSP i pinów |
@@ -785,6 +787,69 @@ flowchart LR
 ```
 
 ---
+
+## ATB THERMO Wemos ESP-WROOM-02 4 MB
+
+Target `atb_thermo_wemos_esp_wroom_02_4mb` jest osobnym profilem dla płytki ATB THERMO Rev7. Nie zastępuje minimalnego targetu Wemos. Dzięki temu `wemos_esp_wroom_02_18650` pozostaje lekkim targetem smoke/runtime, a ATB THERMO ma własny BSP, pin mapę, politykę zasilania peryferiów i evidence.
+
+Najważniejsza mapa pinów:
+
+| Funkcja | GPIO | Uwagi |
+|---|---:|---|
+| I2C SCL | 5 | D1, 100 kHz default |
+| I2C SDA | 4 | D2, 100 kHz default |
+| DS18B20 DQ | 13 | D7, 1-Wire |
+| PWR_CTRL | 0 | D3, boot-sensitive, JP2 2-3 normal mode |
+| LED | 2 | D4, active-low |
+| PIR_CHECK | 14 | D5, input sample |
+| AUDIO | 12 | D6, idle output in this phase |
+| PIR_DIS | 15 | D8, safe default output |
+
+Build:
+
+```bash
+mkdir -p build
+export FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atb_thermo_wemos_esp_wroom_02_4mb
+export EV_WEMOS_FLASH_VARIANT=4mb
+export FW_MONITOR_BAUD=115200
+
+./tools/fw sdk-distclean
+./tools/fw sdk-build-one atb_thermo_wemos_esp_wroom_02_4mb 2>&1 | tee build/sdk-atb-thermo.log
+python3 tools/audit/sdk_warning_policy.py \
+  --project-only \
+  --latest-build-session \
+  --session-kind build \
+  --strict-build-session \
+  --target atb_thermo_wemos_esp_wroom_02_4mb \
+  build/sdk-atb-thermo.log
+```
+
+Flash i monitor:
+
+```bash
+export FW_SDK_PROJECT_DIR=adapters/esp8266_rtos_sdk/targets/atb_thermo_wemos_esp_wroom_02_4mb
+export FW_ESPPORT=/dev/ttyUSB0
+export FW_MONITOR_BAUD=115200
+
+./tools/fw sdk-flash
+./tools/fw sdk-simple-monitor 2>&1 | tee build/atb-thermo-monitor.log
+```
+
+W serial monitorze wyniki sensorów są widoczne jako fixed-point markers:
+
+```text
+EV_ATB_THERMO_BOOT
+EV_ATB_THERMO_PIN_MAP scl=5 sda=4 onewire=13 pwr=0 led=2 pir_check=14 audio=12 pir_dis=15
+EV_ATB_THERMO_PWR_CTRL gpio=0 state=ON
+EV_ATB_THERMO_I2C_READY port=0 scl=5 sda=4 speed_hz=100000
+EV_ATB_THERMO_ONEWIRE_READY dq=13
+EV_DS18B20_TEMP cC=2345 C=23.45
+EV_BH1750_LIGHT mLux=12345 lux=12.345
+```
+
+`cC` oznacza centy-stopnie Celsjusza, a `mLux` oznacza mililuksy. Realny HIL PASS wymaga osobnych logów i logic-analyzer evidence. Sam boot targetu nie jest HIL PASS.
+
+GPIO0/PWR_CTRL jest boot-sensitive. Przed pracą bez nadzoru potwierdź JP2, polaryzację zasilania peryferiów i poprawne załączenie VCC peryferiów miernikiem albo analizatorem logicznym.
 
 ## HIL i realne dowody sprzętowe
 

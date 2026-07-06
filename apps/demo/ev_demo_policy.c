@@ -25,6 +25,31 @@ EV_STATIC_ASSERT(sizeof(ev_demo_snapshot_t) == EV_DEMO_APP_SNAPSHOT_BYTES, "demo
 EV_STATIC_ASSERT(sizeof(ev_oled_scene_t) <= EV_DEMO_APP_LEASE_SLOT_BYTES,
                  "OLED scene payload must fit inside one demo lease slot");
 
+static void ev_demo_app_log_temperature_marker(ev_demo_app_t *app, int16_t centi_celsius)
+{
+    int32_t value = (int32_t)centi_celsius;
+    const char *sign = value < 0 ? "-" : "";
+    uint32_t abs_value = (value < 0) ? (uint32_t)(-value) : (uint32_t)value;
+
+    ev_demo_app_logf(app,
+                     EV_LOG_INFO,
+                     "EV_DS18B20_TEMP cC=%ld C=%s%lu.%02lu",
+                     (long)value,
+                     sign,
+                     (unsigned long)(abs_value / 100U),
+                     (unsigned long)(abs_value % 100U));
+}
+
+static void ev_demo_app_log_light_marker(ev_demo_app_t *app, uint32_t milli_lux)
+{
+    ev_demo_app_logf(app,
+                     EV_LOG_INFO,
+                     "EV_BH1750_LIGHT mLux=%lu lux=%lu.%03lu",
+                     (unsigned long)milli_lux,
+                     (unsigned long)(milli_lux / 1000U),
+                     (unsigned long)(milli_lux % 1000U));
+}
+
 static ev_result_t ev_demo_app_publish_snapshot(ev_demo_diag_actor_state_t *state)
 {
     ev_demo_app_t *app;
@@ -171,6 +196,7 @@ ev_result_t ev_demo_app_actor_handle(void *actor_context, const ev_msg_t *msg)
 
             state->last_temp = *temp_payload;
             state->temp_valid = true;
+            ev_demo_app_log_temperature_marker(app, temp_payload->centi_celsius);
             return EV_OK;
         }
 
@@ -184,6 +210,7 @@ ev_result_t ev_demo_app_actor_handle(void *actor_context, const ev_msg_t *msg)
 
             state->last_light = *light_payload;
             state->light_valid = true;
+            ev_demo_app_log_light_marker(app, light_payload->milli_lux);
             return EV_OK;
         }
 

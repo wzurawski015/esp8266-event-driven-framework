@@ -16,9 +16,21 @@ EXPECTED_ATNEL_PINS = {
     "PIN_I2C0_SDA": 5,
     "PIN_ONEWIRE0_DQ": 12,
 }
+ATB_BOARD = "bsp/atb_thermo_wemos_esp_wroom_02_4mb"
+EXPECTED_ATB_PINS = {
+    "PIN_I2C0_SCL": 5,
+    "PIN_I2C0_SDA": 4,
+    "PIN_ONEWIRE0_DQ": 13,
+    "PIN_PWR_CTRL": 0,
+    "PIN_STATUS_LED": 2,
+    "PIN_PIR_CHECK": 14,
+    "PIN_AUDIO": 12,
+    "PIN_PIR_DIS": 15,
+}
 REQUIRED_DOCS = (
     "docs/hil/atnel-board-wiring-evidence-contract.md",
     "docs/hil/i2c-logic-analyzer-evidence-contract.md",
+    "docs/hil/atb-thermo-hardware-evidence-contract.md",
 )
 REQUIRED_I2C_HIL_TOKENS = (
     "EV_HIL_BOARD_PIN_MAP",
@@ -66,6 +78,29 @@ def check(root: Path = ROOT) -> list[str]:
             if token not in text:
                 failures.append(f"{profile.relative_to(root).as_posix()}: missing I2C speed policy token {token}")
 
+    atb_pin_file = root / ATB_BOARD / "pins.def"
+    atb_profile = root / ATB_BOARD / "board_profile.h"
+    if not atb_pin_file.is_file():
+        failures.append(f"missing ATB THERMO pin map: {atb_pin_file.relative_to(root).as_posix()}")
+    else:
+        pins = parse_pins(atb_pin_file)
+        for name, expected_gpio in EXPECTED_ATB_PINS.items():
+            if pins.get(name) != expected_gpio:
+                failures.append(f"{atb_pin_file.relative_to(root).as_posix()}: {name} expected_gpio={expected_gpio} actual_gpio={pins.get(name)}")
+    if not atb_profile.is_file():
+        failures.append(f"missing ATB THERMO board profile: {atb_profile.relative_to(root).as_posix()}")
+    else:
+        text = atb_profile.read_text(encoding="utf-8", errors="ignore")
+        for token in (
+            "EV_BOARD_I2C_SCL_GPIO",
+            "EV_BOARD_I2C_SDA_GPIO",
+            "EV_BOARD_ONEWIRE_GPIO",
+            "EV_BOARD_PWR_CTRL_GPIO",
+            "EV_ATB_THERMO_PWR_CTRL_ACTIVE_LOW",
+        ):
+            if token not in text:
+                failures.append(f"{atb_profile.relative_to(root).as_posix()}: missing {token}")
+
     for rel in REQUIRED_DOCS:
         doc = root / rel
         if not doc.is_file():
@@ -104,6 +139,13 @@ def self_test() -> None:
         (board / "board_profile.h").write_text(
             "EV_BOARD_I2C_SCL_GPIO EV_BOARD_I2C_SDA_GPIO EV_BOARD_ONEWIRE_GPIO\n"
             "EV_BOARD_I2C_SPEED_SAFE_HZ EV_BOARD_I2C_FAST_400KHZ_REQUIRES_HIL\n",
+            encoding="utf-8",
+        )
+        atb = root / ATB_BOARD
+        atb.mkdir(parents=True)
+        (atb / "pins.def").write_text("".join(f'EV_BSP_PIN({name}, {gpio}U, "ATB")\n' for name, gpio in EXPECTED_ATB_PINS.items()), encoding="utf-8")
+        (atb / "board_profile.h").write_text(
+            "EV_BOARD_I2C_SCL_GPIO EV_BOARD_I2C_SDA_GPIO EV_BOARD_ONEWIRE_GPIO EV_BOARD_PWR_CTRL_GPIO EV_ATB_THERMO_PWR_CTRL_ACTIVE_LOW\n",
             encoding="utf-8",
         )
         for rel in REQUIRED_DOCS:

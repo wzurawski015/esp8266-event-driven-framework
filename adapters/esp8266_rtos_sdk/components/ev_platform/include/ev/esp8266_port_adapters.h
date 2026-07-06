@@ -6,6 +6,7 @@
 
 #include "ev/port_clock.h"
 #include "ev/port_i2c.h"
+#include "ev/port_gpio.h"
 #include "ev/port_irq.h"
 #include "ev/port_gpio_irq.h"
 #include "ev/port_onewire.h"
@@ -118,6 +119,19 @@ ev_result_t ev_esp8266_clock_port_init(ev_clock_port_t *out_port);
  * @return EV_OK on success or an error code.
  */
 ev_result_t ev_esp8266_i2c_port_init(ev_i2c_port_t *out_port, int sda_pin, int scl_pin);
+
+/**
+ * @brief Initialize the ESP8266-backed plain GPIO adapter.
+ *
+ * The adapter exposes bounded configure/read/write operations for board-level
+ * GPIO policies such as ATB THERMO PWR_CTRL, LED, PIR_DIS and AUDIO idle.
+ * Runtime operations do not allocate heap memory and must remain outside
+ * actors/drivers.
+ *
+ * @param out_port Destination public contract populated on success.
+ * @return EV_OK on success or an error code.
+ */
+ev_result_t ev_esp8266_gpio_port_init(ev_gpio_port_t *out_port);
 
 /**
  * @brief Copy private ESP8266 I2C adapter counters for diagnostics and HIL gates.

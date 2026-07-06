@@ -13,7 +13,8 @@ sdk_default_monitor_baud() {
     adapters/esp8266_rtos_sdk/targets/atnel_air_esp_motherboard_wifi_hil|\
     adapters/esp8266_rtos_sdk/targets/wemos_d1_mini|\
     adapters/esp8266_rtos_sdk/targets/wemos_d1_mini_zy8266|\
-    adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650)
+    adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650|\
+    adapters/esp8266_rtos_sdk/targets/atb_thermo_wemos_esp_wroom_02_4mb)
       printf '%s\n' '115200'
       ;;
     *)
@@ -27,7 +28,8 @@ sdkconfig_defaults_for_project() {
   wemos_variant="${EV_WEMOS_FLASH_VARIANT:-${FW_WEMOS_FLASH_VARIANT:-}}"
 
   case "$project" in
-    adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650)
+    adapters/esp8266_rtos_sdk/targets/wemos_esp_wroom_02_18650|\
+    adapters/esp8266_rtos_sdk/targets/atb_thermo_wemos_esp_wroom_02_4mb)
       case "$wemos_variant" in
         ""|2|2m|2M|2mb|2MB)
           printf '%s\n' 'sdkconfig.defaults'

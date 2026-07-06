@@ -28,6 +28,7 @@ class PrivacyClass(str, Enum):
 
 ALLOWED_LOCAL_SECRET_PATHS = {
     "bsp/wemos_esp_wroom_02_18650/board_secrets.local.h",
+    "bsp/atb_thermo_wemos_esp_wroom_02_4mb/board_secrets.local.h",
 }
 
 RAW_EVIDENCE_NAMES = {

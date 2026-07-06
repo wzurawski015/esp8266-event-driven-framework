@@ -17,6 +17,7 @@ CLANG_TIDY ?= clang-tidy
 CLANG_TIDY_CHECKS ?= -*,clang-analyzer-*,bugprone-*,cert-*,performance-*,portability-*,-bugprone-easily-swappable-parameters
 BENCH_CFLAGS ?= $(filter-out -O0,$(CFLAGS)) -O2 -D_POSIX_C_SOURCE=200809L
 LDFLAGS ?=
+DEPFLAGS ?= -MMD -MP
 
 BUILD_DIR := build/host
 PROPERTY_BUILD_DIR := build/property
@@ -214,7 +215,7 @@ $(BENCH_BUILD_DIR):
 
 $(BUILD_DIR)/obj/%.o: %.c | $(BUILD_DIR)
 	mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/%: tests/host/%.c $(COMMON_OBJS) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) $(COMMON_OBJS) $< $(LDFLAGS) -o $@
@@ -224,10 +225,15 @@ $(PROPERTY_BUILD_DIR)/%: tests/property/%.c $(COMMON_OBJS) | $(PROPERTY_BUILD_DI
 
 $(BENCH_BUILD_DIR)/obj/%.o: %.c | $(BENCH_BUILD_DIR)
 	mkdir -p $(dir $@)
-	$(CC) $(BENCH_CFLAGS) -c $< -o $@
+	$(CC) $(BENCH_CFLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(BENCH_BUILD_DIR)/%: tests/bench/%.c $(BENCH_COMMON_OBJS) | $(BENCH_BUILD_DIR)
 	$(CC) $(BENCH_CFLAGS) $(BENCH_COMMON_OBJS) $< $(LDFLAGS) -o $@
+
+# Header dependency files keep host/release gates from reusing stale objects after
+# generated headers, board profiles, actor contracts, or test fakes change.
+-include $(COMMON_OBJS:.o=.d)
+-include $(BENCH_COMMON_OBJS:.o=.d)
 
 host-test: routegen $(HOST_TEST_BINS)
 	@set -e; for t in $(HOST_TEST_BINS); do ./$$t; done

@@ -48,6 +48,11 @@ typedef struct {
     uint32_t io_failures;
     uint32_t conversion_deadline_skips;
     uint32_t noncanonical_ticks_ignored;
+    uint32_t retry_deadline_ms;
+    uint16_t retry_backoff_ms;
+    uint32_t retry_attempts;
+    uint32_t retry_skips;
+    uint32_t retry_backoffs;
 } ev_ds18b20_actor_ctx_t;
 
 /**

@@ -15,6 +15,7 @@ I2C = re.compile(r"EV_ATB_THERMO_I2C_READY\s+port=0\s+scl=5\s+sda=4\s+speed_hz=1
 OLED_SCAN = re.compile(r"EV_ATB_THERMO_I2C_SCAN\s+addr=0x3c\s+name=OLED\s+status=ACK\s+optional=1\s+deferred=0")
 OLED_FRAME = re.compile(r"EV_OLED_FRAME\s+line0='[^']+'\s+line1='[^']+'\s+line2='[^']+'")
 ONEWIRE = re.compile(r"EV_ATB_THERMO_ONEWIRE_READY\s+dq=13")
+ONEWIRE_PROBE = re.compile(r"EV_ATB_THERMO_ONEWIRE_PROBE\s+dq=13\s+status=PRESENCE\s+dq_high=1\s+bus_errors=\d+\s+resets=\d+\s+max_reset_low_us=\d+")
 TEMP = re.compile(r"EV_DS18B20_TEMP\s+cC=-?\d+\s+C=-?\d+\.\d{2}")
 LIGHT = re.compile(r"EV_BH1750_LIGHT\s+mLux=\d+\s+lux=\d+\.\d{3}")
 RESULT = re.compile(r"EV_HIL_ATB_THERMO_RESULT\s+PASS\s+failures=0")
@@ -28,6 +29,7 @@ REQUIRED = (
     ("oled_scan", OLED_SCAN),
     ("oled_frame", OLED_FRAME),
     ("onewire_ready", ONEWIRE),
+    ("onewire_probe", ONEWIRE_PROBE),
     ("temperature", TEMP),
     ("light", LIGHT),
     ("result", RESULT),
@@ -49,6 +51,7 @@ def self_test() -> None:
         "EV_ATB_THERMO_I2C_SCAN addr=0x3c name=OLED status=ACK optional=1 deferred=0",
         "EV_OLED_FRAME line0='ATB THERMO' line1='T 23.45 C' line2='L 12.345 lx'",
         "EV_ATB_THERMO_ONEWIRE_READY dq=13",
+        "EV_ATB_THERMO_ONEWIRE_PROBE dq=13 status=PRESENCE dq_high=1 bus_errors=0 resets=1 max_reset_low_us=480",
         "EV_DS18B20_TEMP cC=2345 C=23.45",
         "EV_BH1750_LIGHT mLux=12345 lux=12.345",
         "EV_HIL_ATB_THERMO_RESULT PASS failures=0",

@@ -11,6 +11,8 @@
 #include "ev/publish.h"
 
 #define EV_DS18B20_TICK_100MS_DELTA_MS 100U
+#define EV_DS18B20_RETRY_INITIAL_MS 1000U
+#define EV_DS18B20_RETRY_MAX_MS 10000U
 
 static bool ev_ds18b20_actor_deadline_due(uint32_t now_ms, uint32_t deadline_ms)
 {
@@ -74,6 +76,38 @@ static ev_result_t ev_ds18b20_actor_publish_temperature(ev_ds18b20_actor_ctx_t *
     return rc;
 }
 
+static void ev_ds18b20_actor_schedule_retry(ev_ds18b20_actor_ctx_t *ctx)
+{
+    uint32_t next_backoff;
+
+    if (ctx == NULL) {
+        return;
+    }
+
+    if (ctx->retry_backoff_ms == 0U) {
+        ctx->retry_backoff_ms = EV_DS18B20_RETRY_INITIAL_MS;
+    }
+
+    ctx->retry_deadline_ms = ctx->actor_now_ms + (uint32_t)ctx->retry_backoff_ms;
+    ++ctx->retry_backoffs;
+
+    next_backoff = (uint32_t)ctx->retry_backoff_ms * 2U;
+    if (next_backoff > EV_DS18B20_RETRY_MAX_MS) {
+        next_backoff = EV_DS18B20_RETRY_MAX_MS;
+    }
+    ctx->retry_backoff_ms = (uint16_t)next_backoff;
+}
+
+static void ev_ds18b20_actor_reset_retry(ev_ds18b20_actor_ctx_t *ctx)
+{
+    if (ctx == NULL) {
+        return;
+    }
+
+    ctx->retry_deadline_ms = 0U;
+    ctx->retry_backoff_ms = EV_DS18B20_RETRY_INITIAL_MS;
+}
+
 static void ev_ds18b20_actor_record_start_result(ev_ds18b20_actor_ctx_t *ctx, ev_result_t status)
 {
     if (ctx == NULL) {
@@ -86,6 +120,7 @@ static void ev_ds18b20_actor_record_start_result(ev_ds18b20_actor_ctx_t *ctx, ev
         ctx->conversion_started_at_ms = ctx->actor_now_ms;
         ctx->conversion_deadline_ms = ctx->actor_now_ms + (uint32_t)ctx->conversion_wait_ms;
         ++ctx->conversions_started;
+        ev_ds18b20_actor_reset_retry(ctx);
         return;
     }
 
@@ -96,6 +131,7 @@ static void ev_ds18b20_actor_record_start_result(ev_ds18b20_actor_ctx_t *ctx, ev
     } else {
         ++ctx->io_failures;
     }
+    ev_ds18b20_actor_schedule_retry(ctx);
 }
 
 static ev_result_t ev_ds18b20_actor_start_conversion(ev_ds18b20_actor_ctx_t *ctx)
@@ -111,6 +147,23 @@ static ev_result_t ev_ds18b20_actor_start_conversion(ev_ds18b20_actor_ctx_t *ctx
     return EV_OK;
 }
 
+static ev_result_t ev_ds18b20_actor_try_restart_if_idle(ev_ds18b20_actor_ctx_t *ctx)
+{
+    if (ctx == NULL) {
+        return EV_ERR_INVALID_ARG;
+    }
+    if (ctx->conversion_pending) {
+        return EV_OK;
+    }
+    if ((ctx->retry_deadline_ms != 0U) && !ev_ds18b20_actor_deadline_due(ctx->actor_now_ms, ctx->retry_deadline_ms)) {
+        ++ctx->retry_skips;
+        return EV_OK;
+    }
+
+    ++ctx->retry_attempts;
+    return ev_ds18b20_actor_start_conversion(ctx);
+}
+
 static ev_result_t ev_ds18b20_actor_try_read(ev_ds18b20_actor_ctx_t *ctx)
 {
     uint8_t scratchpad[EV_DS18B20_SCRATCHPAD_BYTES] = {0};
@@ -123,7 +176,7 @@ static ev_result_t ev_ds18b20_actor_try_read(ev_ds18b20_actor_ctx_t *ctx)
     }
 
     if (!ctx->conversion_pending) {
-        return EV_OK;
+        return ev_ds18b20_actor_try_restart_if_idle(ctx);
     }
     if (!ev_ds18b20_actor_deadline_due(ctx->actor_now_ms, ctx->conversion_deadline_ms)) {
         ++ctx->conversion_deadline_skips;
@@ -200,6 +253,8 @@ ev_result_t ev_ds18b20_actor_init(ev_ds18b20_actor_ctx_t *ctx,
     ctx->deliver_context = deliver_context;
     ctx->resolution_bits = EV_DS18B20_DEFAULT_RESOLUTION_BITS;
     ctx->conversion_wait_ms = ev_ds18b20_conversion_time_ms(ctx->resolution_bits);
+    ctx->retry_backoff_ms = EV_DS18B20_RETRY_INITIAL_MS;
+    ctx->retry_deadline_ms = 0U;
     return EV_OK;
 }
 

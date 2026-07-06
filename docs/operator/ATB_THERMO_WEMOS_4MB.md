@@ -68,3 +68,17 @@ profile is enabled, but UART is the first bring-up source of truth.
 This target prints boot and readiness markers, but it does not emit real HIL PASS.
 Real HIL requires the evidence described in
 `docs/hil/atb-thermo-hardware-evidence-contract.md`.
+
+## DS18B20 bring-up notes
+
+The runtime now emits `EV_ATB_THERMO_ONEWIRE_PROBE` immediately after the 1-Wire adapter is initialized.
+
+Interpretation:
+
+```text
+status=PRESENCE  -> the DS18B20 presence pulse was detected; firmware can proceed to conversion/read.
+status=NO_DEVICE -> DQ stayed high during the presence window; check DS18B20 wiring, VDD/GND, pull-up and JP2/PWR_CTRL.
+status=BUS_ERROR -> DQ stayed low or the bus is unsafe; check shorts and power.
+```
+
+The DS18B20 actor retries absent/no-device startup with bounded exponential backoff instead of trying every 100 ms.

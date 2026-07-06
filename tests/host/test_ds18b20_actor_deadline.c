@@ -134,5 +134,44 @@ int main(void)
     assert(actor.crc_failures == 1U);
     assert(capture.temp_count == 4U);
 
+    fake_onewire_port_init(&fake);
+    fake.present = false;
+    memset(&capture, 0, sizeof(capture));
+    fake_onewire_port_bind(&port, &fake);
+    assert(ev_ds18b20_actor_init(&actor, &port, capture_delivery, &capture) == EV_OK);
+    send_event(&actor, EV_BOOT_COMPLETED);
+    assert(!actor.conversion_pending);
+    assert(actor.no_device_failures == 1U);
+    assert(actor.retry_deadline_ms == 1000U);
+    assert(actor.retry_backoff_ms == 2000U);
+    assert(actor.retry_backoffs == 1U);
+    assert(fake.reset_calls == 1U);
+
+    for (i = 0U; i < 9U; ++i) {
+        send_event(&actor, EV_TICK_100MS);
+    }
+    assert(actor.actor_now_ms == 900U);
+    assert(fake.reset_calls == 1U);
+    assert(actor.retry_skips == 9U);
+    assert(capture.temp_count == 0U);
+
+    fake.present = true;
+    send_event(&actor, EV_TICK_100MS);
+    assert(actor.actor_now_ms == 1000U);
+    assert(actor.retry_attempts == 1U);
+    assert(actor.conversion_pending);
+    assert(actor.sensor_present);
+    assert(fake.reset_calls == 2U);
+
+    seed_valid_scratchpad(scratchpad, 0x0191);
+    fake_onewire_port_seed_read_bytes(&fake, scratchpad, sizeof(scratchpad));
+    for (i = 0U; i < 8U; ++i) {
+        send_event(&actor, EV_TICK_100MS);
+    }
+    assert(actor.scratchpad_reads_ok == 1U);
+    assert(capture.ready_count == 1U);
+    assert(capture.temp_count == 2U);
+    assert(capture.last_temp == 2506);
+
     return 0;
 }

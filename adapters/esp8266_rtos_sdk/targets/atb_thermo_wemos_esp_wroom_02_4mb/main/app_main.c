@@ -87,6 +87,41 @@ static const char *ev_atb_i2c_status_cstr(ev_i2c_status_t status)
     }
 }
 
+static const char *ev_atb_onewire_status_cstr(ev_onewire_status_t status)
+{
+    switch (status) {
+    case EV_ONEWIRE_OK:
+        return "PRESENCE";
+    case EV_ONEWIRE_ERR_NO_DEVICE:
+        return "NO_DEVICE";
+    case EV_ONEWIRE_ERR_BUS:
+        return "BUS_ERROR";
+    default:
+        return "ERR";
+    }
+}
+
+static void ev_atb_thermo_onewire_probe(ev_onewire_port_t *port)
+{
+    ev_esp8266_onewire_diag_snapshot_t diag = {0};
+    ev_onewire_status_t status;
+
+    if ((port == NULL) || (port->reset == NULL)) {
+        printf("EV_ATB_THERMO_ONEWIRE_PROBE dq=%u status=INVALID_PORT\n", (unsigned)EV_BOARD_ONEWIRE_GPIO);
+        return;
+    }
+
+    status = port->reset(port->ctx);
+    (void)ev_esp8266_onewire_get_diag(&diag);
+    printf("EV_ATB_THERMO_ONEWIRE_PROBE dq=%u status=%s dq_high=%u bus_errors=%u resets=%u max_reset_low_us=%u\n",
+           (unsigned)EV_BOARD_ONEWIRE_GPIO,
+           ev_atb_onewire_status_cstr(status),
+           diag.dq_high ? 1U : 0U,
+           (unsigned)diag.bus_errors,
+           (unsigned)diag.reset_critical_sections,
+           (unsigned)diag.max_reset_low_hold_us);
+}
+
 static ev_result_t ev_atb_gpio_configure_output(ev_gpio_port_t *port, ev_gpio_num_t pin, bool initial_high)
 {
     const ev_gpio_config_t cfg = {
@@ -254,6 +289,7 @@ void app_main(void)
     if (rc == EV_OK) {
         runtime_onewire_port = &s_board_onewire_port;
         printf("EV_ATB_THERMO_ONEWIRE_READY dq=%u\n", (unsigned)EV_BOARD_ONEWIRE_GPIO);
+        ev_atb_thermo_onewire_probe(runtime_onewire_port);
     } else {
         printf("EV_ATB_THERMO_ONEWIRE_INIT_FAILED rc=%d\n", (int)rc);
     }

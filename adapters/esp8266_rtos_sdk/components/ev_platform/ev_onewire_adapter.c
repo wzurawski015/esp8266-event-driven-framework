@@ -12,8 +12,10 @@
 #include "ev/esp8266_port_adapters.h"
 
 #define EV_ESP8266_ONEWIRE_RESET_LOW_US 480U
-#define EV_ESP8266_ONEWIRE_PRESENCE_SAMPLE_US 70U
-#define EV_ESP8266_ONEWIRE_RESET_RELEASE_US 410U
+#define EV_ESP8266_ONEWIRE_PRESENCE_WAIT_MIN_US 15U
+#define EV_ESP8266_ONEWIRE_PRESENCE_SAMPLE_INTERVAL_US 10U
+#define EV_ESP8266_ONEWIRE_PRESENCE_SAMPLE_WINDOW_US 240U
+#define EV_ESP8266_ONEWIRE_RESET_RECOVERY_US 240U
 #define EV_ESP8266_ONEWIRE_WRITE_1_LOW_US 6U
 #define EV_ESP8266_ONEWIRE_WRITE_1_RELEASE_US 64U
 #define EV_ESP8266_ONEWIRE_WRITE_0_LOW_US 60U
@@ -192,8 +194,9 @@ static uint8_t ev_esp8266_onewire_bit_io_unlocked(ev_esp8266_onewire_adapter_ctx
 static ev_onewire_status_t ev_esp8266_onewire_reset(void *ctx)
 {
     ev_esp8266_onewire_adapter_ctx_t *adapter = (ev_esp8266_onewire_adapter_ctx_t *)ctx;
-    bool presence_high;
+    bool presence_seen = false;
     bool stuck_low;
+    uint32_t presence_elapsed_us;
     int64_t reset_low_start_us;
     int64_t reset_low_end_us;
     int64_t reset_start_us;
@@ -224,9 +227,27 @@ static ev_onewire_status_t ev_esp8266_onewire_reset(void *ctx)
         ev_esp8266_onewire_elapsed_us(reset_low_start_us, reset_low_end_us));
 
     ev_esp8266_onewire_release_bus(adapter);
-    ets_delay_us(EV_ESP8266_ONEWIRE_PRESENCE_SAMPLE_US);
-    presence_high = ev_esp8266_onewire_sample_bus(adapter);
-    ets_delay_us(EV_ESP8266_ONEWIRE_RESET_RELEASE_US);
+
+    /*
+     * DS18B20 slaves may start the presence pulse anywhere from roughly
+     * 15 us to 60 us after reset release and can hold it low for up to
+     * 240 us.  Sampling exactly once at a fixed point is fragile on ESP8266
+     * with WiFi/ROM interrupts enabled: a delayed sample can miss the whole
+     * pulse and falsely report NO_DEVICE.  Keep the scheduler suspended and
+     * sample the legal presence window several times; any low sample is a
+     * valid presence evidence.
+     */
+    ets_delay_us(EV_ESP8266_ONEWIRE_PRESENCE_WAIT_MIN_US);
+    presence_elapsed_us = EV_ESP8266_ONEWIRE_PRESENCE_WAIT_MIN_US;
+    while (presence_elapsed_us <= EV_ESP8266_ONEWIRE_PRESENCE_SAMPLE_WINDOW_US) {
+        if (!ev_esp8266_onewire_sample_bus(adapter)) {
+            presence_seen = true;
+        }
+        ets_delay_us(EV_ESP8266_ONEWIRE_PRESENCE_SAMPLE_INTERVAL_US);
+        presence_elapsed_us += EV_ESP8266_ONEWIRE_PRESENCE_SAMPLE_INTERVAL_US;
+    }
+
+    ets_delay_us(EV_ESP8266_ONEWIRE_RESET_RECOVERY_US);
     stuck_low = !ev_esp8266_onewire_sample_bus(adapter);
 
     reset_end_us = esp_timer_get_time();
@@ -241,7 +262,7 @@ static ev_onewire_status_t ev_esp8266_onewire_reset(void *ctx)
         ++adapter->bus_errors;
         return ev_esp8266_onewire_bus_error_slowpath();
     }
-    if (presence_high) {
+    if (!presence_seen) {
         return ev_esp8266_onewire_no_device_slowpath();
     }
 
